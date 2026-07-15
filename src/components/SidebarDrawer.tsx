@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import type { Layer } from './VideoCanvas';
-import { generateMannequinImage, generateTryOnImage, generateVideoTask, pollVideoTask, getVideoContent, generateOutfitSuggestion, generatePromptsFromSkill, generateBackgroundImage } from '../utils/aiGateway';
+import { generateMannequinImage, generateTryOnImage, generateVideoTask, pollVideoTask, getVideoContent, generateOutfitSuggestion, generatePromptsFromSkill, generateBackgroundImage, resolveMediaSrc } from '../utils/aiGateway';
+
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 import { localDB } from '../utils/db';
 import { supabase } from '../utils/supabaseClient';
 import { uploadAudioToOSS, uploadFileToOSS } from '../utils/ossClient';
@@ -218,6 +220,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
 
   const [isI2vGenerating, setIsI2vGenerating] = useState(false);
   const [isRegeneratingShotId, setIsRegeneratingShotId] = useState<string | null>(null);
+  const [localMediaLibrary, setLocalMediaLibrary] = useState<{ id: string; name: string; src: string; type: 'video' | 'audio'; desc: string }[]>([]);
   const [isStoryboardGenerating, setIsStoryboardGenerating] = useState<boolean>(false);
   const [storyboardMode, setStoryboardMode] = useState<'individual' | 'composite_slice' | 'composite_no_slice'>(() => {
     const saved = localStorage.getItem('ai_storyboard_mode');
@@ -1309,6 +1312,16 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
       }
       if (scenes) {
         setCustomScenes(scenes);
+      }
+
+      // 4. Local Media Library
+      try {
+        const saved = await localDB.get('local_media_library');
+        if (saved) {
+          setLocalMediaLibrary(saved);
+        }
+      } catch (err) {
+        console.error('Failed to load local media library:', err);
       }
 
       // 3. Custom BGM from Supabase with localDB fallback
@@ -3980,6 +3993,87 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
     reader.readAsDataURL(file);
   };
 
+  const handleImportLocalMedia = async (type: 'video' | 'audio') => {
+    if (!isTauri) {
+      alert('批量导入本地文件功能仅在 Tauri 桌面客户端中可用。');
+      return;
+    }
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        multiple: true,
+        filters: type === 'video' 
+          ? [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] }]
+          : [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg'] }]
+      });
+
+      if (selected) {
+        const filePaths = Array.isArray(selected) ? selected : [selected];
+        const newItems = filePaths.map((filePath, idx) => {
+          const fileName = filePath.split('/').pop()?.split('\\').pop() || `本地${type === 'video' ? '视频' : '音频'}_${idx}`;
+          return {
+            id: `local_media_${Date.now()}_${idx}`,
+            name: fileName,
+            src: filePath,
+            type,
+            desc: '本地磁盘文件'
+          };
+        });
+
+        setLocalMediaLibrary(prev => {
+          const updated = [...prev, ...newItems];
+          localDB.set('local_media_library', updated);
+          return updated;
+        });
+      }
+    } catch (err: any) {
+      console.error('Failed to import local media:', err);
+      alert('选择本地文件失败: ' + (err.message || err));
+    }
+  };
+
+  const addLocalMediaToTimeline = (item: { id: string; name: string; src: string; type: 'video' | 'audio' }) => {
+    if (item.type === 'video') {
+      const newLayer: Layer = {
+        id: `media_local_${Date.now()}`,
+        type: 'media',
+        name: item.name,
+        start: 0,
+        end: 15,
+        visible: true,
+        x: 50,
+        y: 45,
+        scale: 0.8,
+        opacity: 1,
+        properties: { src: item.src, isVideo: true }
+      };
+      setLayers(prev => [...prev, newLayer]);
+    } else {
+      const newLayer: Layer = {
+        id: `audio_local_${Date.now()}`,
+        type: 'audio',
+        name: item.name,
+        start: 0,
+        end: 15,
+        visible: true,
+        x: 0,
+        y: 0,
+        scale: 1,
+        opacity: 1,
+        properties: { src: item.src, volume: 0.8 }
+      };
+      setLayers(prev => [...prev, newLayer]);
+    }
+  };
+
+  const deleteLocalMedia = (id: string) => {
+    setLocalMediaLibrary(prev => {
+      const updated = prev.filter(item => item.id !== id);
+      localDB.set('local_media_library', updated);
+      return updated;
+    });
+  };
+
   // Delete custom scene
   const deleteCustomScene = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -4247,7 +4341,7 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
     if (previewAudioRef.current) {
       previewAudioRef.current.pause();
     }
-    const audio = new Audio(src);
+    const audio = new Audio(resolveMediaSrc(src));
     audio.volume = 0.5;
     audio.play().catch(err => console.error('Audio preview failed:', err));
     audio.onended = () => {
@@ -4600,6 +4694,100 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
                   );
                 })}
               </div>
+            </div>
+
+            {/* 4. LOCAL MEDIA LIBRARY SECTION */}
+            <div className="media-section-group" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span className="property-label" style={{ margin: 0, fontSize: '12px', fontWeight: '600' }}>📁 本地媒体素材库</span>
+                {isTauri && (
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      onClick={() => handleImportLocalMedia('video')}
+                      className="btn-primary"
+                      style={{ padding: '3px 8px', fontSize: '10px', margin: 0, borderRadius: '4px', height: 'auto', display: 'inline-flex', alignItems: 'center', background: 'var(--accent-cyan)', borderColor: 'var(--accent-cyan)', color: '#000' }}
+                    >
+                      导入本地视频
+                    </button>
+                    <button
+                      onClick={() => handleImportLocalMedia('audio')}
+                      className="btn-secondary"
+                      style={{ padding: '3px 8px', fontSize: '10px', margin: 0, borderRadius: '4px', height: 'auto', display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      导入本地音频
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {!isTauri ? (
+                <div style={{ padding: '16px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border-color)', borderRadius: '6px' }}>
+                  提示：本地视频/音频批量导入功能需要运行在 Tauri 桌面客户端中。
+                </div>
+              ) : localMediaLibrary.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border-color)', borderRadius: '6px' }}>
+                  暂无导入的本地素材。点击「导入本地视频」或「导入本地音频」开始。
+                </div>
+              ) : (
+                <div className="media-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                  {localMediaLibrary.map(item => (
+                    <div
+                      key={item.id}
+                      className="media-thumb"
+                      onClick={() => addLocalMediaToTimeline(item)}
+                      title={`点击将该文件添加到时间轴: ${item.src}`}
+                      style={{
+                        position: 'relative',
+                        cursor: 'pointer',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        padding: '4px',
+                        background: 'rgba(255,255,255,0.02)',
+                        minHeight: '80px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <span style={{ fontSize: '24px', marginBottom: '4px' }}>
+                        {item.type === 'video' ? '🎬' : '🎵'}
+                      </span>
+                      <div className="media-thumb-label" style={{ fontSize: '9px', textAlign: 'center', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.name}
+                      </div>
+                      
+                      {/* Delete Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteLocalMedia(item.id);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: '2px',
+                          right: '2px',
+                          background: 'rgba(0,0,0,0.7)',
+                          border: 'none',
+                          borderRadius: '50%',
+                          color: '#ff5252',
+                          width: '15px',
+                          height: '15px',
+                          fontSize: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          padding: 0
+                        }}
+                        title="移出素材库"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
           </div>
@@ -5881,14 +6069,33 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
             <div className="property-group">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span className="property-label" style={{ margin: 0 }}>🎵 背景音乐库 (BGM)</span>
-                <label className="btn-primary" style={{ padding: '3px 8px', fontSize: '10px', cursor: 'pointer', margin: 0, borderRadius: '4px', height: 'auto', display: 'inline-flex', alignItems: 'center' }}>
-                  上传音乐
-                  <input type="file" accept="audio/*" onChange={handleBgmUpload} style={{ display: 'none' }} />
-                </label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {isTauri && (
+                    <button
+                      onClick={() => handleImportLocalMedia('audio')}
+                      className="btn-secondary"
+                      style={{ padding: '3px 8px', fontSize: '10px', cursor: 'pointer', margin: 0, borderRadius: '4px', height: 'auto', display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      导入本地音频
+                    </button>
+                  )}
+                  <label className="btn-primary" style={{ padding: '3px 8px', fontSize: '10px', cursor: 'pointer', margin: 0, borderRadius: '4px', height: 'auto', display: 'inline-flex', alignItems: 'center' }}>
+                    上传音乐
+                    <input type="file" accept="audio/*" onChange={handleBgmUpload} style={{ display: 'none' }} />
+                  </label>
+                </div>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '480px', overflowY: 'auto' }}>
-                {bgmLibrary.map(bgm => (
+                {[
+                  ...bgmLibrary,
+                  ...localMediaLibrary.filter(item => item.type === 'audio').map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    src: item.src,
+                    desc: '本地音频文件'
+                  }))
+                ].map(bgm => (
                   <div key={bgm.id} className="music-item" onClick={() => selectBgm(bgm.src, bgm.name)} title="点击设置为背景音乐" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: '60px', position: 'relative' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="music-name">{bgm.name}</div>
