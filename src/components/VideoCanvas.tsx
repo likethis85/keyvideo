@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { resolveMediaSrc } from '../utils/ai/helpers';
 
 export interface Layer {
   id: string;
@@ -107,8 +106,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
       if (!src) return;
 
       let audio = audioElementsRef.current[layer.id];
-      const resolvedSrc = resolveMediaSrc(src);
-      if (!audio || audio.src !== resolvedSrc) {
+      if (!audio || audio.src !== src) {
         if (audio) audio.pause();
         
         audio = new Audio();
@@ -116,7 +114,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         if (src.startsWith('http://') || src.startsWith('https://')) {
           audio.crossOrigin = 'anonymous';
         }
-        audio.src = resolvedSrc;
+        audio.src = src;
         audioElementsRef.current[layer.id] = audio;
 
         // Initialize Web Audio API nodes
@@ -194,7 +192,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
       if (isVideo) {
         if (!videosCacheRef.current[src]) {
           const video = document.createElement('video');
-          video.src = resolveMediaSrc(src);
+          video.src = src;
           video.muted = true;
           video.playsInline = true;
           video.loop = false;
@@ -217,7 +215,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           if (src.startsWith('http://') || src.startsWith('https://')) {
             img.crossOrigin = 'anonymous';
           }
-          img.src = resolveMediaSrc(src);
+          img.src = src;
           img.onload = () => {
             imagesCacheRef.current[src] = img;
             setRenderTrigger(prev => prev + 1);
@@ -445,7 +443,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
       if (videoUrl) {
         if (!videosCacheRef.current[videoUrl]) {
           const video = document.createElement('video');
-          video.src = resolveMediaSrc(videoUrl);
+          video.src = videoUrl;
           video.muted = true;
           video.playsInline = true;
           video.loop = false;

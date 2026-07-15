@@ -7,15 +7,8 @@
   ],
   "permissions": [
     "core:default",
-    "dialog:default",
     "sql:default",
-    {
-      "identifier": "fs:allow-read-file",
-      "allow": [{ "path": "**" }]
-    },
-    {
-      "identifier": "fs:allow-read",
-      "allow": [{ "path": "**" }]
-    }
+    "dialog:default",
+    "fs:default"
   ]
 }
