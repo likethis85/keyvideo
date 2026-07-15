@@ -158,18 +158,10 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
   const [swapModelUrl, setSwapModelUrl] = useState<string>('/clothing_model.png');
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
 
-  const [gatewayUrl, setGatewayUrl] = useState(() => {
-    return localStorage.getItem('ai_gateway_url') || import.meta.env.VITE_AIGATEWAY_URL || '';
-  });
-  const [gatewayVideoUrl, setGatewayVideoUrl] = useState(() => {
-    return localStorage.getItem('ai_gateway_video_url') || import.meta.env.VITE_AIGATEWAY_VIDEO_URL || '';
-  });
-  const [gatewayToken, setGatewayToken] = useState(() => {
-    return localStorage.getItem('ai_gateway_token') || import.meta.env.VITE_AIGATEWAY_TOKEN || '';
-  });
-  const [gatewayVideoToken, setGatewayVideoToken] = useState(() => {
-    return localStorage.getItem('ai_gateway_video_token') || import.meta.env.VITE_AIGATEWAY_VIDEO_TOKEN || '';
-  });
+  const gatewayUrl = 'backend-managed';
+  const gatewayVideoUrl = 'backend-managed';
+  const gatewayToken = 'backend-managed';
+  const gatewayVideoToken = 'backend-managed';
 
   const [batchClothingUrl] = useState<string>('');
   const [topClothingUrl, setTopClothingUrl] = useState<string>('');
@@ -1612,22 +1604,7 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
     }
   };
 
-  const handleUrlChange = (val: string) => {
-    setGatewayUrl(val);
-    localStorage.setItem('ai_gateway_url', val);
-  };
-  const handleVideoUrlChange = (val: string) => {
-    setGatewayVideoUrl(val);
-    localStorage.setItem('ai_gateway_video_url', val);
-  };
-  const handleTokenChange = (val: string) => {
-    setGatewayToken(val);
-    localStorage.setItem('ai_gateway_token', val);
-  };
-  const handleVideoTokenChange = (val: string) => {
-    setGatewayVideoToken(val);
-    localStorage.setItem('ai_gateway_video_token', val);
-  };
+
 
   const triggerOutfitStylist = async (top: string, bottom: string) => {
     if (!top && !bottom) return;
@@ -6012,59 +5989,21 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
                 onClick={() => setShowConfig(!showConfig)}
               >
                 <span className="property-label" style={{ margin: 0, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  ⚙️ AI 网关配置 {gatewayUrl && gatewayVideoUrl && gatewayToken && gatewayVideoToken ? '🟢' : '🔴'}
+                  ⚙️ AI 服务与网关状态 🟢
                 </span>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{showConfig ? '收起 ▲' : '展开 ▼'}</span>
               </div>
 
               {showConfig && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
-                  <div className="property-group">
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>图片生成网关 (Image Gateway URL)</span>
-                    <input
-                      type="text"
-                      placeholder="https://aigateway.edgecloudapp.com/v1/.../wuxi_lairui-gateway"
-                      value={gatewayUrl}
-                      onChange={(e) => handleUrlChange(e.target.value)}
-                      className="text-input"
-                      style={{ padding: '6px', fontSize: '11px' }}
-                    />
+                  <div style={{ padding: '8px', borderRadius: '4px', background: 'rgba(0, 240, 255, 0.03)', border: '1px solid rgba(0, 240, 255, 0.1)', fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                    <strong>🔒 独立后端托管密钥：</strong>
+                    <br />
+                    系统已升级为独立的后端微服务架构。您的网关地址、Token、阿里 OSS 密钥均已由后端服务安全托管，前端不再保留明文密钥以确保运行安全。
                   </div>
-                  <div className="property-group">
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>图片网关 Token (Image Gateway Token)</span>
-                    <input
-                      type="password"
-                      placeholder="输入图片网关 Token"
-                      value={gatewayToken}
-                      onChange={(e) => handleTokenChange(e.target.value)}
-                      className="text-input"
-                      style={{ padding: '6px', fontSize: '11px' }}
-                    />
-                  </div>
-                  <div className="property-group">
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>视频生成网关 (Video Gateway URL)</span>
-                    <input
-                      type="text"
-                      placeholder="https://aigateway.edgecloudapp.com/v1/.../wuxi_lairui-gateway3"
-                      value={gatewayVideoUrl}
-                      onChange={(e) => handleVideoUrlChange(e.target.value)}
-                      className="text-input"
-                      style={{ padding: '6px', fontSize: '11px' }}
-                    />
-                  </div>
-                  <div className="property-group">
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>视频网关 Token (Video Gateway Token)</span>
-                    <input
-                      type="password"
-                      placeholder="输入视频网关 Token"
-                      value={gatewayVideoToken}
-                      onChange={(e) => handleVideoTokenChange(e.target.value)}
-                      className="text-input"
-                      style={{ padding: '6px', fontSize: '11px' }}
-                    />
-                  </div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                    提示：配置保存在本地浏览器中。本地开发模式下，系统将自动使用开发代理防止跨域报错。
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <span>服务地址:</span>
+                    <span style={{ color: 'var(--accent-cyan)' }}>http://localhost:3001</span>
                   </div>
                 </div>
               )}
