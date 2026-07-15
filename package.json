@@ -11,12 +11,16 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-sql": "^2.4.0",
     "ali-oss": "^6.23.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/ali-oss": "^6.23.3",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",

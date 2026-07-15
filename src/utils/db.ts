@@ -1,32 +1,35 @@
+// localDB - keyvalue store with SQLite backend in Tauri and IndexedDB fallback in browser
+
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+
+let sqliteDbPromise: Promise<any> | null = null;
+
+if (isTauri) {
+  sqliteDbPromise = (async () => {
+    try {
+      const Database = (await import('@tauri-apps/plugin-sql')).default;
+      const db = await Database.load('sqlite:keyvideo.db');
+      
+      // Initialize tables
+      await db.execute('CREATE TABLE IF NOT EXISTS keyvalue_store (key TEXT PRIMARY KEY, value TEXT)');
+      await db.execute('CREATE TABLE IF NOT EXISTS local_video_assets (id TEXT PRIMARY KEY, name TEXT, src TEXT, desc TEXT, duration REAL)');
+      
+      console.log('SQLite database initialized successfully via Tauri.');
+      return db;
+    } catch (err) {
+      console.error('Failed to initialize SQLite database:', err);
+      return null;
+    }
+  })();
+}
+
 class LocalDB {
   private dbName: string;
   private storeName: string;
-  private tauriDb: any = null;
 
   constructor(dbName = 'keyvideo_local_db', storeName = 'keyvalue_store') {
     this.dbName = dbName;
     this.storeName = storeName;
-  }
-
-  private async getTauriDB() {
-    if (this.tauriDb) return this.tauriDb;
-    try {
-      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-        const Database = (await import('@tauri-apps/plugin-sql')).default;
-        const db = await Database.load(`sqlite:${this.dbName}.db`);
-        await db.execute(`
-          CREATE TABLE IF NOT EXISTS ${this.storeName} (
-            key TEXT PRIMARY KEY,
-            value TEXT
-          )
-        `);
-        this.tauriDb = db;
-        return db;
-      }
-    } catch (err) {
-      console.warn('Failed to load Tauri SQL database, falling back to IndexedDB:', err);
-    }
-    return null;
   }
 
   private getDB(): Promise<IDBDatabase> {
@@ -44,20 +47,26 @@ class LocalDB {
   }
 
   async get(key: string): Promise<any> {
-    const tDb = await this.getTauriDB();
-    if (tDb) {
+    if (isTauri) {
       try {
-        const results = (await tDb.select(`SELECT value FROM ${this.storeName} WHERE key = ?`, [key])) as any[];
-        if (results && results.length > 0) {
-          return JSON.parse(results[0].value);
+        const db = await sqliteDbPromise;
+        if (db) {
+          const result: any[] = await db.select('SELECT value FROM keyvalue_store WHERE key = ?', [key]);
+          if (result && result.length > 0) {
+            try {
+              return JSON.parse(result[0].value);
+            } catch (e) {
+              return result[0].value;
+            }
+          }
+          return null;
         }
-        return null;
       } catch (e) {
-        console.error(`Tauri SQLite get [${key}] failed:`, e);
-        return null;
+        console.error(`SQLite get [${key}] failed:`, e);
       }
     }
 
+    // IndexedDB Fallback
     try {
       const db = await this.getDB();
       return new Promise((resolve, reject) => {
@@ -68,28 +77,26 @@ class LocalDB {
         request.onerror = () => reject(request.error);
       });
     } catch (e) {
-      console.error(`LocalDB get [${key}] failed:`, e);
+      console.error(`LocalDB IndexedDB get [${key}] failed:`, e);
       return null;
     }
   }
 
   async set(key: string, val: any): Promise<boolean> {
-    const tDb = await this.getTauriDB();
-    if (tDb) {
+    if (isTauri) {
       try {
-        const jsonVal = JSON.stringify(val);
-        await tDb.execute(`
-          INSERT INTO ${this.storeName} (key, value)
-          VALUES (?, ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        `, [key, jsonVal]);
-        return true;
+        const db = await sqliteDbPromise;
+        if (db) {
+          const valStr = typeof val === 'string' ? val : JSON.stringify(val);
+          await db.execute('INSERT OR REPLACE INTO keyvalue_store (key, value) VALUES (?, ?)', [key, valStr]);
+          return true;
+        }
       } catch (e) {
-        console.error(`Tauri SQLite set [${key}] failed:`, e);
-        return false;
+        console.error(`SQLite set [${key}] failed:`, e);
       }
     }
 
+    // IndexedDB Fallback
     try {
       const db = await this.getDB();
       return new Promise((resolve, reject) => {
@@ -100,9 +107,66 @@ class LocalDB {
         request.onerror = () => reject(request.error);
       });
     } catch (e) {
-      console.error(`LocalDB set [${key}] failed:`, e);
+      console.error(`LocalDB IndexedDB set [${key}] failed:`, e);
       return false;
     }
+  }
+
+  // SQLite Specific local video asset management (with IndexedDB fallback)
+  async getLocalVideos(): Promise<any[]> {
+    if (isTauri) {
+      try {
+        const db = await sqliteDbPromise;
+        if (db) {
+          const rows: any[] = await db.select('SELECT * FROM local_video_assets');
+          return rows;
+        }
+      } catch (e) {
+        console.error('SQLite getLocalVideos failed:', e);
+      }
+    }
+
+    const val = await this.get('ai_local_videos');
+    return Array.isArray(val) ? val : [];
+  }
+
+  async saveLocalVideo(video: { id: string; name: string; src: string; desc: string; duration?: number }): Promise<boolean> {
+    if (isTauri) {
+      try {
+        const db = await sqliteDbPromise;
+        if (db) {
+          await db.execute(
+            'INSERT OR REPLACE INTO local_video_assets (id, name, src, desc, duration) VALUES (?, ?, ?, ?, ?)',
+            [video.id, video.name, video.src, video.desc, video.duration || 0]
+          );
+          return true;
+        }
+      } catch (e) {
+        console.error('SQLite saveLocalVideo failed:', e);
+      }
+    }
+
+    const list = await this.getLocalVideos();
+    const updated = [...list.filter(v => v.id !== video.id), video];
+    return await this.set('ai_local_videos', updated);
+  }
+
+  async deleteLocalVideo(id: string): Promise<boolean> {
+    if (isTauri) {
+      try {
+        const db = await sqliteDbPromise;
+        if (db) {
+          await db.execute('DELETE FROM local_video_assets WHERE id = ?', [id]);
+          return true;
+        }
+      } catch (e) {
+        console.error('SQLite deleteLocalVideo failed:', e);
+      }
+    }
+
+    const list = await this.getLocalVideos();
+    const updated = list.filter(v => v.id !== id);
+    return await this.set('ai_local_videos', updated);
   }
 }
 

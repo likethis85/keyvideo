@@ -105,22 +105,3 @@ export const getGatewayRequestConfig = (config: RequestConfig) => {
 
   return { requestUrl, headers };
 };
-
-/**
- * Resolves a media source URL. If running in Tauri and the source is a local path,
- * it returns the Tauri convertFileSrc equivalent.
- */
-export const resolveMediaSrc = (src: string): string => {
-  if (!src) return '';
-  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
-    return src;
-  }
-  if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-    try {
-      return (window as any).__TAURI_INTERNALS__.convertFileSrc(src);
-    } catch (e) {
-      console.error('Failed to convert file src in resolveMediaSrc:', e);
-    }
-  }
-  return src;
-};
