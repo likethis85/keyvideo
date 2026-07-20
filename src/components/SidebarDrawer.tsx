@@ -1049,11 +1049,13 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
       let fileToUpload: File;
       if (srcUrl.startsWith('data:')) {
         const blob = base64ToBlob(srcUrl);
-        fileToUpload = new File([blob], `${prefix}_${Date.now()}.png`, { type: blob.type || 'image/png' });
+        const ext = blob.type.split('/')[1] || 'png';
+        fileToUpload = new File([blob], `${prefix}_${Date.now()}.${ext}`, { type: blob.type || 'image/png' });
       } else {
         const response = await fetch(srcUrl);
         const blob = await response.blob();
-        fileToUpload = new File([blob], `${prefix}_${Date.now()}.png`, { type: blob.type || 'image/png' });
+        const ext = blob.type.split('/')[1] || 'png';
+        fileToUpload = new File([blob], `${prefix}_${Date.now()}.${ext}`, { type: blob.type || 'image/png' });
       }
       return await uploadFileToOSS(fileToUpload);
     } catch (e) {
