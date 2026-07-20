@@ -438,87 +438,93 @@ function App() {
     <>
       {/* Header bar */}
       <header className="app-header">
-        <div className="logo-section">
-          <div className="logo-icon">
-            {/* SVG wand icon */}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5">
-              <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 5.2l-1.4 1.4M7.6 15.4l-1.4 1.4M20.2 12.2l-1.4-1.4M6.2 6.2l1.4 1.4" />
-            </svg>
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
+          <div className="logo-section">
+            <div className="logo-icon">
+              {/* SVG wand icon */}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5">
+                <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 5.2l-1.4 1.4M7.6 15.4l-1.4 1.4M20.2 12.2l-1.4-1.4M6.2 6.2l1.4 1.4" />
+              </svg>
+            </div>
+            <span className="logo-text">KeyVideo <span className="logo-subtext">服装视频智剪</span></span>
           </div>
-          <span className="logo-text">KeyVideo <span className="logo-subtext">服装视频智剪</span></span>
-        </div>
 
-        {/* Project Selector Block */}
-        <div className="header-project-selector" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', padding: '4px 10px', borderRadius: '8px', marginLeft: '12px', marginRight: 'auto' }}>
-          {isEditingProjName ? (
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-              <input
-                type="text"
-                value={editingProjNameValue}
-                onChange={(e) => setEditingProjNameValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') sidebarRef.current?.saveProjectName();
-                  if (e.key === 'Escape') setIsEditingProjName(false);
-                }}
-                autoFocus
-                style={{
-                  background: 'rgba(0,0,0,0.3)',
-                  border: '1px solid var(--accent-purple)',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  fontSize: '12px',
-                  padding: '2px 8px',
-                  outline: 'none',
-                  height: '24px',
-                  width: '120px'
-                }}
-              />
-              <button onClick={() => sidebarRef.current?.saveProjectName()} style={{ background: 'transparent', border: 'none', color: '#4caf50', cursor: 'pointer', padding: '0 4px', fontSize: '12px' }} title="保存">💾</button>
-              <button onClick={() => setIsEditingProjName(false)} style={{ background: 'transparent', border: 'none', color: '#ff5252', cursor: 'pointer', padding: '0 4px', fontSize: '12px' }} title="取消">❌</button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>📁</span>
-              <select
-                value={activeProjectId}
-                onChange={(e) => sidebarRef.current?.switchProject(e.target.value)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#fff',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  paddingRight: '12px',
-                  maxWidth: '120px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {projects.map(p => {
-                  let statusText = '';
-                  if (p.isI2vGenerating) statusText = ' (生视频中)';
-                  else if (p.isOutfitImgGenerating) statusText = ' (生穿搭中)';
-                  else if (p.i2vStep === 'video_generated') statusText = ' (已生视频)';
-                  return (
-                    <option key={p.id} value={p.id} style={{ background: '#14151f', color: '#fff' }}>
-                      {p.name}{statusText}
-                    </option>
-                  );
-                })}
-              </select>
-              
-              {/* Action buttons */}
-              <button onClick={() => sidebarRef.current?.createNewProject()} style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px' }} title="新建项目">➕</button>
-              <button onClick={() => sidebarRef.current?.startRenameProject()} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px' }} title="重命名项目">✏️</button>
-              {projects.length > 1 && (
-                <button onClick={() => sidebarRef.current?.deleteProject(activeProjectId)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px' }} title="删除项目">🗑️</button>
-              )}
-              <button onClick={() => setIsProjectsModalOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px' }} title="项目管理大屏看板">📊</button>
-            </div>
-          )}
+          {/* Project Selector Block */}
+          <div className="header-project-selector" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', padding: '4px 10px', borderRadius: '8px', marginLeft: '12px', flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
+            {isEditingProjName ? (
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 1, minWidth: 0 }}>
+                <input
+                  type="text"
+                  value={editingProjNameValue}
+                  onChange={(e) => setEditingProjNameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') sidebarRef.current?.saveProjectName();
+                    if (e.key === 'Escape') setIsEditingProjName(false);
+                  }}
+                  autoFocus
+                  style={{
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--accent-purple)',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    fontSize: '12px',
+                    padding: '2px 8px',
+                    outline: 'none',
+                    height: '24px',
+                    width: '120px',
+                    flexShrink: 1,
+                    minWidth: 0
+                  }}
+                />
+                <button onClick={() => sidebarRef.current?.saveProjectName()} style={{ background: 'transparent', border: 'none', color: '#4caf50', cursor: 'pointer', padding: '0 4px', fontSize: '12px', flexShrink: 0 }} title="保存">💾</button>
+                <button onClick={() => setIsEditingProjName(false)} style={{ background: 'transparent', border: 'none', color: '#ff5252', cursor: 'pointer', padding: '0 4px', fontSize: '12px', flexShrink: 0 }} title="取消">❌</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>📁</span>
+                <select
+                  value={activeProjectId}
+                  onChange={(e) => sidebarRef.current?.switchProject(e.target.value)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    paddingRight: '12px',
+                    maxWidth: '120px',
+                    flexShrink: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {projects.map(p => {
+                    let statusText = '';
+                    if (p.isI2vGenerating) statusText = ' (生视频中)';
+                    else if (p.isOutfitImgGenerating) statusText = ' (生穿搭中)';
+                    else if (p.i2vStep === 'video_generated') statusText = ' (已生视频)';
+                    return (
+                      <option key={p.id} value={p.id} style={{ background: '#14151f', color: '#fff' }}>
+                        {p.name}{statusText}
+                      </option>
+                    );
+                  })}
+                </select>
+                
+                {/* Action buttons */}
+                <button onClick={() => sidebarRef.current?.createNewProject()} style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px', flexShrink: 0 }} title="新建项目">➕</button>
+                <button onClick={() => sidebarRef.current?.startRenameProject()} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px', flexShrink: 0 }} title="重命名项目">✏️</button>
+                {projects.length > 1 && (
+                  <button onClick={() => sidebarRef.current?.deleteProject(activeProjectId)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px', flexShrink: 0 }} title="删除项目">🗑️</button>
+                )}
+                <button onClick={() => setIsProjectsModalOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px', flexShrink: 0 }} title="项目管理大屏看板">📊</button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Ratio dimensions selectors */}
