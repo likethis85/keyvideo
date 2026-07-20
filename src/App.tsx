@@ -627,10 +627,10 @@ function App() {
 
           {session?.user && (
             <>
-              <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 8px' }} />
+              <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 8px', flexShrink: 0 }} />
               
               {/* Profile Avatar Clickable Container */}
-              <div ref={userDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <div ref={userDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                 <div
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
                   style={{
