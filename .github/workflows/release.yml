@@ -40,6 +40,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_BACKEND_URL: http://203.205.89.231:3001
         with:
           tagName: app-v__VERSION__
           releaseName: 'KeyVideo v__VERSION__'
