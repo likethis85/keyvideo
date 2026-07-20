@@ -6003,7 +6003,7 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
                     <span>服务地址:</span>
-                    <span style={{ color: 'var(--accent-cyan)' }}>http://localhost:3001</span>
+                    <span style={{ color: 'var(--accent-cyan)' }}>{import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'}</span>
                   </div>
                 </div>
               )}
