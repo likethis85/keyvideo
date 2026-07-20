@@ -225,6 +225,13 @@ body {
   align-items: center;
   padding: 20px 0;
   gap: 16px;
+  overflow-y: auto;
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.editor-sidebar::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-tab {
@@ -241,6 +248,7 @@ body {
   gap: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .nav-tab:hover {
