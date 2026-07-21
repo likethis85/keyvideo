@@ -1270,6 +1270,58 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     return updated;
   };
 
+  const addSceneToLibrary = async (name: string, srcUrl: string): Promise<{ id: string; name: string; src: string } | null> => {
+    try {
+      let finalUrl = srcUrl;
+      // 1. Upload to OSS if it is base64 or external URL
+      if (srcUrl.startsWith('data:') || srcUrl.startsWith('http://') || srcUrl.startsWith('https://') || srcUrl.startsWith('blob:')) {
+        try {
+          let fileToUpload: File;
+          if (srcUrl.startsWith('data:')) {
+            const blob = base64ToBlob(srcUrl);
+            fileToUpload = new File([blob], `custom_scene_${Date.now()}.png`, { type: blob.type || 'image/png' });
+          } else {
+            const response = await fetch(srcUrl);
+            const blob = await response.blob();
+            fileToUpload = new File([blob], `custom_scene_${Date.now()}.png`, { type: blob.type || 'image/png' });
+          }
+          finalUrl = await uploadFileToOSS(fileToUpload);
+        } catch (e) {
+          console.warn('Failed to upload scene to OSS, using source URL:', e);
+        }
+      }
+
+      // 2. Save to Supabase
+      const { data: userSession } = await supabase.auth.getSession();
+      const userId = userSession?.session?.user?.id;
+
+      const newSceneItem = {
+        name: `[BG] ${name}`,
+        src: finalUrl,
+        user_id: userId || null
+      };
+
+      const { data: insertData, error: insertError } = await supabase
+        .from('model_assets')
+        .insert([newSceneItem])
+        .select();
+
+      if (insertError) throw insertError;
+
+      const inserted = insertData?.[0];
+      if (inserted) {
+        return {
+          id: inserted.id,
+          name: inserted.name.replace(/^\[BG\]\s*/, ''),
+          src: inserted.src
+        };
+      }
+    } catch (err) {
+      console.error('Failed to add scene to library:', err);
+    }
+    return null;
+  };
+
   const saveBgmLibrarySafely = (updated: { id: string; name: string; src: string; desc?: string }[]) => {
     localDB.set('ai_bgm_library', updated).catch(e => {
       console.error('Failed to save bgm library to IndexedDB:', e);
@@ -1288,12 +1340,23 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
           .order('created_at', { ascending: false });
 
         if (modelsData && !modelsError) {
-          setModelLibrary(modelsData.map((m: any) => ({
+          // Filter out background scenes
+          const modelsOnly = modelsData.filter((m: any) => !m.name?.startsWith('[BG]'));
+          setModelLibrary(modelsOnly.map((m: any) => ({
             id: m.id,
             src: m.src,
             date: new Date(m.created_at).toLocaleDateString(),
             name: m.name
           })));
+
+          const scenesOnly = modelsData.filter((m: any) => m.name?.startsWith('[BG]'));
+          const mappedScenes = scenesOnly.map((m: any) => ({
+            id: m.id,
+            name: m.name.replace(/^\[BG\]\s*/, ''),
+            src: m.src
+          }));
+          setCustomScenes(mappedScenes);
+          await localDB.set('ai_custom_scenes', mappedScenes);
         } else {
           let models = await localDB.get('ai_model_library');
           if (!models) {
@@ -1308,32 +1371,24 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
             }
           }
           if (models) {
-            setModelLibrary(models);
+            setModelLibrary(models.filter((m: any) => !m.name?.startsWith('[BG]')));
+          }
+
+          let scenes = await localDB.get('ai_custom_scenes');
+          if (scenes) {
+            setCustomScenes(scenes);
           }
         }
       } catch (err) {
         console.error('Failed to load models from Supabase:', err);
         let models = await localDB.get('ai_model_library');
         if (models) {
-          setModelLibrary(models);
+          setModelLibrary(models.filter((m: any) => !m.name?.startsWith('[BG]')));
         }
-      }
-
-      // 2. Custom Scenes
-      let scenes = await localDB.get('ai_custom_scenes');
-      if (!scenes) {
-        try {
-          const legacy = localStorage.getItem('ai_custom_scenes');
-          if (legacy) {
-            scenes = JSON.parse(legacy);
-            await localDB.set('ai_custom_scenes', scenes);
-          }
-        } catch (e) {
-          console.error(e);
+        let scenes = await localDB.get('ai_custom_scenes');
+        if (scenes) {
+          setCustomScenes(scenes);
         }
-      }
-      if (scenes) {
-        setCustomScenes(scenes);
       }
 
       // 3. Custom BGM from Supabase with localDB fallback
@@ -1561,24 +1616,34 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         refImageUrl: aiSceneRefImage || undefined
       });
 
-      const newScene = {
-        id: `custom_scene_ai_${Date.now()}`,
-        name: aiScenePrompt.trim().substring(0, 10) || 'AI 场景',
-        src: generatedUrl
-      };
+      const sceneName = aiScenePrompt.trim().substring(0, 10) || 'AI 场景';
+      const savedItem = await addSceneToLibrary(sceneName, generatedUrl);
 
-      setCustomScenes(prev => {
-        const updated = [newScene, ...prev];
-        return saveCustomScenesSafely(updated);
-      });
-
-      setModelScene(newScene.id);
+      if (savedItem) {
+        setCustomScenes(prev => {
+          const updated = [savedItem, ...prev];
+          return saveCustomScenesSafely(updated);
+        });
+        setModelScene(savedItem.id);
+        alert(`已成功生成背景场景「${savedItem.name}」并自动选定为 AI 绘图的参考背景！`);
+      } else {
+        const newScene = {
+          id: `custom_scene_ai_${Date.now()}`,
+          name: sceneName,
+          src: generatedUrl
+        };
+        setCustomScenes(prev => {
+          const updated = [newScene, ...prev];
+          return saveCustomScenesSafely(updated);
+        });
+        setModelScene(newScene.id);
+        alert(`已成功生成背景场景「${newScene.name}」并自动选定为 AI 绘图的参考背景！`);
+      }
       setActiveTab('ai');
       setShowAiSceneModal(false);
       setAiScenePrompt('');
       setAiSceneRefImage(null);
       setAiSceneMultiView(false);
-      alert(`已成功生成背景场景「${newScene.name}」并自动选定为 AI 绘图的参考背景！`);
     } catch (error: any) {
       console.error(error);
       alert(`AI 场景生成失败: ${error.message}`);
@@ -1604,12 +1669,32 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         refImageUrl: previewScene.src
       });
 
+      let finalUrl = generatedUrl;
+      try {
+        const blob = base64ToBlob(generatedUrl);
+        const fileToUpload = new File([blob], `custom_scene_${Date.now()}.png`, { type: blob.type || 'image/png' });
+        finalUrl = await uploadFileToOSS(fileToUpload);
+      } catch (e) {
+        console.warn('Failed to upload scene to OSS during regeneration:', e);
+      }
+
+      const updatedName = sceneEditPrompt.trim().substring(0, 10) || previewScene.name;
+
+      try {
+        await supabase
+          .from('model_assets')
+          .update({ src: finalUrl, name: `[BG] ${updatedName}` })
+          .eq('id', previewScene.id);
+      } catch (err) {
+        console.warn('Failed to update scene in Supabase:', err);
+      }
+
       // Update customScenes state
       setCustomScenes(prev => {
         const updated = prev.map(s => s.id === previewScene.id ? { 
           ...s, 
-          src: generatedUrl,
-          name: sceneEditPrompt.trim().substring(0, 10) || s.name
+          src: finalUrl,
+          name: updatedName
         } : s);
         return saveCustomScenesSafely(updated);
       });
@@ -1617,12 +1702,12 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
       // Update current preview source
       setPreviewScene(prev => prev ? { 
         ...prev, 
-        src: generatedUrl, 
-        name: sceneEditPrompt.trim().substring(0, 10) || prev.name 
+        src: finalUrl, 
+        name: updatedName
       } : null);
 
       if (modelScene === previewScene.id) {
-        applySceneBackground(sceneEditPrompt.trim().substring(0, 10) || previewScene.name, generatedUrl);
+        applySceneBackground(updatedName, finalUrl);
       }
 
       setIsGeneratingAiScene(false);
@@ -1870,6 +1955,8 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
 
     let generatedUrls = [...modelOutfitImgUrls];
 
+    const flatlayDetailPrompt = ' The provided clothing images also include clean flatlay garment images (top and/or bottom). You must strictly reference these clean flatlay garment images to capture the exact details, fabric textures, colors, logos, and patterns of the clothing, while using the model outfit reference image for styling/layering/drape reference. This is crucial because the clothing in the model outfit reference image might be partially blocked, folded, or shaded.';
+
     if (!usingRefOutfits) {
       let currentSrc = '';
       if (batchClothingUrl) {
@@ -1897,9 +1984,6 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
 
       setProjectIsOutfitImgGenerating(currentProjId, true);
       try {
-        const regionStr = modelRegion === 'east-asian' ? 'East Asian' : 'Western';
-        const genderStr = modelGender === 'female' ? 'female' : 'male';
-
         let stylingInfo = '';
         if (matchingItemDesc.trim()) stylingInfo += ` Outfit styling match: ${matchingItemDesc.trim()}.`;
         if (shoesDesc.trim()) stylingInfo += ` Footwear styling: ${shoesDesc.trim()}.`;
@@ -1908,9 +1992,16 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         let modificationInfo = '';
         if (outfitEditPrompt.trim()) modificationInfo = ` Please apply the following modification request: ${outfitEditPrompt.trim()}.`;
 
-        const completionInstruction = ` Outfit Dressing and Completion Instruction: Dress the target model from the model reference image in the provided clothing garments. If only a top or bottom is provided, or if the clothing image is cropped or incomplete, automatically outpaint and generate matching pieces (e.g. pants, skirts, shoes) to present a complete, fully-dressed model from head to toe. Ensure all generated parts blend seamlessly in style, texture, and color with the visible garments.`;
+        const modelIndex = 2 + (bottomClothing ? 1 : 0);
+        const clothingRef = bottomClothing ? '图1 and 图2' : '图1';
+        const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+        const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
-        const customPromptText = `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model wearing the clothing item(s) provided. The model is standing in a neutral studio backdrop with a solid light grey/white background, showcasing the complete outfit. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, studio lighting.${stylingInfo}${modificationInfo}${completionInstruction} Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged.`;
+        const customPromptText = `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}
+Model (Strict): 100% exact face, hair, skin tone, and body of 图${modelIndex}.
+Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.
+Style & Setting: ${styleDetails}
+Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
 
         // Use already generated outfit image if in edit mode
         const baseModelUrl = (isEditMode && targetIndex !== -1) 
@@ -1958,9 +2049,6 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
 
       setProjectIsOutfitImgGenerating(currentProjId, true);
       try {
-        const regionStr = modelRegion === 'east-asian' ? 'East Asian' : 'Western';
-        const genderStr = modelGender === 'female' ? 'female' : 'male';
-
         let stylingInfo = '';
         if (matchingItemDesc.trim()) stylingInfo += ` Outfit styling match: ${matchingItemDesc.trim()}.`;
         if (shoesDesc.trim()) stylingInfo += ` Footwear styling: ${shoesDesc.trim()}.`;
@@ -1978,13 +2066,17 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
             ? [refUrl, topClothingUrl, bottomClothingUrl].filter(Boolean) as string[]
             : [refUrl];
 
-          const flatlayDetailPrompt = hasFlatlays
-            ? ' The provided clothing images also include clean flatlay garment images (top and/or bottom). You must strictly reference these clean flatlay garment images to capture the exact details, fabric textures, colors, logos, and patterns of the clothing, while using the model outfit reference image for styling/layering/drape reference. This is crucial because the clothing in the model outfit reference image might be partially blocked, folded, or shaded.'
-            : '';
+          const modelIndex = 1 + clothingUrls.length;
+          const clothingRef = clothingUrls.length > 1 ? '图1 and 图2' : '图1';
+          const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+          const flatlayDetail = hasFlatlays ? `\nNote: ${flatlayDetailPrompt}` : '';
+          const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
-          const completionInstruction = ` Model Replacement and Outfit Preservation Instruction: The provided clothing image is a model outfit reference photo containing a person wearing the clothes. You must transfer the exact outfit (including the style, fabric texture, drapery, and colors) from this clothing image onto the target model from the model reference image. Replace the original model's face, hair, and skin tone with the face, hair, and body features of the target model.${flatlayDetailPrompt} If the outfit in the clothing image is cropped or incomplete, automatically outpaint and complete the rest (bottoms, footwear, or cuffs) to present a cohesive head-to-toe look.`;
-
-          const customPromptText = `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model wearing the clothing item(s) provided. The model is standing in a neutral studio backdrop with a solid light grey/white background, showcasing the complete outfit. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, studio lighting.${stylingInfo}${modificationInfo}${completionInstruction} Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged.`;
+          const customPromptText = `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}
+Model (Strict): 100% exact face, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}.
+Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}
+Style & Setting: ${styleDetails}
+Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
 
           const currentGeneratedUrl = modelOutfitImgUrls[targetIndex] || swapModelUrl;
 
@@ -2018,13 +2110,17 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
               ? [refUrl, topClothingUrl, bottomClothingUrl].filter(Boolean) as string[]
               : [refUrl];
 
-            const flatlayDetailPrompt = hasFlatlays
-              ? ' The provided clothing images also include clean flatlay garment images (top and/or bottom). You must strictly reference these clean flatlay garment images to capture the exact details, fabric textures, colors, logos, and patterns of the clothing, while using the model outfit reference image for styling/layering/drape reference. This is crucial because the clothing in the model outfit reference image might be partially blocked, folded, or shaded.'
-              : '';
+            const modelIndex = 1 + clothingUrls.length;
+            const clothingRef = clothingUrls.length > 1 ? '图1 and 图2' : '图1';
+            const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+            const flatlayDetail = hasFlatlays ? `\nNote: ${flatlayDetailPrompt}` : '';
+            const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
-            const completionInstruction = ` Model Replacement and Outfit Preservation Instruction: The provided clothing image is a model outfit reference photo containing a person wearing the clothes. You must transfer the exact outfit (including the style, fabric texture, drapery, and colors) from this clothing image onto the target model from the model reference image. Replace the original model's face, hair, and skin tone with the face, hair, and body features of the target model.${flatlayDetailPrompt} If the outfit in the clothing image is cropped or incomplete, automatically outpaint and complete the rest (bottoms, footwear, or cuffs) to present a cohesive head-to-toe look.`;
-
-            const customPromptText = `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model wearing the clothing item(s) provided. The model is standing in a neutral studio backdrop with a solid light grey/white background, showcasing the complete outfit. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, studio lighting.${stylingInfo}${modificationInfo}${completionInstruction} Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged.`;
+            const customPromptText = `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}
+Model (Strict): 100% exact face, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}.
+Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}
+Style & Setting: ${styleDetails}
+Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
 
             let generatedUrl = '';
             if (gatewayUrl && gatewayToken) {
@@ -2191,8 +2287,6 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
 
     setIsRegeneratingShotId(shotId);
     try {
-      const regionStr = modelRegion === 'east-asian' ? 'East Asian' : 'Western';
-      const genderStr = modelGender === 'female' ? 'female' : 'male';
       const customSceneObj = customScenes.find(s => s.id === modelScene);
       const initialSceneDesc = SCENE_PROMPT_DESCRIPTIONS[modelScene as keyof typeof SCENE_PROMPT_DESCRIPTIONS]
         || (customSceneObj ? `posing in a custom scene: ${customSceneObj.name}` : 'posing in a matching catalog studio setting');
@@ -2244,8 +2338,11 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
       }
 
       const bgIndex = 3 + (bottomUrlPayload ? 1 : 0);
+      const panelPositions = ['left panel (the first scene view)', 'middle panel (the second scene view)', 'right panel (the third scene view)'];
+      const panelPosText = panelPositions[shotIndex % 3];
+
       const sceneDesc = currentBackgroundUrl
-        ? `the setting shown in the background reference image (图${bgIndex})`
+        ? `the specific scene shown in the ${panelPosText} of the background reference image (图${bgIndex})`
         : (SCENE_PROMPT_DESCRIPTIONS[modelScene as keyof typeof SCENE_PROMPT_DESCRIPTIONS] || (customSceneObj ? `posing in a custom scene: ${customSceneObj.name}` : 'posing in a matching catalog studio setting'));
 
       const isFullBody = shot.shotType === 'full-body' || shot.shotType === 'shot-1';
@@ -2258,9 +2355,17 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         stylingInfo += ` No bags or handbags should be visible in this view.`;
       }
 
-      const outfitRefNote = currentModelOutfitImg ? ` IMPORTANT: The model reference image (图1) already shows the complete character wearing the full outfit. Use the character appearance, face, body proportions, and complete outfit exactly as shown in the model reference image (图1).` : '';
+      const clothingRefTags = bottomUrlPayload ? '图1 and 图2' : '图1';
+      const outfitStrict = currentModelOutfitImg 
+        ? `Outfit (Strict): The clothing reference image (${clothingRefTags}) already shows the complete character wearing the full outfit. Replicate the complete outfit exactly as shown.`
+        : `Outfit (Strict): Identical clothing from ${clothingRefTags} (fabric, drapery, and fit). The model's outfit must remain strictly consistent across all angles.`;
 
-      const customPromptText = `A premium quality fashion portrait shot. A high-resolution cinematic photo of the same professional ${regionStr} ${genderStr} model from the target model reference image (图${bgIndex - 1}) wearing the clothing item(s) provided. The model must be posing elegantly in the following setting: ${sceneDesc}. Specifying view details: ${effectivePromptText}. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, natural lighting.${stylingInfo}${outfitRefNote} Strict Face and Character Consistency Rule: The model's face, eyes, lips, nose, hair style, hair color, skin tone, facial features, body proportions, and overall identity must remain strictly identical, consistent, and completely unchanged, matching the target model reference image (图${bgIndex - 1}) exactly. The generated image must depict the exact same person with the identical face from the target model reference image (图${bgIndex - 1}). Strict Model Reference Rule: The model reference image (图${bgIndex - 1}) is ONLY used to reference the model's face, facial features, hair style, hair color, skin tone, and body features. Do NOT reference or copy the clothing, outfit, colors, or fabrics from the model reference image (图${bgIndex - 1}). The outfit must be strictly copied and transferred from the clothing reference image (图1) instead. Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged across all views, crops, and angles. The entire outfit must be a single, cohesive, identical set. No text or captions. There must be absolutely no text, writing, labels, titles, annotations, letters, numbers, or captions on any part of the image. Strict Anatomy Rule: Strictly prevent duplicate limbs, extra hands, floating fingers, or overlapping arms. The model must have anatomically correct posture and exactly two hands. Strict Single Panel Rule: The image must be a single, complete, unified photograph showing one single view of the model. Do not split, cut, divide, or slice the image into multiple columns, grids, panels, or separate boxes. Strictly prevent any borders, partitions, or line dividers within the image. Strict Background Consistency Rule: The background of the generated image must strictly and exactly match the provided background reference image (图${bgIndex}) in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.`;
+      const customPromptText = `Task: Generate a premium fashion portrait shot by transferring the outfit from ${clothingRefTags} onto the model from 图${bgIndex - 1}.
+Model (Strict): 100% exact face, hair, skin tone, and body of 图${bgIndex - 1}. Do NOT retain any facial features from ${clothingRefTags}.
+${outfitStrict}
+Style & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: ${sceneDesc}. Shot details: ${effectivePromptText}.${stylingInfo}
+Background (Strict): The background must strictly and exactly match the ${panelPosText} of the provided background reference image (图${bgIndex}) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.
+Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels.`;
 
       let generatedUrl = '';
       if (gatewayUrl && gatewayToken) {
@@ -2334,8 +2439,6 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
     cancelledProjectsRef.current[currentProjId] = false;
 
     try {
-      const regionStr = modelRegion === 'east-asian' ? 'East Asian' : 'Western';
-      const genderStr = modelGender === 'female' ? 'female' : 'male';
       const customSceneObj = customScenes.find(s => s.id === modelScene);
       const sceneDesc = SCENE_PROMPT_DESCRIPTIONS[modelScene as keyof typeof SCENE_PROMPT_DESCRIPTIONS]
         || (customSceneObj ? `posing in a custom scene: ${customSceneObj.name}` : 'posing in a matching catalog studio setting');
@@ -2570,13 +2673,17 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
               bottomUrlPayload = currentBottomClothing || undefined;
             }
 
-            const currentOutfitRefNote = currentModelOutfitImg
-              ? ' IMPORTANT: The model reference image (图1) already shows the complete character wearing the full outfit. Use the character appearance, face, body proportions, and complete outfit exactly as shown in the model reference image (图1).'
-              : '';
-
             const bgIndex = 3 + (bottomUrlPayload ? 1 : 0);
+            const clothingRefTags = bottomUrlPayload ? '图1 and 图2' : '图1';
+            const outfitStrict = currentModelOutfitImg 
+              ? `Outfit (Strict): The clothing reference image (${clothingRefTags}) already shows the complete character wearing the full outfit. Replicate the complete outfit exactly as shown.`
+              : `Outfit (Strict): Identical clothing from ${clothingRefTags} (fabric, drapery, and fit). The model's outfit must remain strictly consistent across all angles.`;
+
+            const panelPositions = ['left panel (the first scene view)', 'middle panel (the second scene view)', 'right panel (the third scene view)'];
+            const panelPosText = panelPositions[i % 3];
+
             const currentSceneDesc = currentBackgroundUrl
-              ? `the setting shown in the background reference image (图${bgIndex})`
+              ? `the specific scene shown in the ${panelPosText} of the background reference image (图${bgIndex})`
               : sceneDesc;
 
             const isFullBody = shot.type === 'full-body' || shot.type === 'shot-1';
@@ -2589,7 +2696,12 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
               currentStylingInfo += ` No bags or handbags should be visible in this view.`;
             }
 
-            const customPromptText = `A premium quality fashion portrait shot. A high-resolution cinematic photo of the same professional ${regionStr} ${genderStr} model from the target model reference image (图${bgIndex - 1}) wearing the clothing item(s) provided. The model must be posing elegantly in the following setting: ${currentSceneDesc}. Specifying view details: ${shot.prompt}. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, natural lighting.${currentStylingInfo}${currentOutfitRefNote} Strict Face and Character Consistency Rule: The model's face, eyes, lips, nose, hair style, hair color, skin tone, facial features, body proportions, and overall identity must remain strictly identical, consistent, and completely unchanged, matching the target model reference image (图${bgIndex - 1}) exactly. The generated image must depict the exact same person with the identical face from the target model reference image (图${bgIndex - 1}). Strict Model Reference Rule: The model reference image (图${bgIndex - 1}) is ONLY used to reference the model's face, facial features, hair style, hair color, skin tone, and body features. Do NOT reference or copy the clothing, outfit, colors, or fabrics from the model reference image (图${bgIndex - 1}). The outfit must be strictly copied and transferred from the clothing reference image (图1) instead. Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged across all views, crops, and angles. The entire outfit must be a single, cohesive, identical set. No text or captions. There must be absolutely no text, writing, labels, titles, annotations, letters, numbers, or captions on any part of the image. Strict Anatomy Rule: Strictly prevent duplicate limbs, extra hands, floating fingers, or overlapping arms. The model must have anatomically correct posture and exactly two hands. Strict Single Panel Rule: The image must be a single, complete, unified photograph showing one single view of the model. Do not split, cut, divide, or slice the image into multiple columns, grids, panels, or separate boxes. Strictly prevent any borders, partitions, or line dividers within the image. Strict Background Consistency Rule: The background of the generated image must strictly and exactly match the provided background reference image (图${bgIndex}) in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.${focusPrompt}`;
+            const customPromptText = `Task: Generate a premium fashion portrait shot by transferring the outfit from ${clothingRefTags} onto the model from 图${bgIndex - 1}.
+Model (Strict): 100% exact face, hair, skin tone, and body of 图${bgIndex - 1}. Do NOT retain any facial features from ${clothingRefTags}.
+${outfitStrict}
+Style & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: ${currentSceneDesc}. Shot details: ${shot.prompt}.${currentStylingInfo}
+Background (Strict): The background must strictly and exactly match the ${panelPosText} of the provided background reference image (图${bgIndex}) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.
+Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels.${focusPrompt}`;
 
             let imgUrl = currentModelOutfitImg || swapModelUrl;
             try {
@@ -4149,17 +4261,27 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const base64 = reader.result as string;
-      const newScene = {
-        id: `custom_scene_${Date.now()}`,
-        name: file.name.split('.')[0] || '自定义场景',
-        src: base64
-      };
-      setCustomScenes(prev => {
-        const updated = [newScene, ...prev];
-        return saveCustomScenesSafely(updated);
-      });
+      const name = file.name.split('.')[0] || '自定义场景';
+
+      const savedItem = await addSceneToLibrary(name, base64);
+      if (savedItem) {
+        setCustomScenes(prev => {
+          const updated = [savedItem, ...prev];
+          return saveCustomScenesSafely(updated);
+        });
+      } else {
+        const newScene = {
+          id: `custom_scene_${Date.now()}`,
+          name,
+          src: base64
+        };
+        setCustomScenes(prev => {
+          const updated = [newScene, ...prev];
+          return saveCustomScenesSafely(updated);
+        });
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -4167,7 +4289,16 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
   // Delete custom scene
   const deleteCustomScene = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    showConfirm('删除自定义场景', '确认删除该自定义场景吗？', () => {
+    showConfirm('删除自定义场景', '确认删除该自定义场景吗？', async () => {
+      try {
+        await supabase
+          .from('model_assets')
+          .delete()
+          .eq('id', id);
+      } catch (err) {
+        console.warn('Failed to delete scene from Supabase:', err);
+      }
+
       setCustomScenes(prev => {
         const updated = prev.filter(s => s.id !== id);
         return saveCustomScenesSafely(updated);
@@ -4176,12 +4307,21 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
   };
 
   // Save renamed custom scene name
-  const handleSaveSceneName = () => {
+  const handleSaveSceneName = async () => {
     if (!previewScene || !previewScene.id) return;
     const newName = editingSceneNameValue.trim();
     if (!newName) {
       alert('名称不能为空！');
       return;
+    }
+
+    try {
+      await supabase
+        .from('model_assets')
+        .update({ name: `[BG] ${newName}` })
+        .eq('id', previewScene.id);
+    } catch (err) {
+      console.warn('Failed to update scene name in Supabase:', err);
     }
 
     setCustomScenes(prev => {

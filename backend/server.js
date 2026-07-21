@@ -354,22 +354,25 @@ app.post('/api/ai/tryon', async (req, res) => {
       modelIndexText = `图${modelStartIndex}至图${modelStartIndex + modelsCount - 1}`;
     }
 
-    const indexingInstruction = `Image Index Reference: The input images include the clothing reference (which is ${clothingIndexText})${bottomIndexText ? ` and the bottom clothing reference (which is ${bottomIndexText})` : ''} and the target model reference (which is ${modelIndexText}). You must transfer the exact outfit from the clothing reference (${clothingIndexText}) onto the target model from the target model reference (${modelIndexText}), while replacing the clothing reference model's face, hair, and skin tone with the face, hair, and body features of the target model from the target model reference (${modelIndexText}).`;
+    const clothingRef = bottomIndexText ? `${clothingIndexText} and ${bottomIndexText}` : clothingIndexText;
 
-    let textPrompt = indexingInstruction + ' ' + (customPrompt ||
-      `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model from the model reference image wearing the clothing item(s) provided. The model should be posing elegantly in the following setting: ${sceneDesc}. Posing against a clean professional catalog background. High-fidelity garment texture transfer, realistic drapery, correct draping and fit. Detailed skin, natural lighting.`);
+    const defaultPrompt = `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from ${modelIndexText}.
+Model (Strict): 100% exact face, hair, skin tone, and body of ${modelIndexText}. Do NOT retain any facial features from ${clothingRef}.
+Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.
+Style & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.
+Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
+
+    let textPrompt = customPrompt || defaultPrompt;
 
     if (poseImageUrl) {
       const poseIndex = 1 + clothingsCount + bottomCount + modelsCount;
-      textPrompt += ` The input images contain a pose reference image (图${poseIndex}). You must strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.`;
+      textPrompt += `\nPose (Strict): Strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.`;
     }
 
     if (backgroundImageUrl) {
       const bgIndex = 1 + clothingsCount + bottomCount + modelsCount + poseCount;
-      textPrompt += ` The background scene of the generated image must strictly match the style, color scheme, environment, lighting, and layout of the background reference image (图${bgIndex}) provided. Place the model seamlessly into this background.`;
+      textPrompt += `\nBackground (Strict): The background of the generated image must strictly and exactly match the provided background reference image (图${bgIndex}) in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.`;
     }
-
-    textPrompt += " The generated image must be clean and must not contain any text, letters, words, numbers, writing, signatures, logos, watermarks, stamps, tags, or captions.";
 
     const apiAspectRatio = ratio.replace('-', ':');
 
