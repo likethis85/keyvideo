@@ -231,12 +231,14 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
   const [modelRefImageUrl, setModelRefImageUrl] = useState<string>('');
   const [previewModel, setPreviewModel] = useState<{ id?: string; src: string; name: string; storyboardId?: string } | null>(null);
   const [storyboardEditPrompt, setStoryboardEditPrompt] = useState<string>('');
+  const [storyboardRegenBgUrl, setStoryboardRegenBgUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!previewModel) {
       setStoryboardEditPrompt('');
       setOutfitEditPrompt('');
       setOutfitPoseImageUrl(null);
+      setStoryboardRegenBgUrl(null);
     }
   }, [previewModel]);
   const [isEditingModelName, setIsEditingModelName] = useState(false);
@@ -688,7 +690,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
                   videoBlob: videoBlob,
                   isGeneratingVideo: false,
                   progress: 100,
-                  videoTaskId: undefined
+                  videoTaskId: taskId
                 } : s)
               };
             }));
@@ -701,7 +703,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
                 videoBlob: videoBlob,
                 isGeneratingVideo: false,
                 progress: 100,
-                videoTaskId: undefined
+                videoTaskId: taskId
               } : s));
             }
 
@@ -772,7 +774,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
             ...s,
             isGeneratingVideo: false,
             progress: 0,
-            videoTaskId: undefined
+            videoTaskId: taskId
           } : s)
         };
       }));
@@ -782,7 +784,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
           ...s,
           isGeneratingVideo: false,
           progress: 0,
-          videoTaskId: undefined
+          videoTaskId: taskId
         } : s));
       }
 
@@ -1008,8 +1010,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
   }
 
   async function checkAndSliceBackground(
-    srcUrl: string,
-    numPanels: number
+    srcUrl: string
   ): Promise<string[] | null> {
     return new Promise((resolve) => {
       const img = new Image();
@@ -1029,11 +1030,13 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
             return;
           }
           
-          const panelW = W / numPanels;
+          // Spatial scene templates are composed of exactly 3 panels
+          const actualPanels = 3;
+          const panelW = W / actualPanels;
           canvas.width = panelW;
           canvas.height = H;
           
-          for (let i = 0; i < numPanels; i++) {
+          for (let i = 0; i < actualPanels; i++) {
             ctx.clearRect(0, 0, panelW, H);
             ctx.drawImage(img, i * panelW, 0, panelW, H, 0, 0, panelW, H);
             results.push(canvas.toDataURL('image/png'));
@@ -1043,10 +1046,17 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
           resolve(null);
         }
       };
-      img.onerror = () => {
+      img.onerror = (e) => {
+        console.warn('Failed to load background image for slicing:', srcUrl, e);
         resolve(null);
       };
-      img.src = srcUrl;
+
+      // Append cache buster to avoid browser caching CORS issues
+      if (srcUrl.startsWith('http')) {
+        img.src = srcUrl.includes('?') ? `${srcUrl}&t=${Date.now()}` : `${srcUrl}?t=${Date.now()}`;
+      } else {
+        img.src = srcUrl;
+      }
     });
   }
 
@@ -2137,12 +2147,21 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
     return 0;
   };
 
-  const handleRegenerateStoryboard = async (shotId: string, customPromptOverride?: string) => {
+  const handleRegenerateStoryboard = async (shotId: string, customPromptOverride?: string, bgOverrideUrl?: string | null) => {
     const currentProjId = activeProjectId;
     if (!currentProjId) return;
 
-    const shotIndex = storyboards.findIndex(s => s.id === shotId);
-    const shot = storyboards[shotIndex];
+    let shotIndex = storyboards.findIndex(s => s.id === shotId);
+    // Parse index from ID if possible (e.g. storyboard_shot_2_...)
+    const idParts = shotId.split('_');
+    const shotIndexPart = idParts.find((part, idx) => part === 'shot' && idParts[idx + 1] !== undefined);
+    if (shotIndexPart) {
+      const idxFromId = parseInt(idParts[idParts.indexOf('shot') + 1], 10);
+      if (!isNaN(idxFromId)) {
+        shotIndex = idxFromId;
+      }
+    }
+    const shot = storyboards.find(s => s.id === shotId);
     if (!shot) return;
 
     const outfitIndex = getOutfitIndexForShot(shotIndex, storyboards.length, referenceOutfitUrls.length);
@@ -2156,12 +2175,26 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
       return;
     }
 
+    let clothingUrlPayload;
+    let modelUrlPayload;
+    let bottomUrlPayload;
+
+    if (currentModelOutfitImg) {
+      clothingUrlPayload = currentModelOutfitImg;
+      modelUrlPayload = swapModelUrl;
+      bottomUrlPayload = undefined;
+    } else {
+      clothingUrlPayload = mainClothing;
+      modelUrlPayload = swapModelUrl;
+      bottomUrlPayload = bottomClothing || undefined;
+    }
+
     setIsRegeneratingShotId(shotId);
     try {
       const regionStr = modelRegion === 'east-asian' ? 'East Asian' : 'Western';
       const genderStr = modelGender === 'female' ? 'female' : 'male';
       const customSceneObj = customScenes.find(s => s.id === modelScene);
-      const sceneDesc = SCENE_PROMPT_DESCRIPTIONS[modelScene as keyof typeof SCENE_PROMPT_DESCRIPTIONS]
+      const initialSceneDesc = SCENE_PROMPT_DESCRIPTIONS[modelScene as keyof typeof SCENE_PROMPT_DESCRIPTIONS]
         || (customSceneObj ? `posing in a custom scene: ${customSceneObj.name}` : 'posing in a matching catalog studio setting');
 
       const isNoSlice = storyboardMode === 'composite_no_slice';
@@ -2183,7 +2216,7 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         ];
 
         const panelsPromptList = shotsConfig.map((s, idx) => `Panel ${idx + 1} (${s.name}): ${s.prompt}`).join('. ');
-        basePrompt = `A premium quality 16:9 multi-panel fashion storyboard, arranged side-by-side as a single horizontal comic strip with exactly ${numPanels} equal columns/panels. The panels must be clearly separated and show different views of the same model and outfit in a consistent setting: ${sceneDesc}. Here are the descriptions for each panel from left to right: ${panelsPromptList}`;
+        basePrompt = `A premium quality 16:9 multi-panel fashion storyboard, arranged side-by-side as a single horizontal comic strip with exactly ${numPanels} equal columns/panels. The panels must be clearly separated and show different views of the same model and outfit in a consistent setting: ${initialSceneDesc}. Here are the descriptions for each panel from left to right: ${panelsPromptList}`;
       } else {
         const parsedPrompts = parse15sMasterPrompt(i2vMasterPrompt15s);
         basePrompt = (videoDuration === '15s' || videoDuration === '3s')
@@ -2195,6 +2228,26 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         ? `${basePrompt}. Additional instructions: ${customPromptOverride.trim()}`
         : basePrompt;
 
+      // Use the per-shot uploaded override background first, fall back to global active background
+      const effectiveBgSource = bgOverrideUrl || activeBackgroundUrl || undefined;
+      let currentBackgroundUrl = effectiveBgSource;
+      if (effectiveBgSource) {
+        try {
+          const sliced = await checkAndSliceBackground(effectiveBgSource);
+          if (sliced && sliced.length === 3) {
+            currentBackgroundUrl = sliced[shotIndex % 3];
+            console.log('Successfully used sliced background panel', shotIndex % 3, 'for regeneration. (Override:', !!bgOverrideUrl, ')');
+          }
+        } catch (err) {
+          console.warn('Failed to slice background during regeneration, using original:', err);
+        }
+      }
+
+      const bgIndex = 3 + (bottomUrlPayload ? 1 : 0);
+      const sceneDesc = currentBackgroundUrl
+        ? `the setting shown in the background reference image (图${bgIndex})`
+        : (SCENE_PROMPT_DESCRIPTIONS[modelScene as keyof typeof SCENE_PROMPT_DESCRIPTIONS] || (customSceneObj ? `posing in a custom scene: ${customSceneObj.name}` : 'posing in a matching catalog studio setting'));
+
       const isFullBody = shot.shotType === 'full-body' || shot.shotType === 'shot-1';
       let stylingInfo = '';
       if (matchingItemDesc.trim()) stylingInfo += ` Outfit styling match: ${matchingItemDesc.trim()}.`;
@@ -2205,30 +2258,16 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         stylingInfo += ` No bags or handbags should be visible in this view.`;
       }
 
-      const effectiveModelUrl = currentModelOutfitImg || swapModelUrl;
-      const outfitRefNote = currentModelOutfitImg ? ' IMPORTANT: The model reference image already shows the complete character wearing the full outfit. Use the character appearance, face, body proportions, and complete outfit exactly as shown in the model reference image.' : '';
+      const outfitRefNote = currentModelOutfitImg ? ` IMPORTANT: The model reference image (图1) already shows the complete character wearing the full outfit. Use the character appearance, face, body proportions, and complete outfit exactly as shown in the model reference image (图1).` : '';
 
-      const customPromptText = `A premium quality fashion portrait shot. A high-resolution cinematic photo of the same professional ${regionStr} ${genderStr} model from the model reference image wearing the clothing item(s) provided. The model must be posing elegantly in the following setting: ${sceneDesc}. Specifying view details: ${effectivePromptText}. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, natural lighting.${stylingInfo}${outfitRefNote} Strict Face and Character Consistency Rule: The model's face, eyes, lips, nose, hair style, hair color, skin tone, facial features, body proportions, and overall identity must remain strictly identical, consistent, and completely unchanged, matching the model reference image exactly. The generated image must depict the exact same person with the identical face from the model reference image. Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged across all views, crops, and angles. The entire outfit must be a single, cohesive, identical set. No text or captions. There must be absolutely no text, writing, labels, titles, annotations, letters, numbers, or captions on any part of the image. Strict Anatomy Rule: Strictly prevent duplicate limbs, extra hands, floating fingers, or overlapping arms. The model must have anatomically correct posture and exactly two hands. Strict Single Panel Rule: The image must be a single, complete, unified photograph showing one single view of the model. Do not split, cut, divide, or slice the image into multiple columns, grids, panels, or separate boxes. Strictly prevent any borders, partitions, or line dividers within the image. Strict Background Consistency Rule: The background of the generated image must strictly and exactly match the provided background reference image in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.`;
-
-      let currentBackgroundUrl = activeBackgroundUrl || undefined;
-      if (activeBackgroundUrl) {
-        try {
-          const sliced = await checkAndSliceBackground(activeBackgroundUrl, storyboards.length);
-          if (sliced && sliced.length === storyboards.length) {
-            currentBackgroundUrl = sliced[shotIndex];
-            console.log('Successfully used sliced background panel', shotIndex, 'for regeneration');
-          }
-        } catch (err) {
-          console.warn('Failed to slice background during regeneration, using original:', err);
-        }
-      }
+      const customPromptText = `A premium quality fashion portrait shot. A high-resolution cinematic photo of the same professional ${regionStr} ${genderStr} model from the target model reference image (图${bgIndex - 1}) wearing the clothing item(s) provided. The model must be posing elegantly in the following setting: ${sceneDesc}. Specifying view details: ${effectivePromptText}. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, natural lighting.${stylingInfo}${outfitRefNote} Strict Face and Character Consistency Rule: The model's face, eyes, lips, nose, hair style, hair color, skin tone, facial features, body proportions, and overall identity must remain strictly identical, consistent, and completely unchanged, matching the target model reference image (图${bgIndex - 1}) exactly. The generated image must depict the exact same person with the identical face from the target model reference image (图${bgIndex - 1}). Strict Model Reference Rule: The model reference image (图${bgIndex - 1}) is ONLY used to reference the model's face, facial features, hair style, hair color, skin tone, and body features. Do NOT reference or copy the clothing, outfit, colors, or fabrics from the model reference image (图${bgIndex - 1}). The outfit must be strictly copied and transferred from the clothing reference image (图1) instead. Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged across all views, crops, and angles. The entire outfit must be a single, cohesive, identical set. No text or captions. There must be absolutely no text, writing, labels, titles, annotations, letters, numbers, or captions on any part of the image. Strict Anatomy Rule: Strictly prevent duplicate limbs, extra hands, floating fingers, or overlapping arms. The model must have anatomically correct posture and exactly two hands. Strict Single Panel Rule: The image must be a single, complete, unified photograph showing one single view of the model. Do not split, cut, divide, or slice the image into multiple columns, grids, panels, or separate boxes. Strictly prevent any borders, partitions, or line dividers within the image. Strict Background Consistency Rule: The background of the generated image must strictly and exactly match the provided background reference image (图${bgIndex}) in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.`;
 
       let generatedUrl = '';
       if (gatewayUrl && gatewayToken) {
         generatedUrl = await generateTryOnImage({
-          clothingUrl: mainClothing,
-          clothingBottomUrl: bottomClothing || undefined,
-          modelUrl: effectiveModelUrl,
+          clothingUrl: clothingUrlPayload,
+          clothingBottomUrl: bottomUrlPayload,
+          modelUrl: modelUrlPayload,
           gender: modelGender,
           region: modelRegion,
           scene: (modelScene === 'street' || modelScene === 'studio' || modelScene === 'home' || modelScene === 'office' || modelScene === 'beach' || modelScene === 'runway' || modelScene === 'minimalist') ? (modelScene as any) : 'studio',
@@ -2240,7 +2279,7 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         });
       } else {
         await new Promise(resolve => setTimeout(resolve, 1500));
-        generatedUrl = effectiveModelUrl;
+        generatedUrl = currentModelOutfitImg || swapModelUrl;
       }
 
       setProjectStoryboards(currentProjId, prev => prev.map(s => s.id === shotId ? { ...s, imageSrc: generatedUrl, videoSrc: null, progress: 0 } : s));
@@ -2358,9 +2397,28 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         stylingInfo += ` Accessories/bags: ${accessoriesDesc.trim()}. Note: Only show the accessory/bag in the full-body panel (Panel 1); other panels (Panel 2, 3, 4, 5) which are medium or close-up views must not show any bag or handbag.`;
       }
 
+      let isSpatialBackground = false;
+      let slicedBackgrounds: string[] = [];
+      if (activeBackgroundUrl) {
+        try {
+          const sliced = await checkAndSliceBackground(activeBackgroundUrl);
+          if (sliced && sliced.length === 3) {
+            isSpatialBackground = true;
+            slicedBackgrounds = shotsConfig.map((_, idx) => sliced[idx % 3]);
+            console.log('Successfully pre-sliced background image into 3 panels for parallel mode');
+          }
+        } catch (err) {
+          console.warn('Failed to pre-slice spatial background:', err);
+        }
+      }
+
       const isSlice = storyboardMode === 'composite_slice';
       const isNoSlice = storyboardMode === 'composite_no_slice';
-      const isComposite = isSlice || isNoSlice;
+      const isComposite = (isSlice || isNoSlice) && !isSpatialBackground;
+
+      if (isSpatialBackground && (isSlice || isNoSlice)) {
+        alert('💡 检测到您选用了包含 3 个画面的空间场景模板。\n为了保证分镜背景不错位，系统已自动采用【多图并行生成模式】（依次为各个分镜分配对应的子场景画面）。');
+      }
 
       const effectiveModelUrl = modelOutfitImgUrls[0] || modelOutfitImgUrl || swapModelUrl;
       const outfitRefNote = (modelOutfitImgUrls.length > 0 || modelOutfitImgUrl)
@@ -2473,13 +2531,12 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
           }
         } else {
           // Parallel Multi-Image Mode
-          let slicedBackgrounds: string[] = [];
-          if (activeBackgroundUrl) {
+          if (activeBackgroundUrl && slicedBackgrounds.length === 0) {
             try {
-              const sliced = await checkAndSliceBackground(activeBackgroundUrl, shotsConfig.length);
-              if (sliced && sliced.length === shotsConfig.length) {
-                slicedBackgrounds = sliced;
-                console.log('Successfully sliced background image into', shotsConfig.length, 'panels');
+              const sliced = await checkAndSliceBackground(activeBackgroundUrl);
+              if (sliced && sliced.length === 3) {
+                slicedBackgrounds = shotsConfig.map((_, idx) => sliced[idx % 3]);
+                console.log('Successfully sliced background image into 3 panels and mapped to shots');
               }
             } catch (err) {
               console.warn('Failed to slice background image, using original background:', err);
@@ -2497,12 +2554,30 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
 
             const currentMainClothing = currentReferenceOutfit || topClothingUrl || bottomClothingUrl || currentSrc || '';
             const currentBottomClothing = currentReferenceOutfit ? undefined : (topClothingUrl ? bottomClothingUrl : undefined);
-            const currentEffectiveModelUrl = currentModelOutfitImg || swapModelUrl;
             const currentBackgroundUrl = slicedBackgrounds[i] || activeBackgroundUrl || undefined;
 
+            let clothingUrlPayload;
+            let modelUrlPayload;
+            let bottomUrlPayload;
+
+            if (currentModelOutfitImg) {
+              clothingUrlPayload = currentModelOutfitImg;
+              modelUrlPayload = swapModelUrl;
+              bottomUrlPayload = undefined;
+            } else {
+              clothingUrlPayload = currentMainClothing;
+              modelUrlPayload = swapModelUrl;
+              bottomUrlPayload = currentBottomClothing || undefined;
+            }
+
             const currentOutfitRefNote = currentModelOutfitImg
-              ? ' IMPORTANT: The model reference image already shows the complete character wearing the full outfit. Use the character appearance, face, body proportions, and complete outfit exactly as shown in the model reference image.'
+              ? ' IMPORTANT: The model reference image (图1) already shows the complete character wearing the full outfit. Use the character appearance, face, body proportions, and complete outfit exactly as shown in the model reference image (图1).'
               : '';
+
+            const bgIndex = 3 + (bottomUrlPayload ? 1 : 0);
+            const currentSceneDesc = currentBackgroundUrl
+              ? `the setting shown in the background reference image (图${bgIndex})`
+              : sceneDesc;
 
             const isFullBody = shot.type === 'full-body' || shot.type === 'shot-1';
             let currentStylingInfo = '';
@@ -2514,14 +2589,14 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
               currentStylingInfo += ` No bags or handbags should be visible in this view.`;
             }
 
-            const customPromptText = `A premium quality fashion portrait shot. A high-resolution cinematic photo of the same professional ${regionStr} ${genderStr} model from the model reference image wearing the clothing item(s) provided. The model must be posing elegantly in the following setting: ${sceneDesc}. Specifying view details: ${shot.prompt}. High-fidelity garment texture transfer, realistic drapery, correct draping and fit. Detailed skin, natural lighting.${currentStylingInfo}${currentOutfitRefNote} Strict Face and Character Consistency Rule: The model's face, eyes, lips, nose, hair style, hair color, skin tone, facial features, body proportions, and overall identity must remain strictly identical, consistent, and completely unchanged, matching the model reference image exactly. The generated image must depict the exact same person with the identical face from the model reference image. Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged across all views, crops, and angles. The entire outfit must be a single, cohesive, identical set. No text or captions. There must be absolutely no text, writing, labels, titles, annotations, letters, numbers, or captions on any part of the image. Strict Anatomy Rule: Strictly prevent duplicate limbs, extra hands, floating fingers, or overlapping arms. The model must have anatomically correct posture and exactly two hands. Strict Single Panel Rule: The image must be a single, complete, unified photograph showing one single view of the model. Do not split, cut, divide, or slice the image into multiple columns, grids, panels, or separate boxes. Strictly prevent any borders, partitions, or line dividers within the image. Strict Background Consistency Rule: The background of the generated image must strictly and exactly match the provided background reference image in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.${focusPrompt}`;
+            const customPromptText = `A premium quality fashion portrait shot. A high-resolution cinematic photo of the same professional ${regionStr} ${genderStr} model from the target model reference image (图${bgIndex - 1}) wearing the clothing item(s) provided. The model must be posing elegantly in the following setting: ${currentSceneDesc}. Specifying view details: ${shot.prompt}. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, natural lighting.${currentStylingInfo}${currentOutfitRefNote} Strict Face and Character Consistency Rule: The model's face, eyes, lips, nose, hair style, hair color, skin tone, facial features, body proportions, and overall identity must remain strictly identical, consistent, and completely unchanged, matching the target model reference image (图${bgIndex - 1}) exactly. The generated image must depict the exact same person with the identical face from the target model reference image (图${bgIndex - 1}). Strict Model Reference Rule: The model reference image (图${bgIndex - 1}) is ONLY used to reference the model's face, facial features, hair style, hair color, skin tone, and body features. Do NOT reference or copy the clothing, outfit, colors, or fabrics from the model reference image (图${bgIndex - 1}). The outfit must be strictly copied and transferred from the clothing reference image (图1) instead. Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged across all views, crops, and angles. The entire outfit must be a single, cohesive, identical set. No text or captions. There must be absolutely no text, writing, labels, titles, annotations, letters, numbers, or captions on any part of the image. Strict Anatomy Rule: Strictly prevent duplicate limbs, extra hands, floating fingers, or overlapping arms. The model must have anatomically correct posture and exactly two hands. Strict Single Panel Rule: The image must be a single, complete, unified photograph showing one single view of the model. Do not split, cut, divide, or slice the image into multiple columns, grids, panels, or separate boxes. Strictly prevent any borders, partitions, or line dividers within the image. Strict Background Consistency Rule: The background of the generated image must strictly and exactly match the provided background reference image (图${bgIndex}) in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.${focusPrompt}`;
 
-            let imgUrl = currentEffectiveModelUrl;
+            let imgUrl = currentModelOutfitImg || swapModelUrl;
             try {
               imgUrl = await generateTryOnImage({
-                clothingUrl: currentMainClothing,
-                clothingBottomUrl: currentBottomClothing || undefined,
-                modelUrl: currentEffectiveModelUrl,
+                clothingUrl: clothingUrlPayload,
+                clothingBottomUrl: bottomUrlPayload,
+                modelUrl: modelUrlPayload,
                 gender: modelGender,
                 region: modelRegion,
                 scene: (modelScene === 'street' || modelScene === 'studio' || modelScene === 'home' || modelScene === 'office' || modelScene === 'beach' || modelScene === 'runway' || modelScene === 'minimalist') ? (modelScene as any) : 'studio',
@@ -2995,9 +3070,9 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
       if (activeBackgroundUrl) {
         try {
           const index = projectObj.storyboards.findIndex(s => s.id === sbId);
-          const sliced = await checkAndSliceBackground(activeBackgroundUrl, projectObj.storyboards.length);
-          if (sliced && sliced.length === projectObj.storyboards.length && index !== -1) {
-            currentBackgroundUrl = sliced[index];
+          const sliced = await checkAndSliceBackground(activeBackgroundUrl);
+          if (sliced && sliced.length === 3 && index !== -1) {
+            currentBackgroundUrl = sliced[index % 3];
           }
         } catch (err) {
           console.warn('Failed to slice background during single video regeneration:', err);
@@ -3099,6 +3174,92 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
       } else {
         alert(`分镜视频重新生成失败: ${error.message}`);
       }
+    }
+  };
+
+  const handleRedownloadVideo = async (sbId: string, taskId: string) => {
+    const currentProjId = activeProjectId;
+    if (!currentProjId) return;
+
+    try {
+      if (!gatewayVideoUrl.trim() || !gatewayVideoToken.trim()) {
+        alert('请先在底部的「AI 网关配置」中输入您的视频网关地址与 Token！');
+        setShowConfig(true);
+        return;
+      }
+
+      alert('开始从服务器重新拉取视频，请稍候...');
+
+      const videoBlob = await getVideoContent(gatewayVideoUrl, gatewayVideoToken, taskId);
+      const localVideoUrl = URL.createObjectURL(videoBlob);
+
+      // Save to projects
+      setProjects(prev => prev.map(p => {
+        if (p.id !== currentProjId) return p;
+        return {
+          ...p,
+          storyboards: p.storyboards.map(s => s.id === sbId ? {
+            ...s,
+            videoSrc: localVideoUrl,
+            videoBlob: videoBlob,
+            videoTaskId: taskId
+          } : s)
+        };
+      }));
+
+      // Sync active UI state
+      setStoryboards(prev => prev.map(s => s.id === sbId ? {
+        ...s,
+        videoSrc: localVideoUrl,
+        videoBlob: videoBlob,
+        videoTaskId: taskId
+      } : s));
+
+      // If preview video is open, update its src
+      setPreviewVideo(prev => prev && prev.id === sbId ? { ...prev, src: localVideoUrl } : prev);
+
+      alert('视频拉取并下载成功！已替换当前分镜视频。');
+    } catch (err: any) {
+      console.error('Failed to redownload video:', err);
+      alert(`拉取视频失败: ${err.message || err}`);
+    }
+  };
+
+  const handleManualVideoUpload = async (sbId: string, file: File) => {
+    const currentProjId = activeProjectId;
+    if (!currentProjId) return;
+
+    try {
+      if (!file) return;
+      const localVideoUrl = URL.createObjectURL(file);
+
+      // Save to projects
+      setProjects(prev => prev.map(p => {
+        if (p.id !== currentProjId) return p;
+        return {
+          ...p,
+          storyboards: p.storyboards.map(s => s.id === sbId ? {
+            ...s,
+            videoSrc: localVideoUrl,
+            videoBlob: file
+          } : s)
+        };
+      }));
+
+      // Sync active UI state
+      setStoryboards(prev => prev.map(s => s.id === sbId ? {
+        ...s,
+        videoSrc: localVideoUrl,
+        videoBlob: file
+      } : s));
+
+      // If preview video is open, update its src
+      setPreviewVideo(prev => prev && prev.id === sbId ? { ...prev, src: localVideoUrl } : prev);
+
+      alert('本地视频上传替换成功！');
+    } catch (err: any) {
+      console.error('Failed to manually upload video:', err);
+      alert(`替换视频失败: ${err.message || err}`);
     }
   };
 
@@ -5902,12 +6063,10 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
                             border: '1px solid ' + (sb.videoSrc ? 'rgba(0, 242, 254, 0.4)' : 'rgba(255,255,255,0.08)'),
                             position: 'relative',
                             background: '#000',
-                            cursor: sb.videoSrc ? 'pointer' : 'default'
+                            cursor: 'pointer'
                           }}
                           onClick={() => {
-                            if (sb.videoSrc) {
-                              setPreviewVideo({ id: sb.id, src: sb.videoSrc, name: sb.name });
-                            }
+                            setPreviewVideo({ id: sb.id, src: sb.videoSrc || '', name: sb.name });
                           }}
                         >
                           <img src={sb.imageSrc} alt={sb.name} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: sb.videoSrc ? 0.85 : 0.4 }} />
@@ -6823,6 +6982,67 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
                       disabled={isRegeneratingShotId === previewModel.storyboardId}
                     />
                   </div>
+                  {/* Scene reference image upload row */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%' }}>
+                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap', flexShrink: 0 }}>场景参考图：</span>
+                    {storyboardRegenBgUrl ? (
+                      <div style={{ position: 'relative', width: '56px', height: '56px', flexShrink: 0 }}>
+                        <img
+                          src={storyboardRegenBgUrl}
+                          alt="场景参考"
+                          style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(138,43,226,0.5)' }}
+                        />
+                        <button
+                          onClick={() => setStoryboardRegenBgUrl(null)}
+                          style={{
+                            position: 'absolute', top: '-6px', right: '-6px',
+                            width: '16px', height: '16px', borderRadius: '50%',
+                            background: 'rgba(255,60,60,0.85)', border: 'none', color: '#fff',
+                            fontSize: '9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1'
+                          }}
+                          title="移除场景参考图"
+                        >✕</button>
+                      </div>
+                    ) : (
+                      <label
+                        htmlFor="storyboard-regen-bg-upload"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '5px',
+                          padding: '5px 12px', borderRadius: '6px', cursor: 'pointer',
+                          background: 'rgba(255,255,255,0.06)', border: '1px dashed rgba(255,255,255,0.2)',
+                          color: 'rgba(255,255,255,0.6)', fontSize: '11px',
+                          transition: 'all 0.2s', whiteSpace: 'nowrap'
+                        }}
+                        onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--accent-purple)'; e.currentTarget.style.color = '#fff'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+                        title="上传新的场景参考图，替换当前场景背景"
+                      >
+                        <span style={{ fontSize: '14px' }}>🖼️</span>
+                        上传场景参考图
+                        <input
+                          id="storyboard-regen-bg-upload"
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          disabled={isRegeneratingShotId === previewModel.storyboardId}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              const result = ev.target?.result as string;
+                              if (result) setStoryboardRegenBgUrl(result);
+                            };
+                            reader.readAsDataURL(file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    )}
+                    {storyboardRegenBgUrl && (
+                      <span style={{ fontSize: '10px', color: 'rgba(138,200,100,0.85)' }}>✓ 将使用此图作为场景参考</span>
+                    )}
+                  </div>
                   {/* Action buttons row */}
                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                     <button
@@ -6835,7 +7055,7 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
                     </button>
                     <button
                       className="btn-primary"
-                      onClick={() => handleRegenerateStoryboard(previewModel.storyboardId!, storyboardEditPrompt)}
+                      onClick={() => handleRegenerateStoryboard(previewModel.storyboardId!, storyboardEditPrompt, storyboardRegenBgUrl)}
                       style={{
                         padding: '8px 20px',
                         fontSize: '12px',
@@ -7533,53 +7753,138 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
               borderRadius: '8px',
               border: '1px solid rgba(255, 255, 255, 0.05)',
               maxHeight: '50vh',
-              width: 'auto',
-              aspectRatio: '9/16'
+              width: '197px',
+              height: '350px',
+              position: 'relative'
             }}>
-              <video
-                src={previewVideo.src}
-                controls
-                autoPlay
-                loop
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  display: 'block'
-                }}
-              />
+              {previewVideo.src ? (
+                <video
+                  src={previewVideo.src}
+                  controls
+                  autoPlay
+                  loop
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block'
+                  }}
+                />
+              ) : (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  textAlign: 'center',
+                  color: 'var(--text-muted)',
+                  fontSize: '12px',
+                  gap: '8px'
+                }}>
+                  <span style={{ fontSize: '32px' }}>📽️</span>
+                  <span>暂无视频</span>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>请点击下方按钮上传视频，或重新生成</span>
+                </div>
+              )}
             </div>
 
             {/* Modal Actions */}
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', alignItems: 'center' }}>
               {previewVideo.id && (
-                <button
-                  className="ai-btn"
-                  onClick={async () => {
-                    const sbId = previewVideo.id;
-                    setPreviewVideo(null);
-                    await handleRegenerateStoryboardVideo(sbId);
-                  }}
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    background: 'linear-gradient(135deg, var(--accent-purple), var(--accent-pink))',
-                    border: 'none',
-                    borderRadius: '4px',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  🔄 重新生成此分镜视频
-                </button>
+                <>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/*"
+                    id={`manual-video-upload-${previewVideo.id}`}
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleManualVideoUpload(previewVideo.id, file);
+                      }
+                    }}
+                  />
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      document.getElementById(`manual-video-upload-${previewVideo.id}`)?.click();
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: '4px',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'rgba(255,255,255,0.05)',
+                      height: '32px'
+                    }}
+                  >
+                    📤 手动上传视频
+                  </button>
+
+                  {(() => {
+                    const targetStoryboard = storyboards.find(s => s.id === previewVideo.id);
+                    const hasTaskId = !!targetStoryboard?.videoTaskId;
+                    if (!hasTaskId) return null;
+                    return (
+                      <button
+                        className="btn-secondary"
+                        onClick={() => {
+                          handleRedownloadVideo(previewVideo.id, targetStoryboard.videoTaskId!);
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          border: '1px solid var(--accent-cyan)',
+                          borderRadius: '4px',
+                          color: 'var(--accent-cyan)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: 'rgba(0, 242, 254, 0.05)',
+                          height: '32px'
+                        }}
+                      >
+                        📥 再次读取/下载视频
+                      </button>
+                    );
+                  })()}
+
+                  <button
+                    className="ai-btn"
+                    onClick={async () => {
+                      const sbId = previewVideo.id;
+                      setPreviewVideo(null);
+                      await handleRegenerateStoryboardVideo(sbId);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      background: 'linear-gradient(135deg, var(--accent-purple), var(--accent-pink))',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      height: '32px'
+                    }}
+                  >
+                    🔄 重新生成此分镜视频
+                  </button>
+                </>
               )}
               <button
                 className="btn-secondary"
                 onClick={() => setPreviewVideo(null)}
-                style={{ padding: '8px 20px', fontSize: '12px', cursor: 'pointer' }}
+                style={{ padding: '8px 20px', fontSize: '12px', cursor: 'pointer', height: '32px' }}
               >
                 关闭
               </button>

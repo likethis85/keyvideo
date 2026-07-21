@@ -2,6 +2,32 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import OSS from 'ali-oss';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Helper: Convert local relative assets (like /clothing_model.png) to base64 data URLs
+const resolveLocalAssetToBase64 = (imageUrl) => {
+  if (typeof imageUrl !== 'string') return imageUrl;
+  if (imageUrl.startsWith('/')) {
+    try {
+      // Find file in frontend public folder (relative to backend/)
+      const localPath = path.join(__dirname, '..', 'public', imageUrl);
+      if (fs.existsSync(localPath)) {
+        const fileBuffer = fs.readFileSync(localPath);
+        const ext = path.extname(localPath).toLowerCase().replace('.', '');
+        const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+        return `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+      }
+    } catch (e) {
+      console.warn(`Failed to resolve local asset ${imageUrl} to base64:`, e);
+    }
+  }
+  return imageUrl;
+};
 
 dotenv.config();
 
@@ -264,84 +290,84 @@ app.post('/api/ai/tryon', async (req, res) => {
   try {
     const { clothingUrl, clothingBottomUrl, modelUrl, gender, region, scene, ratio, customPrompt, backgroundImageUrl, poseImageUrl } = req.body;
 
-    let images = [];
+    console.log(`[/api/ai/tryon] backgroundImageUrl present: ${!!backgroundImageUrl}, length: ${backgroundImageUrl ? backgroundImageUrl.length : 0}, prefix: ${backgroundImageUrl ? backgroundImageUrl.substring(0, 40) : 'N/A'}`);
+
+    let rawImages = [];
 
     if (Array.isArray(clothingUrl)) {
-      clothingUrl.forEach(url => { if (url) images.push(url); });
+      clothingUrl.forEach(url => { if (url) rawImages.push(url); });
     } else if (clothingUrl) {
-      images.push(clothingUrl);
+      rawImages.push(clothingUrl);
     }
 
     if (clothingBottomUrl) {
-      images.push(clothingBottomUrl);
+      rawImages.push(clothingBottomUrl);
     }
 
     if (Array.isArray(modelUrl)) {
-      modelUrl.forEach(url => { if (url) images.push(url); });
+      modelUrl.forEach(url => { if (url) rawImages.push(url); });
     } else if (modelUrl) {
-      images.push(modelUrl);
+      rawImages.push(modelUrl);
     }
 
     if (poseImageUrl) {
-      images.push(poseImageUrl);
+      rawImages.push(poseImageUrl);
     }
 
     if (backgroundImageUrl) {
-      images.push(backgroundImageUrl);
+      rawImages.push(backgroundImageUrl);
+    }
+
+    // Resolve any local relative assets to base64 before sending to Sandbase API
+    let images = [];
+    for (const img of rawImages) {
+      images.push(await resolveLocalAssetToBase64(img));
     }
 
     const genderStr = gender === 'female' ? 'female' : 'male';
     const regionStr = region === 'east-asian' ? 'East Asian' : 'Western';
     const sceneDesc = TRYON_SCENE_PROMPT_DESCRIPTIONS[scene] || 'posing in a matching catalog studio setting';
 
-    let textPrompt = customPrompt ||
-      `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model from the model reference image wearing the clothing item(s) provided. The model should be posing elegantly in the following setting: ${sceneDesc}. Posing against a clean professional catalog background. High-fidelity garment texture transfer, realistic drapery, correct draping and fit. Detailed skin, natural lighting.`;
-
-    if (poseImageUrl) {
-      const clothingsCount = Array.isArray(clothingUrl) ? clothingUrl.filter(Boolean).length : (clothingUrl ? 1 : 0);
-      const bottomCount = clothingBottomUrl ? 1 : 0;
-      const modelsCount = Array.isArray(modelUrl) ? modelUrl.filter(Boolean).length : (modelUrl ? 1 : 0);
-      const poseIndex = 1 + clothingsCount + bottomCount + modelsCount;
-      textPrompt += ` The messages contain a pose reference image (图${poseIndex}). You must strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.`;
-    }
-
-    if (backgroundImageUrl) {
-      const clothingsCount = Array.isArray(clothingUrl) ? clothingUrl.filter(Boolean).length : (clothingUrl ? 1 : 0);
-      const bottomCount = clothingBottomUrl ? 1 : 0;
-      const modelsCount = Array.isArray(modelUrl) ? modelUrl.filter(Boolean).length : (modelUrl ? 1 : 0);
-      const poseCount = poseImageUrl ? 1 : 0;
-      const bgIndex = 1 + clothingsCount + bottomCount + modelsCount + poseCount;
-      textPrompt += ` The background scene of the generated image must strictly match the style, color scheme, environment, lighting, and layout of the background reference image (图${bgIndex}) provided. Place the model seamlessly into this background.`;
-    }
-
-    // Build explicit role indexing mappings to guide the AI model
     const clothingsCount = Array.isArray(clothingUrl) ? clothingUrl.filter(Boolean).length : (clothingUrl ? 1 : 0);
     const bottomCount = clothingBottomUrl ? 1 : 0;
-    
+    const modelsCount = Array.isArray(modelUrl) ? modelUrl.filter(Boolean).length : (modelUrl ? 1 : 0);
+    const poseCount = poseImageUrl ? 1 : 0;
+
+    // Build explicit role indexing mappings in 图X format to guide the AI model
     let clothingIndexText = '';
     if (clothingsCount === 1) {
-      clothingIndexText = '图1 (Image 1)';
+      clothingIndexText = '图1';
     } else if (clothingsCount > 1) {
-      clothingIndexText = `图1至图${clothingsCount} (Image 1 to Image ${clothingsCount})`;
+      clothingIndexText = `图1至图${clothingsCount}`;
     }
 
     let bottomIndexText = '';
     if (bottomCount > 0) {
-      bottomIndexText = `图${1 + clothingsCount} (Image ${1 + clothingsCount})`;
+      bottomIndexText = `图${1 + clothingsCount}`;
     }
 
     const modelStartIndex = 1 + clothingsCount + bottomCount;
-    const modelCount = Array.isArray(modelUrl) ? modelUrl.filter(Boolean).length : (modelUrl ? 1 : 0);
     let modelIndexText = '';
-    if (modelCount === 1) {
-      modelIndexText = `图${modelStartIndex} (Image ${modelStartIndex})`;
-    } else if (modelCount > 1) {
-      modelIndexText = `图${modelStartIndex}至图${modelStartIndex + modelCount - 1} (Image ${modelStartIndex} to Image ${modelStartIndex + modelCount - 1})`;
+    if (modelsCount === 1) {
+      modelIndexText = `图${modelStartIndex}`;
+    } else if (modelsCount > 1) {
+      modelIndexText = `图${modelStartIndex}至图${modelStartIndex + modelsCount - 1}`;
     }
 
-    const indexingInstruction = ` Image Index Reference: The input images include the clothing reference (which is ${clothingIndexText})${bottomIndexText ? ` and the bottom clothing reference (which is ${bottomIndexText})` : ''} and the target model reference (which is ${modelIndexText}). You must transfer the exact outfit from the clothing reference (${clothingIndexText}) onto the target model from the target model reference (${modelIndexText}), while replacing the clothing reference model's face, hair, and skin tone with the face, hair, and body features of the target model from the target model reference (${modelIndexText}).`;
+    const indexingInstruction = `Image Index Reference: The input images include the clothing reference (which is ${clothingIndexText})${bottomIndexText ? ` and the bottom clothing reference (which is ${bottomIndexText})` : ''} and the target model reference (which is ${modelIndexText}). You must transfer the exact outfit from the clothing reference (${clothingIndexText}) onto the target model from the target model reference (${modelIndexText}), while replacing the clothing reference model's face, hair, and skin tone with the face, hair, and body features of the target model from the target model reference (${modelIndexText}).`;
 
-    textPrompt += ` ${indexingInstruction}`;
+    let textPrompt = indexingInstruction + ' ' + (customPrompt ||
+      `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model from the model reference image wearing the clothing item(s) provided. The model should be posing elegantly in the following setting: ${sceneDesc}. Posing against a clean professional catalog background. High-fidelity garment texture transfer, realistic drapery, correct draping and fit. Detailed skin, natural lighting.`);
+
+    if (poseImageUrl) {
+      const poseIndex = 1 + clothingsCount + bottomCount + modelsCount;
+      textPrompt += ` The input images contain a pose reference image (图${poseIndex}). You must strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.`;
+    }
+
+    if (backgroundImageUrl) {
+      const bgIndex = 1 + clothingsCount + bottomCount + modelsCount + poseCount;
+      textPrompt += ` The background scene of the generated image must strictly match the style, color scheme, environment, lighting, and layout of the background reference image (图${bgIndex}) provided. Place the model seamlessly into this background.`;
+    }
 
     textPrompt += " The generated image must be clean and must not contain any text, letters, words, numbers, writing, signatures, logos, watermarks, stamps, tags, or captions.";
 
