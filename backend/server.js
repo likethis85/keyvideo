@@ -339,7 +339,7 @@ app.post('/api/ai/tryon', async (req, res) => {
       modelIndexText = `图${modelStartIndex}至图${modelStartIndex + modelCount - 1} (Image ${modelStartIndex} to Image ${modelStartIndex + modelCount - 1})`;
     }
 
-    const indexingInstruction = ` Image-to-Image reference guide: The input images array contains multiple roles. ${clothingIndexText ? `The clothing reference (containing the clothes to transfer) is ${clothingIndexText}.` : ''} ${bottomIndexText ? `The bottom clothing reference is ${bottomIndexText}.` : ''} ${modelIndexText ? `The target model reference (whose face, hair, body, skin tone, and character identity must be preserved and kept identical) is ${modelIndexText}.` : ''} You must strictly replace the face/identity of the person in the clothing reference with the face/identity of the target model, while preserving and transferring the exact outfit garments.`;
+    const indexingInstruction = ` Image Index Reference: The input images include the clothing reference (which is ${clothingIndexText})${bottomIndexText ? ` and the bottom clothing reference (which is ${bottomIndexText})` : ''} and the target model reference (which is ${modelIndexText}). You must transfer the exact outfit from the clothing reference (${clothingIndexText}) onto the target model from the target model reference (${modelIndexText}), while replacing the clothing reference model's face, hair, and skin tone with the face, hair, and body features of the target model from the target model reference (${modelIndexText}).`;
 
     textPrompt += ` ${indexingInstruction}`;
 
