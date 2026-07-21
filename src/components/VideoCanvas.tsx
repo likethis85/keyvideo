@@ -240,10 +240,10 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   // Define width & height of the logical canvas resolution based on ratio
   const getCanvasDimensions = () => {
     switch (ratio) {
-      case '1-1': return { width: 720, height: 720 };
-      case '3-4': return { width: 600, height: 800 };
-      case '9-16': return { width: 540, height: 960 };
-      default: return { width: 540, height: 960 };
+      case '1-1': return { width: 1080, height: 1080 };
+      case '3-4': return { width: 900, height: 1200 };
+      case '9-16': return { width: 1080, height: 1920 };
+      default: return { width: 1080, height: 1920 };
     }
   };
 
@@ -1268,19 +1268,34 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
     }
     
     // Choose mimeType supported by browser (prioritize MP4, fallback to WebM renamed to MP4 for platform upload compatibility)
-    let options = { mimeType: 'video/mp4;codecs=h264' };
+    let options: any = { 
+      mimeType: 'video/mp4;codecs=h264',
+      videoBitsPerSecond: 8500000 // 8.5 Mbps high-quality HD encoding
+    };
     let fileType = 'video/mp4';
     let extension = 'mp4';
 
     if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-      options = { mimeType: 'video/mp4' };
+      options = { 
+        mimeType: 'video/mp4',
+        videoBitsPerSecond: 8500000
+      };
       if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options = { mimeType: 'video/webm;codecs=vp9' };
+        options = { 
+          mimeType: 'video/webm;codecs=vp9',
+          videoBitsPerSecond: 8500000
+        };
         fileType = 'video/webm';
         if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-          options = { mimeType: 'video/webm;codecs=vp8' };
+          options = { 
+            mimeType: 'video/webm;codecs=vp8',
+            videoBitsPerSecond: 8500000
+          };
           if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options = { mimeType: 'video/webm' };
+            options = { 
+              mimeType: 'video/webm',
+              videoBitsPerSecond: 8500000
+            };
           }
         }
       }

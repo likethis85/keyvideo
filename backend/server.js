@@ -72,6 +72,120 @@ const findImageUrlInObject = (obj) => {
   return '';
 };
 
+// Helper: Submit task to sandbase.ai (with automatic retries on 5xx / Bad Gateway)
+const submitSandbaseTask = async (payload) => {
+  const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+  const maxRetries = 4;
+  let delay = 1500;
+
+  console.log(`\n[Sandbase API] >>> Submitting task with model: "${payload.model}"`);
+  console.log(`[Sandbase API] Prompt: "${payload.prompt}"`);
+  if (payload.images && payload.images.length > 0) {
+    console.log(`[Sandbase API] Input images count: ${payload.images.length}`);
+    payload.images.forEach((img, idx) => {
+      console.log(`  - Image[${idx}]: ${img.substring(0, 120)}${img.length > 120 ? '...' : ''}`);
+    });
+  }
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch('https://api.sandbase.ai/v1/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        // If it's a server error (502, 503, 504, 500) or rate limit (429), retry
+        if (response.status >= 500 || response.status === 429) {
+          if (attempt < maxRetries) {
+            console.warn(`[Sandbase API] Submission failed with status ${response.status}. Retrying in ${delay}ms... (Attempt ${attempt}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 2; // exponential backoff
+            continue;
+          }
+        }
+        throw new Error(`Sandbase submission failed (${response.status}): ${errText}`);
+      }
+
+      const data = await response.json();
+      if (!data.id) {
+        throw new Error(`Sandbase submission did not return a task ID. Response: ${JSON.stringify(data)}`);
+      }
+      console.log(`[Sandbase API] Task submitted. Task ID: ${data.id} | Initial Status: ${data.status}`);
+      return data.id;
+    } catch (err) {
+      if (attempt === maxRetries) {
+        throw err;
+      }
+      console.warn(`[Sandbase API] Submission error: ${err.message}. Retrying in ${delay}ms... (Attempt ${attempt}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 2;
+    }
+  }
+};
+
+// Helper: Poll sandbase.ai task until completed (with retry on transient errors)
+const pollSandbaseTask = async (taskId) => {
+  const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+  const maxRetries = 60; // 60 retries * 2 seconds = 120 seconds max
+  const pollInterval = 2000;
+
+  console.log(`[Sandbase API] <<< Started polling for Task ID: ${taskId}`);
+
+  for (let i = 0; i < maxRetries; i++) {
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+
+    try {
+      const response = await fetch(`https://api.sandbase.ai/v1/run/${taskId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`
+        }
+      });
+
+      if (!response.ok) {
+        // If it's a server error (502, 503, 504) or rate limit (429), don't crash, just log and continue polling
+        if (response.status >= 500 || response.status === 429) {
+          console.warn(`[Sandbase API] Polling returned transient status ${response.status}. Retrying on next tick...`);
+          continue;
+        }
+        const errText = await response.text();
+        throw new Error(`Sandbase polling failed (${response.status}): ${errText}`);
+      }
+
+      const data = await response.json();
+      console.log(`[Sandbase API] Polling Task ID: ${taskId} | Status: ${data.status}`);
+
+      if (data.status === 'completed') {
+        if (data.outputs && data.outputs.length > 0 && data.outputs[0].url) {
+          console.log(`[Sandbase API] Task ${taskId} completed! Output URL: ${data.outputs[0].url}`);
+          return data.outputs[0].url;
+        }
+        if (data.result && data.result.images && data.result.images.length > 0) {
+          console.log(`[Sandbase API] Task ${taskId} completed! Output URL: ${data.result.images[0]}`);
+          return data.result.images[0];
+        }
+        throw new Error('Sandbase task completed but no images returned');
+      } else if (data.status === 'failed') {
+        throw new Error(`Sandbase task failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      // Log error and continue loop unless it's a non-transient assertion failure
+      if (err.message.includes('Sandbase task failed') || err.message.includes('no images returned')) {
+        throw err;
+      }
+      console.warn(`[Sandbase API] Polling encountered network error: ${err.message}. Retrying on next tick...`);
+    }
+  }
+  throw new Error('Sandbase task timed out');
+};
+
+
 // 1. Raw Binary Upload to Aliyun OSS (drop-in replacement for Vite configureServer proxy)
 app.post('/api/upload', (req, res) => {
   const fileName = req.query.name || 'file.mp3';
@@ -111,7 +225,6 @@ app.post('/api/ai/mannequin', async (req, res) => {
   try {
     const { imageUrl, gender, region, ratio, customPrompt } = req.body;
 
-    const base64Image = await fetchImageAsBase64(imageUrl);
     const genderStr = gender === 'female' ? 'female' : 'male';
     const regionStr = region === 'east-asian' ? 'East Asian' : 'Western';
 
@@ -121,138 +234,60 @@ app.post('/api/ai/mannequin', async (req, res) => {
 
     const apiAspectRatio = ratio.replace('-', ':');
 
-    const requestBody = {
-      model: 'gemini-3.1-flash-image',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: textPrompt },
-            { type: 'image_url', image_url: { url: base64Image } }
-          ]
-        }
-      ],
-      modalities: ['image'],
-      eca_image_config: { aspect_ratio: apiAspectRatio, image_size: '1K' },
-      stream: false
+    const sandbasePayload = {
+      model: 'google/nano-banana-2/edit',
+      images: [imageUrl],
+      prompt: textPrompt,
+      resolution: '1K',
+      aspect_ratio: apiAspectRatio,
+      output_format: 'png',
+      enable_web_search: false,
+      enable_image_search: false
     };
 
-    const gatewayUrl = process.env.AIGATEWAY_URL;
-    const gatewayToken = process.env.AIGATEWAY_TOKEN;
-    const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}chat/completions` : `${gatewayUrl}/chat/completions`;
+    const taskId = await submitSandbaseTask(sandbasePayload);
+    const resultImageUrl = await pollSandbaseTask(taskId);
 
-    const response = await fetch(requestUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${gatewayToken}`
-      },
-      body: JSON.stringify(requestBody)
-    });
+    // Convert to base64 to bypass browser CORS on frontend
+    const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`AI Gateway error (${response.status}): ${errText}`);
-    }
-
-    const responseData = await response.json();
-    const firstChoice = responseData.choices?.[0];
-    if (firstChoice?.finish_reason === 'content_filtered') {
-      return res.status(400).json({ error: 'AI 平台安全过滤拦截：因为提示词包含了过于暴露的服装描述（如胸罩、光膀子等），请使用更保守的打底服饰（如背心、T恤）重试。' });
-    }
-
-    const message = firstChoice?.message;
-    if (!message) throw new Error('No message returned in choice');
-
-    let resultImageUrl = '';
-    const content = message.content;
-    if (Array.isArray(content)) {
-      const imgItem = content.find((item) => item.type === 'image_url');
-      if (imgItem?.image_url?.url) {
-        resultImageUrl = imgItem.image_url.url;
-      } else {
-        const genericImageItem = content.find((item) => item.type === 'image');
-        if (genericImageItem?.image) {
-          resultImageUrl = typeof genericImageItem.image === 'string' ? genericImageItem.image : genericImageItem.image.url;
-        }
-      }
-    } else if (typeof content === 'string') {
-      try {
-        const parsed = JSON.parse(content);
-        resultImageUrl = findImageUrlInObject(parsed);
-      } catch {
-        if (content.startsWith('data:image/') || content.startsWith('http')) {
-          resultImageUrl = content;
-        }
-      }
-    }
-
-    if (!resultImageUrl) {
-      resultImageUrl = findImageUrlInObject(responseData);
-    }
-
-    if (!resultImageUrl) throw new Error('Failed to parse generated image');
-
-    res.status(200).json({ url: resultImageUrl });
+    res.status(200).json({ url: base64DataUrl });
   } catch (err) {
     console.error('Mannequin generation failed:', err);
-    res.status(500).json({ error: err.message || 'Generation failed' });
+    res.status(500).json({ error: err.message || 'Mannequin generation failed' });
   }
 });
+
 
 // 3. AI Try-On & Pose Integration
 app.post('/api/ai/tryon', async (req, res) => {
   try {
     const { clothingUrl, clothingBottomUrl, modelUrl, gender, region, scene, ratio, customPrompt, backgroundImageUrl, poseImageUrl } = req.body;
 
-    let base64Clothings = [];
-    let base64Bottom = null;
-    let base64Models = [];
-    let base64Background = null;
-    let base64Pose = null;
-
-    if (poseImageUrl) {
-      try {
-        base64Pose = await fetchImageAsBase64(poseImageUrl);
-      } catch (e) {
-        console.warn('Failed to load pose image:', e.message);
-      }
-    }
+    let images = [];
 
     if (Array.isArray(clothingUrl)) {
-      for (const url of clothingUrl) {
-        if (url) {
-          const b64 = await fetchImageAsBase64(url);
-          base64Clothings.push(b64);
-        }
-      }
+      clothingUrl.forEach(url => { if (url) images.push(url); });
     } else if (clothingUrl) {
-      const b64 = await fetchImageAsBase64(clothingUrl);
-      base64Clothings = [b64];
+      images.push(clothingUrl);
     }
 
     if (clothingBottomUrl) {
-      base64Bottom = await fetchImageAsBase64(clothingBottomUrl);
+      images.push(clothingBottomUrl);
     }
 
     if (Array.isArray(modelUrl)) {
-      for (const url of modelUrl) {
-        if (url) {
-          const b64 = await fetchImageAsBase64(url);
-          base64Models.push(b64);
-        }
-      }
+      modelUrl.forEach(url => { if (url) images.push(url); });
     } else if (modelUrl) {
-      const b64 = await fetchImageAsBase64(modelUrl);
-      base64Models = [b64];
+      images.push(modelUrl);
+    }
+
+    if (poseImageUrl) {
+      images.push(poseImageUrl);
     }
 
     if (backgroundImageUrl) {
-      try {
-        base64Background = await fetchImageAsBase64(backgroundImageUrl);
-      } catch (e) {
-        console.warn('Failed to load background image:', e.message);
-      }
+      images.push(backgroundImageUrl);
     }
 
     const genderStr = gender === 'female' ? 'female' : 'male';
@@ -262,13 +297,20 @@ app.post('/api/ai/tryon', async (req, res) => {
     let textPrompt = customPrompt ||
       `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model from the model reference image wearing the clothing item(s) provided. The model should be posing elegantly in the following setting: ${sceneDesc}. Posing against a clean professional catalog background. High-fidelity garment texture transfer, realistic drapery, correct draping and fit. Detailed skin, natural lighting.`;
 
-    if (base64Pose) {
-      const poseIndex = 1 + base64Clothings.length + (base64Bottom ? 1 : 0) + base64Models.length;
+    if (poseImageUrl) {
+      const clothingsCount = Array.isArray(clothingUrl) ? clothingUrl.filter(Boolean).length : (clothingUrl ? 1 : 0);
+      const bottomCount = clothingBottomUrl ? 1 : 0;
+      const modelsCount = Array.isArray(modelUrl) ? modelUrl.filter(Boolean).length : (modelUrl ? 1 : 0);
+      const poseIndex = 1 + clothingsCount + bottomCount + modelsCount;
       textPrompt += ` The messages contain a pose reference image (图${poseIndex}). You must strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.`;
     }
 
-    if (base64Background) {
-      const bgIndex = 1 + base64Clothings.length + (base64Bottom ? 1 : 0) + base64Models.length + (base64Pose ? 1 : 0);
+    if (backgroundImageUrl) {
+      const clothingsCount = Array.isArray(clothingUrl) ? clothingUrl.filter(Boolean).length : (clothingUrl ? 1 : 0);
+      const bottomCount = clothingBottomUrl ? 1 : 0;
+      const modelsCount = Array.isArray(modelUrl) ? modelUrl.filter(Boolean).length : (modelUrl ? 1 : 0);
+      const poseCount = poseImageUrl ? 1 : 0;
+      const bgIndex = 1 + clothingsCount + bottomCount + modelsCount + poseCount;
       textPrompt += ` The background scene of the generated image must strictly match the style, color scheme, environment, lighting, and layout of the background reference image (图${bgIndex}) provided. Place the model seamlessly into this background.`;
     }
 
@@ -276,69 +318,27 @@ app.post('/api/ai/tryon', async (req, res) => {
 
     const apiAspectRatio = ratio.replace('-', ':');
 
-    const messagesContent = [{ type: 'text', text: textPrompt }];
-
-    base64Clothings.forEach((b64) => {
-      messagesContent.push({ type: 'image_url', image_url: { url: b64 } });
-    });
-
-    if (base64Bottom) {
-      messagesContent.push({ type: 'image_url', image_url: { url: base64Bottom } });
-    }
-
-    base64Models.forEach((b64) => {
-      messagesContent.push({ type: 'image_url', image_url: { url: b64 } });
-    });
-
-    if (base64Pose) {
-      messagesContent.push({ type: 'image_url', image_url: { url: base64Pose } });
-    }
-
-    if (base64Background) {
-      messagesContent.push({ type: 'image_url', image_url: { url: base64Background } });
-    }
-
-    const requestBody = {
-      model: 'gemini-3.1-flash-image',
-      messages: [{ role: 'user', content: messagesContent }],
-      modalities: ['image'],
-      eca_image_config: { aspect_ratio: apiAspectRatio, image_size: '1K' },
-      stream: false
+    const sandbasePayload = {
+      model: 'google/nano-banana-2/edit',
+      images: images,
+      prompt: textPrompt,
+      resolution: '1K',
+      aspect_ratio: apiAspectRatio,
+      output_format: 'png',
+      enable_web_search: false,
+      enable_image_search: false
     };
 
-    const gatewayUrl = process.env.AIGATEWAY_URL;
-    const gatewayToken = process.env.AIGATEWAY_TOKEN;
-    const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}chat/completions` : `${gatewayUrl}/chat/completions`;
+    const taskId = await submitSandbaseTask(sandbasePayload);
+    const resultImageUrl = await pollSandbaseTask(taskId);
 
-    const response = await fetch(requestUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${gatewayToken}`
-      },
-      body: JSON.stringify(requestBody)
-    });
+    // Convert to base64 to bypass browser CORS on frontend
+    const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`AI Gateway error (${response.status}): ${errText}`);
-    }
-
-    const responseData = await response.json();
-    let resultImageUrl = responseData.choices?.[0]?.message?.content?.[0]?.image_url?.url || 
-                         responseData.choices?.[0]?.message?.content?.image_url?.url || 
-                         responseData.choices?.[0]?.message?.content;
-
-    if (!resultImageUrl) {
-      resultImageUrl = findImageUrlInObject(responseData);
-    }
-
-    if (!resultImageUrl) throw new Error('Failed to find generated try-on image in response');
-
-    res.status(200).json({ url: resultImageUrl });
+    res.status(200).json({ url: base64DataUrl });
   } catch (err) {
     console.error('Try-on failed:', err);
-    res.status(500).json({ error: err.message || 'Generation failed' });
+    res.status(500).json({ error: err.message || 'Try-on failed' });
   }
 });
 
@@ -348,56 +348,32 @@ app.post('/api/ai/background', async (req, res) => {
     const { prompt, ratio, refImageUrl } = req.body;
 
     const apiAspectRatio = ratio.replace('-', ':');
-    const requestContent = [
-      {
-        type: 'text',
-        text: `A professional commercial background scene, high resolution, photorealistic, empty setting for fashion model photoshoot, clean composition, studio lighting. Scene description: ${prompt}. No people, no models, no text, no watermarks.`
-      }
-    ];
+    const backgroundPrompt = `A professional commercial background scene, high resolution, photorealistic, empty setting for fashion model photoshoot, clean composition, studio lighting. Scene description: ${prompt}. No people, no models, no text, no watermarks.`;
 
-    if (refImageUrl) {
-      try {
-        const base64Ref = await fetchImageAsBase64(refImageUrl);
-        requestContent.push({ type: 'image_url', image_url: { url: base64Ref } });
-      } catch (err) {
-        console.warn('Failed to load scene reference image, using text prompt only', err.message);
-      }
-    }
-
-    const requestBody = {
-      model: 'gemini-3.1-flash-image',
-      messages: [{ role: 'user', content: requestContent }],
-      modalities: ['image'],
-      eca_image_config: { aspect_ratio: apiAspectRatio, image_size: '1K' },
-      stream: false
+    const sandbasePayload = {
+      model: refImageUrl ? 'google/nano-banana-2/edit' : 'google/nano-banana-2',
+      prompt: backgroundPrompt,
+      resolution: '1K',
+      aspect_ratio: apiAspectRatio,
+      output_format: 'png',
+      enable_web_search: false,
+      enable_image_search: false
     };
 
-    const gatewayUrl = process.env.AIGATEWAY_URL;
-    const gatewayToken = process.env.AIGATEWAY_TOKEN;
-    const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}chat/completions` : `${gatewayUrl}/chat/completions`;
-
-    const response = await fetch(requestUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${gatewayToken}`
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`AI Background Gen failed (${response.status}): ${errText}`);
+    if (refImageUrl) {
+      sandbasePayload.images = [refImageUrl];
     }
 
-    const responseData = await response.json();
-    const resultImageUrl = findImageUrlInObject(responseData);
-    if (!resultImageUrl) throw new Error('Failed to find generated background image in response');
+    const taskId = await submitSandbaseTask(sandbasePayload);
+    const resultImageUrl = await pollSandbaseTask(taskId);
 
-    res.status(200).json({ url: resultImageUrl });
+    // Convert to base64 to bypass browser CORS on frontend
+    const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
+
+    res.status(200).json({ url: base64DataUrl });
   } catch (err) {
     console.error('Background generation failed:', err);
-    res.status(500).json({ error: err.message || 'Generation failed' });
+    res.status(500).json({ error: err.message || 'Background generation failed' });
   }
 });
 
@@ -726,102 +702,27 @@ app.post('/api/video/task', async (req, res) => {
   try {
     const { model, prompt, imageSrc, modelOutfitImgUrl, storyboardImgUrls, sceneImgUrl, seconds = 4, size = '720p', aspectRatio } = req.body;
 
-    const base64Image = await fetchImageAsBase64(imageSrc);
-    let sceneImageBase64 = null;
-    if (sceneImgUrl) {
-      try {
-        sceneImageBase64 = await fetchImageAsBase64(sceneImgUrl);
-      } catch (err) {
-        console.warn('Failed to fetch scene image for video:', err.message);
-      }
-    }
+    // Use sandbase.ai's Kling 3.0 Omni Pro Video model
+    const sandbaseVideoModel = "kwaivgi/kling-video/3.0/omni/pro/image-to-video";
+    // Map seconds (4 or other value) to duration integer
+    const duration = Math.round(seconds) || 3;
 
-    const requestBody = { model, prompt, seconds, size };
+    const sandbasePayload = {
+      model: sandbaseVideoModel,
+      image: imageSrc,
+      prompt: prompt,
+      duration: duration
+    };
 
-    if (model === 'kling-v3-omni') {
-      let outfitImageBase64 = base64Image;
-      if (modelOutfitImgUrl) {
-        try {
-          outfitImageBase64 = await fetchImageAsBase64(modelOutfitImgUrl);
-        } catch (err) {
-          console.warn('Failed to fetch model outfit image for video:', err.message);
-        }
-      }
+    console.log(`\n[Sandbase API] >>> Submitting Video Task`);
+    console.log(`[Sandbase API] Model: "${sandbaseVideoModel}"`);
+    console.log(`[Sandbase API] Input Image URL: ${imageSrc}`);
+    console.log(`[Sandbase API] Prompt: "${prompt}"`);
+    console.log(`[Sandbase API] Duration: ${duration}s`);
 
-      if (seconds === 15 && storyboardImgUrls && storyboardImgUrls.length > 0) {
-        const base64Storyboards = await Promise.all(
-          storyboardImgUrls.map(async (url) => {
-            try {
-              return await fetchImageAsBase64(url);
-            } catch (err) {
-              console.warn(`Failed to fetch storyboard: ${url}`, err.message);
-              return null;
-            }
-          })
-        );
-        const validStoryboards = base64Storyboards.filter(b => b !== null);
-        const references = [
-          { image: outfitImageBase64 },
-          ...validStoryboards.map(b64 => ({ image: b64 }))
-        ];
-        if (sceneImageBase64) {
-          references.push({ image: sceneImageBase64 });
-        }
-        requestBody.eca_image_reference = references;
-      } else {
-        const references = [
-          { image: outfitImageBase64 },
-          { image: base64Image }
-        ];
-        if (sceneImageBase64) {
-          references.push({ image: sceneImageBase64 });
-        }
-        requestBody.eca_image_reference = references;
-      }
+    const taskId = await submitSandbaseTask(sandbasePayload);
 
-      requestBody.eca_mode = 'std';
-      requestBody.eca_audio = false;
-      if (aspectRatio) {
-        requestBody.eca_aspect_ratio = aspectRatio === '3:4' ? '9:16' : aspectRatio;
-      }
-    } else {
-      if (model.includes('veo') || model.includes('MiniMax') || model.includes('pro')) {
-        requestBody.eca_first_frame = base64Image;
-      } else {
-        const inputReference = { image: [base64Image] };
-        if (model.includes('vidu')) {
-          inputReference.type = 'eca_first_frame';
-        }
-        requestBody.input_reference = [inputReference];
-      }
-
-      if (aspectRatio) {
-        requestBody.eca_aspect_ratio = aspectRatio;
-      }
-    }
-
-    const gatewayUrl = process.env.AIGATEWAY_VIDEO_URL || process.env.AIGATEWAY_URL;
-    const gatewayToken = process.env.AIGATEWAY_VIDEO_TOKEN || process.env.AIGATEWAY_TOKEN;
-    const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}videos` : `${gatewayUrl}/videos`;
-
-    const response = await fetch(requestUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${gatewayToken}`
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Video task creation failed (${response.status}): ${errorText}`);
-    }
-
-    const responseData = await response.json();
-    if (!responseData.id) throw new Error('Failed to retrieve task ID');
-
-    res.status(200).json({ id: responseData.id });
+    res.status(200).json({ id: taskId });
   } catch (err) {
     console.error('Video task creation failed:', err);
     res.status(500).json({ error: err.message || 'Video task creation failed' });
@@ -832,15 +733,12 @@ app.post('/api/video/task', async (req, res) => {
 app.get('/api/video/poll/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const gatewayUrl = process.env.AIGATEWAY_VIDEO_URL || process.env.AIGATEWAY_URL;
-    const gatewayToken = process.env.AIGATEWAY_VIDEO_TOKEN || process.env.AIGATEWAY_TOKEN;
+    const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
 
-    const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}videos/${taskId}` : `${gatewayUrl}/videos/${taskId}`;
-
-    const response = await fetch(requestUrl, {
+    const response = await fetch(`https://api.sandbase.ai/v1/run/${taskId}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${gatewayToken}`
+        'Authorization': `Bearer ${apiKey}`
       }
     });
 
@@ -849,10 +747,12 @@ app.get('/api/video/poll/:taskId', async (req, res) => {
       throw new Error(`Polling status failed (${response.status}): ${errorText}`);
     }
 
-    const responseData = await response.json();
+    const data = await response.json();
+    console.log(`[Sandbase API] Polling Video Task ID: ${taskId} | Status: ${data.status}`);
+
     res.status(200).json({
-      status: responseData.status,
-      error: responseData.error?.message
+      status: data.status,
+      error: data.error || null
     });
   } catch (err) {
     console.error('Video status polling failed:', err);
@@ -864,30 +764,54 @@ app.get('/api/video/poll/:taskId', async (req, res) => {
 app.get('/api/video/content/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const gatewayUrl = process.env.AIGATEWAY_VIDEO_URL || process.env.AIGATEWAY_URL;
-    const gatewayToken = process.env.AIGATEWAY_VIDEO_TOKEN || process.env.AIGATEWAY_TOKEN;
+    const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
 
-    const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}videos/${taskId}/content` : `${gatewayUrl}/videos/${taskId}/content`;
-
-    const response = await fetch(requestUrl, {
+    // 1. Get task status to find the output URL
+    const statusResponse = await fetch(`https://api.sandbase.ai/v1/run/${taskId}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${gatewayToken}`
+        'Authorization': `Bearer ${apiKey}`
       }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Fetching video content failed (${response.status}): ${errorText}`);
+    if (!statusResponse.ok) {
+      const errorText = await statusResponse.text();
+      throw new Error(`Failed to check video task status (${statusResponse.status}): ${errorText}`);
     }
 
-    res.setHeader('Content-Type', response.headers.get('content-type') || 'video/mp4');
-    const contentLength = response.headers.get('content-length');
+    const data = await statusResponse.json();
+    if (data.status !== 'completed') {
+      throw new Error(`Video task is not completed yet (current status: ${data.status})`);
+    }
+
+    let videoUrl = '';
+    if (data.outputs && data.outputs.length > 0 && data.outputs[0].url) {
+      videoUrl = data.outputs[0].url;
+    } else if (data.result && data.result.videos && data.result.videos.length > 0) {
+      videoUrl = data.result.videos[0];
+    } else if (data.result && data.result.images && data.result.images.length > 0) {
+      videoUrl = data.result.images[0]; // fallback
+    }
+
+    if (!videoUrl) {
+      throw new Error('No video URL returned in sandbase task outputs');
+    }
+
+    console.log(`[Sandbase API] Fetching video binary from URL: ${videoUrl}`);
+
+    // 2. Fetch the actual video binary
+    const videoResponse = await fetch(videoUrl);
+    if (!videoResponse.ok) {
+      throw new Error(`Failed to fetch video binary from ${videoUrl} (${videoResponse.status})`);
+    }
+
+    res.setHeader('Content-Type', videoResponse.headers.get('content-type') || 'video/mp4');
+    const contentLength = videoResponse.headers.get('content-length');
     if (contentLength) {
       res.setHeader('Content-Length', contentLength);
     }
-    
-    const buffer = await response.arrayBuffer();
+
+    const buffer = await videoResponse.arrayBuffer();
     res.status(200).send(Buffer.from(buffer));
   } catch (err) {
     console.error('Failed to retrieve video content:', err);

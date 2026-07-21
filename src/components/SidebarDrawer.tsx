@@ -1941,19 +1941,23 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         let modificationInfo = '';
         if (outfitEditPrompt.trim()) modificationInfo = ` Please apply the following modification request: ${outfitEditPrompt.trim()}.`;
 
-        const hasFlatlays = !!(topClothingUrl || bottomClothingUrl);
-        const flatlayDetailPrompt = hasFlatlays
-          ? ' The provided clothing images also include clean flatlay garment images (top and/or bottom). You must strictly reference these clean flatlay garment images to capture the exact details, fabric textures, colors, logos, and patterns of the clothing, while using the model outfit reference image for styling/layering/drape reference. This is crucial because the clothing in the model outfit reference image might be partially blocked, folded, or shaded.'
-          : '';
-
-        const completionInstruction = ` Model Replacement and Outfit Preservation Instruction: The provided clothing image is a model outfit reference photo containing a person wearing the clothes. You must transfer the exact outfit (including the style, fabric texture, drapery, and colors) from this clothing image onto the target model from the model reference image. Replace the original model's face, hair, and skin tone with the face, hair, and body features of the target model.${flatlayDetailPrompt} If the outfit in the clothing image is cropped or incomplete, automatically outpaint and complete the rest (bottoms, footwear, or cuffs) to present a cohesive head-to-toe look.`;
-
-        const customPromptText = `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model wearing the clothing item(s) provided. The model is standing in a neutral studio backdrop with a solid light grey/white background, showcasing the complete outfit. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, studio lighting.${stylingInfo}${modificationInfo}${completionInstruction} Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged.`;
-
         if (isEditMode && targetIndex !== -1) {
           // Regenerate only the previewed item based on its current generated image
           const refUrl = referenceOutfitUrls[targetIndex];
-          const clothingUrls = [refUrl, topClothingUrl, bottomClothingUrl].filter(Boolean) as string[];
+          const isFirstOutfit = (targetIndex === 0);
+          const hasFlatlays = isFirstOutfit && !!(topClothingUrl || bottomClothingUrl);
+          const clothingUrls = hasFlatlays
+            ? [refUrl, topClothingUrl, bottomClothingUrl].filter(Boolean) as string[]
+            : [refUrl];
+
+          const flatlayDetailPrompt = hasFlatlays
+            ? ' The provided clothing images also include clean flatlay garment images (top and/or bottom). You must strictly reference these clean flatlay garment images to capture the exact details, fabric textures, colors, logos, and patterns of the clothing, while using the model outfit reference image for styling/layering/drape reference. This is crucial because the clothing in the model outfit reference image might be partially blocked, folded, or shaded.'
+            : '';
+
+          const completionInstruction = ` Model Replacement and Outfit Preservation Instruction: The provided clothing image is a model outfit reference photo containing a person wearing the clothes. You must transfer the exact outfit (including the style, fabric texture, drapery, and colors) from this clothing image onto the target model from the model reference image. Replace the original model's face, hair, and skin tone with the face, hair, and body features of the target model.${flatlayDetailPrompt} If the outfit in the clothing image is cropped or incomplete, automatically outpaint and complete the rest (bottoms, footwear, or cuffs) to present a cohesive head-to-toe look.`;
+
+          const customPromptText = `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model wearing the clothing item(s) provided. The model is standing in a neutral studio backdrop with a solid light grey/white background, showcasing the complete outfit. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, studio lighting.${stylingInfo}${modificationInfo}${completionInstruction} Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged.`;
+
           const currentGeneratedUrl = modelOutfitImgUrls[targetIndex] || swapModelUrl;
 
           let generatedUrl = '';
@@ -1980,7 +1984,20 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
           generatedUrls = [];
           for (let i = 0; i < referenceOutfitUrls.length; i++) {
             const refUrl = referenceOutfitUrls[i];
-            const clothingUrls = [refUrl, topClothingUrl, bottomClothingUrl].filter(Boolean) as string[];
+            const isFirstOutfit = (i === 0);
+            const hasFlatlays = isFirstOutfit && !!(topClothingUrl || bottomClothingUrl);
+            const clothingUrls = hasFlatlays
+              ? [refUrl, topClothingUrl, bottomClothingUrl].filter(Boolean) as string[]
+              : [refUrl];
+
+            const flatlayDetailPrompt = hasFlatlays
+              ? ' The provided clothing images also include clean flatlay garment images (top and/or bottom). You must strictly reference these clean flatlay garment images to capture the exact details, fabric textures, colors, logos, and patterns of the clothing, while using the model outfit reference image for styling/layering/drape reference. This is crucial because the clothing in the model outfit reference image might be partially blocked, folded, or shaded.'
+              : '';
+
+            const completionInstruction = ` Model Replacement and Outfit Preservation Instruction: The provided clothing image is a model outfit reference photo containing a person wearing the clothes. You must transfer the exact outfit (including the style, fabric texture, drapery, and colors) from this clothing image onto the target model from the model reference image. Replace the original model's face, hair, and skin tone with the face, hair, and body features of the target model.${flatlayDetailPrompt} If the outfit in the clothing image is cropped or incomplete, automatically outpaint and complete the rest (bottoms, footwear, or cuffs) to present a cohesive head-to-toe look.`;
+
+            const customPromptText = `A premium quality fashion catalog photo. A high-resolution photo of the same professional ${regionStr} ${genderStr} model wearing the clothing item(s) provided. The model is standing in a neutral studio backdrop with a solid light grey/white background, showcasing the complete outfit. High-fidelity garment texture transfer, realistic drapery, correct drapery and fit. Detailed skin, studio lighting.${stylingInfo}${modificationInfo}${completionInstruction} Strict Outfit Consistency Rule: The model's complete outfit combination (including bottom pants/shorts/skirt, footwear, and any accessories) must remain strictly identical, consistent, and completely unchanged.`;
+
             let generatedUrl = '';
             if (gatewayUrl && gatewayToken) {
               generatedUrl = await generateTryOnImage({
