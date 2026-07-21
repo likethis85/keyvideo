@@ -1,12 +1,12 @@
+import { getBackendUrl } from './aiGateway';
+
 /**
  * Uploads a file to Aliyun OSS via Vite dev server backend relay.
  * This prevents CORS issues and protects AccessKey credentials from leaking to the browser.
  * @param file The file to upload.
  */
-const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-
 export const uploadFileToOSS = async (file: File): Promise<string> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/upload?name=${encodeURIComponent(file.name)}`, {
+  const response = await fetch(`${getBackendUrl()}/api/upload?name=${encodeURIComponent(file.name)}`, {
     method: 'POST',
     body: file
   });

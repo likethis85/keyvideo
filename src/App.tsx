@@ -73,6 +73,10 @@ function App() {
   const [isEditingProjName, setIsEditingProjName] = useState(false);
   const [editingProjNameValue, setEditingProjNameValue] = useState('');
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [backendUrlInput, setBackendUrlInput] = useState(
+    localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+  );
   const sidebarRef = useRef<SidebarDrawerRef | null>(null);
 
   // User profile dropdown states
@@ -630,6 +634,23 @@ function App() {
             </svg>
             <span className="action-btn-text">一键导出 MP4</span>
           </button>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setBackendUrlInput(localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001');
+              setIsSettingsModalOpen(true);
+            }}
+            title="后端服务器配置"
+            style={{ 
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '6px 12px',
+              gap: '4px'
+            }}
+          >
+            ⚙️ <span className="action-btn-text">服务配置</span>
+          </button>
 
           {session?.user && (
             <>
@@ -835,6 +856,111 @@ function App() {
         selectedLayerId={selectedLayerId}
         setSelectedLayerId={setSelectedLayerId}
       />
+
+      {/* Backend Settings Modal */}
+      {isSettingsModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(5, 6, 10, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999
+          }}
+          onClick={() => setIsSettingsModalOpen(false)}
+        >
+          <div
+            style={{
+              width: '450px',
+              background: '#14151f',
+              border: '1px solid var(--border-color)',
+              borderRadius: '12px',
+              padding: '24px',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ⚙️ 后端服务地址配置
+              </h3>
+              <button
+                onClick={() => setIsSettingsModalOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#9ca3af',
+                  cursor: 'pointer',
+                  fontSize: '18px',
+                  lineHeight: '1',
+                  padding: '4px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500' }}>
+                后端基础 URL (BACKEND_BASE_URL)
+              </label>
+              <input
+                type="text"
+                value={backendUrlInput}
+                onChange={(e) => setBackendUrlInput(e.target.value)}
+                placeholder="例如 http://localhost:3001 或 http://1.2.3.4:3001"
+                style={{
+                  background: '#090a0f',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '10px 12px',
+                  color: '#fff',
+                  fontSize: '13px',
+                  outline: 'none'
+                }}
+              />
+              <span style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.4' }}>
+                * 默认值为本地运行的 http://localhost:3001。部署到生产服务器后，请填入服务器公网地址（包含 http:// 和端口号，无需斜杠结尾）。
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
+              <button
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '12px' }}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  let url = backendUrlInput.trim();
+                  if (url.endsWith('/')) {
+                    url = url.slice(0, -1);
+                  }
+                  localStorage.setItem('KEYVIDEO_BACKEND_URL', url);
+                  setIsSettingsModalOpen(false);
+                  alert(`已成功配置后端地址为:\n${url || '默认值 (http://localhost:3001)'}`);
+                  window.location.reload();
+                }}
+                className="btn-primary"
+                style={{ padding: '8px 20px', fontSize: '12px', background: 'var(--accent-purple)' }}
+              >
+                保存并应用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

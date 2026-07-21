@@ -1,4 +1,8 @@
-const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+export const getBackendUrl = (): string => {
+  const localUrl = localStorage.getItem('KEYVIDEO_BACKEND_URL');
+  if (localUrl) return localUrl;
+  return import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+};
 
 export const generateMannequinImage = async (params: {
   imageUrl: string;
@@ -10,7 +14,7 @@ export const generateMannequinImage = async (params: {
   gatewayUrl?: string;
   gatewayToken?: string;
 }): Promise<string> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/ai/mannequin`, {
+  const response = await fetch(`${getBackendUrl()}/api/ai/mannequin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
@@ -37,7 +41,7 @@ export const generateTryOnImage = async (params: {
   gatewayUrl?: string;
   gatewayToken?: string;
 }): Promise<string> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/ai/tryon`, {
+  const response = await fetch(`${getBackendUrl()}/api/ai/tryon`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
@@ -57,7 +61,7 @@ export const generateBackgroundImage = async (params: {
   gatewayUrl?: string;
   gatewayToken?: string;
 }): Promise<string> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/ai/background`, {
+  const response = await fetch(`${getBackendUrl()}/api/ai/background`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
@@ -80,7 +84,7 @@ export const generateOutfitSuggestion = async (params: {
   shoes: string;
   accessories: string;
 }> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/ai/stylist`, {
+  const response = await fetch(`${getBackendUrl()}/api/ai/stylist`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
@@ -109,7 +113,7 @@ export const generatePromptsFromSkill = async (params: {
   gatewayUrl?: string;
   gatewayToken?: string;
 }): Promise<string> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/ai/prompts-skill`, {
+  const response = await fetch(`${getBackendUrl()}/api/ai/prompts-skill`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
@@ -135,7 +139,7 @@ export const generateVideoTask = async (params: {
   gatewayUrl?: string;
   gatewayToken?: string;
 }): Promise<string> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/video/task`, {
+  const response = await fetch(`${getBackendUrl()}/api/video/task`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
@@ -153,7 +157,7 @@ export const pollVideoTask = async (
   _gatewayToken: string,
   taskId: string
 ): Promise<{ status: string; error?: string }> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/video/poll/${taskId}`, {
+  const response = await fetch(`${getBackendUrl()}/api/video/poll/${taskId}`, {
     method: 'GET'
   });
   if (!response.ok) {
@@ -168,7 +172,7 @@ export const getVideoContent = async (
   _gatewayToken: string,
   taskId: string
 ): Promise<Blob> => {
-  const response = await fetch(`${BACKEND_BASE_URL}/api/video/content/${taskId}`, {
+  const response = await fetch(`${getBackendUrl()}/api/video/content/${taskId}`, {
     method: 'GET'
   });
   if (!response.ok) {
