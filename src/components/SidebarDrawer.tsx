@@ -4,7 +4,7 @@ import type { Layer } from './VideoCanvas';
 import { generateMannequinImage, generateTryOnImage, generateVideoTask, pollVideoTask, getVideoContent, generateOutfitSuggestion, generatePromptsFromSkill, generateBackgroundImage } from '../utils/aiGateway';
 import { localDB } from '../utils/db';
 import { supabase } from '../utils/supabaseClient';
-import { uploadAudioToOSS, uploadFileToOSS } from '../utils/ossClient';
+import { uploadAudioToOSS, uploadFileToOSS, deleteFileFromOSS } from '../utils/ossClient';
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 
@@ -1807,19 +1807,20 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
       return p;
     }));
 
-    filesToUpload.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = reader.result as string;
+    filesToUpload.forEach(async file => {
+      try {
+        const url = await uploadFileToOSS(file);
         setReferenceOutfitUrls(prev => {
-          const next = [...prev, base64];
+          const next = [...prev, url];
           if (next.length === 1) {
-            setReferenceOutfitUrl(base64);
+            setReferenceOutfitUrl(url);
           }
           return next;
         });
-      };
-      reader.readAsDataURL(file);
+      } catch (err: any) {
+        console.error('Failed to upload reference outfit to OSS:', err);
+        alert(`参考图上传 OSS 失败: ${err.message}`);
+      }
     });
   };
 
@@ -5454,13 +5455,35 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
                           <span style={{ fontSize: '8px', color: '#c084fc', fontWeight: '700' }}>套 {idx + 1}</span>
                         </div>
                         <button
-                          onClick={() => {
+                          onClick={async () => {
+                            const urlToDelete = url;
                             setReferenceOutfitUrls(prev => {
                               const next = prev.filter((_, i) => i !== idx);
-                              if (next.length > 0) { setReferenceOutfitUrl(next[0]); }
-                              else { setReferenceOutfitUrl(''); }
+                              const nextUrl = next.length > 0 ? next[0] : '';
+                              setReferenceOutfitUrl(nextUrl);
+
+                              // Save to projects and sync to Supabase immediately
+                              if (activeProjectId) {
+                                const currentProj = projects.find(p => p.id === activeProjectId);
+                                if (currentProj) {
+                                  const updated = {
+                                    ...currentProj,
+                                    referenceOutfitUrls: next,
+                                    referenceOutfitUrl: nextUrl
+                                  };
+                                  syncProjectToSupabase(updated);
+                                }
+                              }
+
                               return next;
                             });
+
+                            try {
+                              await deleteFileFromOSS(urlToDelete);
+                              console.log('Deleted reference outfit from OSS successfully:', urlToDelete);
+                            } catch (err) {
+                              console.warn('Failed to delete reference outfit from OSS:', err);
+                            }
                           }}
                           style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,80,80,0.5)', color: '#ff6b6b', cursor: 'pointer', fontSize: '10px', padding: '0', width: '18px', height: '18px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1' }}
                         >×</button>

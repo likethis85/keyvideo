@@ -246,6 +246,35 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
+// OSS File Delete Endpoint
+app.post('/api/upload/delete', async (req, res) => {
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'Missing url parameter' });
+  }
+
+  try {
+    const client = new OSS({
+      region: process.env.OSS_REGION || 'oss-cn-shanghai',
+      accessKeyId: process.env.OSS_ACCESS_KEY_ID,
+      accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
+      bucket: process.env.OSS_BUCKET,
+      secure: true
+    });
+
+    // Parse path key from public URL
+    const urlObj = new URL(url);
+    const key = decodeURIComponent(urlObj.pathname.slice(1));
+
+    await client.delete(key);
+    console.log(`Successfully deleted key ${key} from OSS`);
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('Alibaba Cloud OSS deletion failed:', err);
+    res.status(500).json({ error: err.message || 'Deletion failed' });
+  }
+});
+
 // 2. AI Mannequin Model Swap
 app.post('/api/ai/mannequin', async (req, res) => {
   try {
