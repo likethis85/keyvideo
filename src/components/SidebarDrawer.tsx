@@ -59,6 +59,7 @@ export interface AIProject {
     'full-body': string;
     'medium': string;
     'close-up': string;
+    swapModelUrl?: string;
   };
   storyboards: StoryboardItem[];
   i2vStep: 'idle' | 'storyboard_generated' | 'video_generated';
@@ -420,7 +421,10 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
       modelRegion,
       modelScene,
       i2vMasterPrompt15s,
-      i2vPrompts,
+      i2vPrompts: {
+        ...i2vPrompts,
+        swapModelUrl
+      },
       storyboards,
       i2vStep,
       videoDuration,
@@ -438,6 +442,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     modelGender,
     modelRegion,
     modelScene,
+    swapModelUrl,
     i2vMasterPrompt15s,
     i2vPrompts,
     storyboards,
@@ -446,6 +451,13 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     isOutfitImgGenerating,
     isI2vGenerating
   ]);
+
+  // Sync swapModelUrl to localDB global setting
+  useEffect(() => {
+    if (swapModelUrl) {
+      localDB.set('ai_swap_model_url', swapModelUrl).catch(err => console.warn(err));
+    }
+  }, [swapModelUrl]);
 
   // Load projects from localDB on mount
   useEffect(() => {
@@ -554,6 +566,8 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
               'medium': '镜头缓慢自左向右横移。半身中景对焦模特上身，模特伴随轻微自然的侧身姿势调整，慢速横移运镜，画面流畅。',
               'close-up': '微距镜头缓慢拉近。极细致特写聚焦于衣服面料纹理、拉链纽扣与走线细节，轻微景深虚化与慢速推进，保留呼吸感运镜。'
             });
+            const savedSwapModelUrl = activeProj.i2vPrompts?.swapModelUrl || (activeProj as any).swapModelUrl || '/clothing_model.png';
+            setSwapModelUrl(savedSwapModelUrl);
             setStoryboards(activeProj.storyboards || []);
             setI2vStep(activeProj.i2vStep || 'idle');
             setIsOutfitImgGenerating(false);
@@ -852,7 +866,8 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
       i2vPrompts: {
         'full-body': '',
         'medium': '',
-        'close-up': ''
+        'close-up': '',
+        swapModelUrl: '/clothing_model.png'
       },
       storyboards: [],
       i2vStep: 'idle',
@@ -879,6 +894,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     setStoryboards([]);
     setI2vStep('idle');
     setVideoDuration('15s');
+    setSwapModelUrl('/clothing_model.png');
     setIsOutfitImgGenerating(false);
     setIsI2vGenerating(false);
 
@@ -927,6 +943,8 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
       'medium': '镜头缓慢自左向右横移。半身中景对焦模特上身，模特伴随轻微自然的侧身姿势调整，慢速横移运镜，画面流畅。',
       'close-up': '微距镜头缓慢拉近。极细致特写聚焦于衣服面料纹理、做工走线与接缝细节，轻微景深虚化与慢速推进，保留呼吸感运镜。'
     });
+    const savedSwapModelUrl = targetProj.i2vPrompts?.swapModelUrl || (targetProj as any).swapModelUrl || '/clothing_model.png';
+    setSwapModelUrl(savedSwapModelUrl);
     setStoryboards(targetProj.storyboards || []);
     setI2vStep(targetProj.i2vStep || 'idle');
     setVideoDuration((targetProj.videoDuration as any) === '4s' ? '3s' : (targetProj.videoDuration || '15s'));
