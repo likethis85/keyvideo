@@ -63,6 +63,29 @@ const fetchImageAsBase64 = async (url) => {
   return `data:${contentType};base64,${base64}`;
 };
 
+// Helper: Upload remote URL directly to Alibaba Cloud OSS
+const uploadUrlToOSS = async (imageUrl) => {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image from URL: ${response.statusText}`);
+  }
+  const buffer = await response.arrayBuffer();
+
+  const client = new OSS({
+    region: process.env.OSS_REGION || 'oss-cn-shanghai',
+    accessKeyId: process.env.OSS_ACCESS_KEY_ID,
+    accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
+    bucket: process.env.OSS_BUCKET,
+    secure: true
+  });
+
+  const fileExt = 'png';
+  const randomName = `${Date.now()}_${Math.random().toString(36).substring(2, 11)}.${fileExt}`;
+  const ossPath = `audio/${randomName}`;
+  const result = await client.put(ossPath, Buffer.from(buffer));
+  return result.url;
+};
+
 // Helper: Recursively search object for image URL or base64 data
 const findImageUrlInObject = (obj) => {
   if (!obj) return '';
@@ -303,10 +326,7 @@ app.post('/api/ai/mannequin', async (req, res) => {
     const taskId = await submitSandbaseTask(sandbasePayload);
     const resultImageUrl = await pollSandbaseTask(taskId);
 
-    // Convert to base64 to bypass browser CORS on frontend
-    const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
-
-    res.status(200).json({ url: base64DataUrl });
+    res.status(200).json({ url: resultImageUrl });
   } catch (err) {
     console.error('Mannequin generation failed:', err);
     res.status(500).json({ error: err.message || 'Mannequin generation failed' });
@@ -422,10 +442,7 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
     const taskId = await submitSandbaseTask(sandbasePayload);
     const resultImageUrl = await pollSandbaseTask(taskId);
 
-    // Convert to base64 to bypass browser CORS on frontend
-    const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
-
-    res.status(200).json({ url: base64DataUrl });
+    res.status(200).json({ url: resultImageUrl });
   } catch (err) {
     console.error('Try-on failed:', err);
     res.status(500).json({ error: err.message || 'Try-on failed' });

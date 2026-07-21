@@ -2278,7 +2278,7 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
 
     if (currentModelOutfitImg) {
       clothingUrlPayload = currentModelOutfitImg;
-      modelUrlPayload = swapModelUrl;
+      modelUrlPayload = undefined; // Already contains the target model
       bottomUrlPayload = undefined;
     } else {
       clothingUrlPayload = mainClothing;
@@ -2338,7 +2338,9 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
         }
       }
 
-      const bgIndex = 3 + (bottomUrlPayload ? 1 : 0);
+      const clothingsCount = 1 + (bottomUrlPayload ? 1 : 0);
+      const modelsCount = modelUrlPayload ? 1 : 0;
+      const bgIndex = clothingsCount + modelsCount + 1;
       const panelPositions = ['left panel (the first scene view)', 'middle panel (the second scene view)', 'right panel (the third scene view)'];
       const panelPosText = panelPositions[shotIndex % 3];
 
@@ -2675,7 +2677,7 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
 
             if (currentModelOutfitImg) {
               clothingUrlPayload = currentModelOutfitImg;
-              modelUrlPayload = swapModelUrl;
+              modelUrlPayload = undefined; // Already contains the target model
               bottomUrlPayload = undefined;
             } else {
               clothingUrlPayload = currentMainClothing;
@@ -2683,7 +2685,9 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
               bottomUrlPayload = currentBottomClothing || undefined;
             }
 
-            const bgIndex = 3 + (bottomUrlPayload ? 1 : 0);
+            const clothingsCount = 1 + (bottomUrlPayload ? 1 : 0);
+            const modelsCount = modelUrlPayload ? 1 : 0;
+            const bgIndex = clothingsCount + modelsCount + 1;
             const clothingRefTags = bottomUrlPayload ? '图1 and 图2' : '图1';
 
             const taskText = currentModelOutfitImg

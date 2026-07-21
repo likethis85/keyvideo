@@ -30,7 +30,7 @@ export const generateMannequinImage = async (params: {
 export const generateTryOnImage = async (params: {
   clothingUrl: string | string[];
   clothingBottomUrl?: string;
-  modelUrl: string | string[];
+  modelUrl?: string | string[];
   gender: string;
   region: string;
   scene: string;
