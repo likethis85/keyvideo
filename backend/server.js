@@ -314,6 +314,35 @@ app.post('/api/ai/tryon', async (req, res) => {
       textPrompt += ` The background scene of the generated image must strictly match the style, color scheme, environment, lighting, and layout of the background reference image (图${bgIndex}) provided. Place the model seamlessly into this background.`;
     }
 
+    // Build explicit role indexing mappings to guide the AI model
+    const clothingsCount = Array.isArray(clothingUrl) ? clothingUrl.filter(Boolean).length : (clothingUrl ? 1 : 0);
+    const bottomCount = clothingBottomUrl ? 1 : 0;
+    
+    let clothingIndexText = '';
+    if (clothingsCount === 1) {
+      clothingIndexText = '图1 (Image 1)';
+    } else if (clothingsCount > 1) {
+      clothingIndexText = `图1至图${clothingsCount} (Image 1 to Image ${clothingsCount})`;
+    }
+
+    let bottomIndexText = '';
+    if (bottomCount > 0) {
+      bottomIndexText = `图${1 + clothingsCount} (Image ${1 + clothingsCount})`;
+    }
+
+    const modelStartIndex = 1 + clothingsCount + bottomCount;
+    const modelCount = Array.isArray(modelUrl) ? modelUrl.filter(Boolean).length : (modelUrl ? 1 : 0);
+    let modelIndexText = '';
+    if (modelCount === 1) {
+      modelIndexText = `图${modelStartIndex} (Image ${modelStartIndex})`;
+    } else if (modelCount > 1) {
+      modelIndexText = `图${modelStartIndex}至图${modelStartIndex + modelCount - 1} (Image ${modelStartIndex} to Image ${modelStartIndex + modelCount - 1})`;
+    }
+
+    const indexingInstruction = ` Image-to-Image reference guide: The input images array contains multiple roles. ${clothingIndexText ? `The clothing reference (containing the clothes to transfer) is ${clothingIndexText}.` : ''} ${bottomIndexText ? `The bottom clothing reference is ${bottomIndexText}.` : ''} ${modelIndexText ? `The target model reference (whose face, hair, body, skin tone, and character identity must be preserved and kept identical) is ${modelIndexText}.` : ''} You must strictly replace the face/identity of the person in the clothing reference with the face/identity of the target model, while preserving and transferring the exact outfit garments.`;
+
+    textPrompt += ` ${indexingInstruction}`;
+
     textPrompt += " The generated image must be clean and must not contain any text, letters, words, numbers, writing, signatures, logos, watermarks, stamps, tags, or captions.";
 
     const apiAspectRatio = ratio.replace('-', ':');
