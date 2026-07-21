@@ -2356,12 +2356,21 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
       }
 
       const clothingRefTags = bottomUrlPayload ? '图1 and 图2' : '图1';
+
+      const taskText = currentModelOutfitImg
+        ? `Task: Place the dressed model from ${clothingRefTags} into the new background scene.`
+        : `Task: Generate a premium fashion portrait shot by transferring the outfit from ${clothingRefTags} onto the model from 图${bgIndex - 1}.`;
+
+      const modelStrict = currentModelOutfitImg
+        ? `Model (Strict): 100% exact face, hair, skin tone, and body from the dressed model in ${clothingRefTags}. Maintain perfect character consistency with ${clothingRefTags}.`
+        : `Model (Strict): 100% exact face, hair, skin tone, and body of 图${bgIndex - 1}. Do NOT retain any facial features from ${clothingRefTags}.`;
+
       const outfitStrict = currentModelOutfitImg 
-        ? `Outfit (Strict): The clothing reference image (${clothingRefTags}) already shows the complete character wearing the full outfit. Replicate the complete outfit exactly as shown.`
+        ? `Outfit (Strict): Replicate the complete outfit exactly as shown on the model in ${clothingRefTags}.`
         : `Outfit (Strict): Identical clothing from ${clothingRefTags} (fabric, drapery, and fit). The model's outfit must remain strictly consistent across all angles.`;
 
-      const customPromptText = `Task: Generate a premium fashion portrait shot by transferring the outfit from ${clothingRefTags} onto the model from 图${bgIndex - 1}.
-Model (Strict): 100% exact face, hair, skin tone, and body of 图${bgIndex - 1}. Do NOT retain any facial features from ${clothingRefTags}.
+      const customPromptText = `${taskText}
+${modelStrict}
 ${outfitStrict}
 Style & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: ${sceneDesc}. Shot details: ${effectivePromptText}.${stylingInfo}
 Background (Strict): The background must strictly and exactly match the ${panelPosText} of the provided background reference image (图${bgIndex}) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.
@@ -2675,8 +2684,17 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
 
             const bgIndex = 3 + (bottomUrlPayload ? 1 : 0);
             const clothingRefTags = bottomUrlPayload ? '图1 and 图2' : '图1';
+
+            const taskText = currentModelOutfitImg
+              ? `Task: Place the dressed model from ${clothingRefTags} into the new background scene.`
+              : `Task: Generate a premium fashion portrait shot by transferring the outfit from ${clothingRefTags} onto the model from 图${bgIndex - 1}.`;
+
+            const modelStrict = currentModelOutfitImg
+              ? `Model (Strict): 100% exact face, hair, skin tone, and body from the dressed model in ${clothingRefTags}. Maintain perfect character consistency with ${clothingRefTags}.`
+              : `Model (Strict): 100% exact face, hair, skin tone, and body of 图${bgIndex - 1}. Do NOT retain any facial features from ${clothingRefTags}.`;
+
             const outfitStrict = currentModelOutfitImg 
-              ? `Outfit (Strict): The clothing reference image (${clothingRefTags}) already shows the complete character wearing the full outfit. Replicate the complete outfit exactly as shown.`
+              ? `Outfit (Strict): Replicate the complete outfit exactly as shown on the model in ${clothingRefTags}.`
               : `Outfit (Strict): Identical clothing from ${clothingRefTags} (fabric, drapery, and fit). The model's outfit must remain strictly consistent across all angles.`;
 
             const panelPositions = ['left panel (the first scene view)', 'middle panel (the second scene view)', 'right panel (the third scene view)'];
@@ -2696,8 +2714,8 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
               currentStylingInfo += ` No bags or handbags should be visible in this view.`;
             }
 
-            const customPromptText = `Task: Generate a premium fashion portrait shot by transferring the outfit from ${clothingRefTags} onto the model from 图${bgIndex - 1}.
-Model (Strict): 100% exact face, hair, skin tone, and body of 图${bgIndex - 1}. Do NOT retain any facial features from ${clothingRefTags}.
+            const customPromptText = `${taskText}
+${modelStrict}
 ${outfitStrict}
 Style & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: ${currentSceneDesc}. Shot details: ${shot.prompt}.${currentStylingInfo}
 Background (Strict): The background must strictly and exactly match the ${panelPosText} of the provided background reference image (图${bgIndex}) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.
