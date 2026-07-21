@@ -362,16 +362,19 @@ Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fi
 Style & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.
 Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
 
-    let textPrompt = customPrompt || defaultPrompt;
-
-    if (poseImageUrl) {
-      const poseIndex = 1 + clothingsCount + bottomCount + modelsCount;
-      textPrompt += `\nPose (Strict): Strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.`;
-    }
-
-    if (backgroundImageUrl) {
-      const bgIndex = 1 + clothingsCount + bottomCount + modelsCount + poseCount;
-      textPrompt += `\nBackground (Strict): The background of the generated image must strictly and exactly match the provided background reference image (图${bgIndex}) in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.`;
+    let textPrompt = '';
+    if (customPrompt) {
+      textPrompt = customPrompt;
+    } else {
+      textPrompt = defaultPrompt;
+      if (poseImageUrl) {
+        const poseIndex = 1 + clothingsCount + bottomCount + modelsCount;
+        textPrompt += `\nPose (Strict): Strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.`;
+      }
+      if (backgroundImageUrl) {
+        const bgIndex = 1 + clothingsCount + bottomCount + modelsCount + poseCount;
+        textPrompt += `\nBackground (Strict): The background of the generated image must strictly and exactly match the provided background reference image (图${bgIndex}) in every single pixel, detail, color, furniture, layout, texture, and structure. Do not alter, regenerate, modify, or add any new elements to the background. The model must be seamlessly integrated into the exact background provided.`;
+      }
     }
 
     const apiAspectRatio = ratio.replace('-', ':');
