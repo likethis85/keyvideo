@@ -9,26 +9,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper: Convert local relative assets (like /clothing_model.png) to base64 data URLs
-const resolveLocalAssetToBase64 = (imageUrl) => {
-  if (typeof imageUrl !== 'string') return imageUrl;
-  if (imageUrl.startsWith('/')) {
-    try {
-      // Find file in frontend public folder (relative to backend/)
-      const localPath = path.join(__dirname, '..', 'public', imageUrl);
-      if (fs.existsSync(localPath)) {
-        const fileBuffer = fs.readFileSync(localPath);
-        const ext = path.extname(localPath).toLowerCase().replace('.', '');
-        const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-        return `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
-      }
-    } catch (e) {
-      console.warn(`Failed to resolve local asset ${imageUrl} to base64:`, e);
-    }
-  }
-  return imageUrl;
-};
-
 dotenv.config();
 
 const app = express();
@@ -48,20 +28,75 @@ const TRYON_SCENE_PROMPT_DESCRIPTIONS = {
   minimalist: 'posing against a minimalist wabi-sabi concrete wall with artistic soft shadows'
 };
 
-// Helper: Fetch remote image as Base64 Data URL
-const fetchImageAsBase64 = async (url) => {
-  if (url.startsWith('data:image/')) {
+// Helper: Normalize image URL for Sandbase API
+// - HTTP/HTTPS URLs are preserved as URLs without base64 conversion
+// - Local relative paths (like /clothing_model.png) are resolved from public/ and converted to Data URIs
+// - Data URIs are checked and corrected if MIME type header mismatches magic bytes (e.g. data:image/png for JPEG bytes)
+const normalizeImageUrl = (url) => {
+  if (typeof url !== 'string' || !url) return '';
+
+  // 1. Keep HTTP / HTTPS URLs as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
     return url;
   }
-  const response = await fetch(url);
+
+  // 2. Handle local relative assets (like /clothing_model.png)
+  if (url.startsWith('/')) {
+    try {
+      const localPath = path.join(__dirname, '..', 'public', url);
+      if (fs.existsSync(localPath)) {
+        const fileBuffer = fs.readFileSync(localPath);
+        const ext = path.extname(localPath).toLowerCase().replace('.', '');
+        const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+        return `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+      }
+    } catch (e) {
+      console.warn(`Failed to resolve local asset ${url} to base64:`, e);
+    }
+  }
+
+  // 3. Handle existing Data URIs (fix mismatched MIME headers if present)
+  if (url.startsWith('data:image/')) {
+    const commaIdx = url.indexOf(',');
+    if (commaIdx !== -1) {
+      const header = url.substring(0, commaIdx);
+      const base64Data = url.substring(commaIdx + 1).trim();
+      let correctMime = '';
+      if (base64Data.startsWith('/9j/')) correctMime = 'image/jpeg';
+      else if (base64Data.startsWith('iVBORw0KGg')) correctMime = 'image/png';
+      else if (base64Data.startsWith('R0lGOD')) correctMime = 'image/gif';
+      else if (base64Data.startsWith('UklGR')) correctMime = 'image/webp';
+
+      if (correctMime && !header.startsWith(`data:${correctMime};`)) {
+        return `data:${correctMime};base64,${base64Data}`;
+      }
+    }
+    return url;
+  }
+
+  return url;
+};
+
+// Helper: Fetch remote image as Base64 Data URL (when explicitly needed for OSS upload or canvas)
+const fetchImageAsBase64 = async (url) => {
+  const normalized = normalizeImageUrl(url);
+  if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+    return normalized;
+  }
+  const response = await fetch(normalized);
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.statusText}`);
   }
   const buffer = await response.arrayBuffer();
-  const contentType = response.headers.get('content-type') || 'image/png';
   const base64 = Buffer.from(buffer).toString('base64');
+  let contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.startsWith('image/')) {
+    contentType = base64.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+  }
   return `data:${contentType};base64,${base64}`;
 };
+
+const resolveLocalAssetToBase64 = normalizeImageUrl;
 
 // Helper: Upload remote URL directly to Alibaba Cloud OSS
 const uploadUrlToOSS = async (imageUrl) => {
@@ -404,9 +439,10 @@ app.post('/api/ai/tryon', async (req, res) => {
     }
 
     const clothingRef = bottomIndexText ? `${clothingIndexText} and ${bottomIndexText}` : clothingIndexText;
+    const poseIndex = 1 + clothingsCount + bottomCount + modelsCount;
 
     const defaultPrompt = `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from ${modelIndexText}.
-Model (Strict): 100% exact face, hair, skin tone, and body of ${modelIndexText}. Do NOT retain any facial features from ${clothingRef}.
+Model (Strict): 100% exact face, facial features, head, hair, skin tone, and body of ${modelIndexText}. Do NOT retain any facial features or identity from ${clothingRef}${poseImageUrl ? ` or the pose reference image (图${poseIndex})` : ''}.
 Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.
 Style & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.
 Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
@@ -417,8 +453,9 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
     } else {
       textPrompt = defaultPrompt;
       if (poseImageUrl) {
-        const poseIndex = 1 + clothingsCount + bottomCount + modelsCount;
-        textPrompt += `\nPose (Strict): Strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.`;
+        textPrompt += `\nPose Reference (Strict): Strictly copy the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}) onto the target model.
+CRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, retain, transfer, or blend any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and head of the generated model MUST be 100% strictly copied from ${modelIndexText}.
+HANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`;
       }
       if (backgroundImageUrl) {
         const bgIndex = 1 + clothingsCount + bottomCount + modelsCount + poseCount;

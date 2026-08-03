@@ -1994,17 +1994,30 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         if (outfitEditPrompt.trim()) modificationInfo = ` Please apply the following modification request: ${outfitEditPrompt.trim()}.`;
 
         const modelIndex = 2 + (bottomClothing ? 1 : 0);
+        const poseIndex = modelIndex + 1;
         const clothingRef = bottomClothing ? '图1 and 图2' : '图1';
         const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+        const posePromptText = outfitPoseImageUrl
+          ? `\nPose Reference (Strict): Strictly follow and mirror the pose, posture, gesture, body angle, and camera framing of the model in the pose reference image (图${poseIndex}).\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
+          : '';
         const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
-        const customPromptText = `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}
-Model (Strict): 100% exact face, hair, skin tone, and body of 图${modelIndex}.
-Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.
+        const isPoseOnlyRegen = outfitPoseImageUrl && !outfitEditPrompt.trim();
+        const taskPromptText = isPoseOnlyRegen
+          ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while changing only the pose to match the pose reference image (图${poseIndex}).${posePromptText}`
+          : `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}${posePromptText}`;
+
+        const outfitStrictPrompt = isPoseOnlyRegen
+          ? `Outfit (Strict): 100% exact, identical clothing, fabric, color, texture, and fit from 图${modelIndex} (and ${clothingRef}). Keep the outfit completely unchanged and identical to 图${modelIndex}.`
+          : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.`;
+
+        const customPromptText = `${taskPromptText}
+Model (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}${outfitPoseImageUrl ? ` or the pose reference image (图${poseIndex})` : ''}.
+${outfitStrictPrompt}
 Style & Setting: ${styleDetails}
 Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
 
-        // Use already generated outfit image if in edit mode
+        // Use already generated outfit image if in edit mode (URL from Sandbase)
         const baseModelUrl = (isEditMode && targetIndex !== -1) 
           ? (modelOutfitImgUrls[targetIndex] || modelOutfitImgUrl || swapModelUrl) 
           : swapModelUrl;
@@ -2068,24 +2081,37 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
             : [refUrl];
 
           const modelIndex = 1 + clothingUrls.length;
+          const poseIndex = modelIndex + 1;
           const clothingRef = clothingUrls.length > 1 ? '图1 and 图2' : '图1';
           const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+          const posePromptText = outfitPoseImageUrl
+            ? `\nPose Reference (Strict): Strictly follow and mirror the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}).\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
+            : '';
           const flatlayDetail = hasFlatlays ? `\nNote: ${flatlayDetailPrompt}` : '';
           const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
-          const customPromptText = `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}
-Model (Strict): 100% exact face, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}.
-Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}
+          const isPoseOnlyRegen = outfitPoseImageUrl && !outfitEditPrompt.trim();
+          const taskPromptText = isPoseOnlyRegen
+            ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while changing only the pose to match the pose reference image (图${poseIndex}).${posePromptText}`
+            : `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}${posePromptText}`;
+
+          const outfitStrictPrompt = isPoseOnlyRegen
+            ? `Outfit (Strict): 100% exact, identical clothing, fabric, color, texture, and fit from 图${modelIndex} (and ${clothingRef}). Keep the outfit completely unchanged and identical to 图${modelIndex}.${flatlayDetail}`
+            : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}`;
+
+          const customPromptText = `${taskPromptText}
+Model (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}${outfitPoseImageUrl ? ` or the pose reference image (图${poseIndex})` : ''}.
+${outfitStrictPrompt}
 Style & Setting: ${styleDetails}
 Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
 
-          const currentGeneratedUrl = modelOutfitImgUrls[targetIndex] || swapModelUrl;
+          const currentGeneratedUrl = (isEditMode && targetIndex !== -1) ? (modelOutfitImgUrls[targetIndex] || modelOutfitImgUrl || swapModelUrl) : swapModelUrl;
 
           let generatedUrl = '';
           if (gatewayUrl && gatewayToken) {
             generatedUrl = await generateTryOnImage({
               clothingUrl: clothingUrls,
-              modelUrl: currentGeneratedUrl, // Use the generated dressed model image
+              modelUrl: currentGeneratedUrl, // Use clean modelUrl when pose reference is present
               gender: modelGender,
               region: modelRegion,
               scene: 'studio',
@@ -2112,14 +2138,27 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
               : [refUrl];
 
             const modelIndex = 1 + clothingUrls.length;
+            const poseIndex = modelIndex + 1;
             const clothingRef = clothingUrls.length > 1 ? '图1 and 图2' : '图1';
             const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+            const posePromptText = outfitPoseImageUrl
+              ? `\nPose Reference (Strict): Strictly follow and mirror the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}).\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
+              : '';
             const flatlayDetail = hasFlatlays ? `\nNote: ${flatlayDetailPrompt}` : '';
             const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
-            const customPromptText = `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}
-Model (Strict): 100% exact face, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}.
-Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}
+            const isPoseOnlyRegen = outfitPoseImageUrl && !outfitEditPrompt.trim();
+            const taskPromptText = isPoseOnlyRegen
+              ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while changing only the pose to match the pose reference image (图${poseIndex}).${posePromptText}`
+              : `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}${posePromptText}`;
+
+            const outfitStrictPrompt = isPoseOnlyRegen
+              ? `Outfit (Strict): 100% exact, identical clothing, fabric, color, texture, and fit from 图${modelIndex} (and ${clothingRef}). Keep the outfit completely unchanged and identical to 图${modelIndex}.${flatlayDetail}`
+              : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}`;
+
+            const customPromptText = `${taskPromptText}
+Model (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}${outfitPoseImageUrl ? ` or the pose reference image (图${poseIndex})` : ''}.
+${outfitStrictPrompt}
 Style & Setting: ${styleDetails}
 Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
 
@@ -3271,9 +3310,14 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
             // Fetch video Blob and convert to local URL
             const videoBlob = await getVideoContent(gatewayVideoUrl, gatewayVideoToken, taskId);
             const localVideoUrl = URL.createObjectURL(videoBlob);
-            setProjectStoryboards(currentProjId, prev =>
-              prev.map(s => s.id === sbId ? { ...s, videoSrc: localVideoUrl, videoBlob: videoBlob, isGeneratingVideo: false, progress: 100 } : s)
-            );
+            setProjectStoryboards(currentProjId, prev => {
+              const next = prev.map(s => s.id === sbId ? { ...s, videoSrc: localVideoUrl, videoBlob: videoBlob, videoTaskId: taskId, isGeneratingVideo: false, progress: 100 } : s);
+              const targetProj = projects.find(p => p.id === currentProjId);
+              if (targetProj) {
+                syncProjectToSupabase({ ...targetProj, storyboards: next });
+              }
+              return next;
+            });
             
             // If the preview is currently showing this video, update the preview state
             setPreviewVideo(prev => prev && prev.id === sbId ? { ...prev, src: localVideoUrl } : prev);
@@ -3328,18 +3372,18 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
       const videoBlob = await getVideoContent(gatewayVideoUrl, gatewayVideoToken, taskId);
       const localVideoUrl = URL.createObjectURL(videoBlob);
 
-      // Save to projects
+      // Save to projects & sync Supabase
       setProjects(prev => prev.map(p => {
         if (p.id !== currentProjId) return p;
-        return {
-          ...p,
-          storyboards: p.storyboards.map(s => s.id === sbId ? {
-            ...s,
-            videoSrc: localVideoUrl,
-            videoBlob: videoBlob,
-            videoTaskId: taskId
-          } : s)
-        };
+        const nextSbs = p.storyboards.map(s => s.id === sbId ? {
+          ...s,
+          videoSrc: localVideoUrl,
+          videoBlob: videoBlob,
+          videoTaskId: taskId
+        } : s);
+        const updatedProj = { ...p, storyboards: nextSbs };
+        syncProjectToSupabase(updatedProj);
+        return updatedProj;
       }));
 
       // Sync active UI state
@@ -3368,17 +3412,17 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
       if (!file) return;
       const localVideoUrl = URL.createObjectURL(file);
 
-      // Save to projects
+      // Save to projects & sync Supabase
       setProjects(prev => prev.map(p => {
         if (p.id !== currentProjId) return p;
-        return {
-          ...p,
-          storyboards: p.storyboards.map(s => s.id === sbId ? {
-            ...s,
-            videoSrc: localVideoUrl,
-            videoBlob: file
-          } : s)
-        };
+        const nextSbs = p.storyboards.map(s => s.id === sbId ? {
+          ...s,
+          videoSrc: localVideoUrl,
+          videoBlob: file
+        } : s);
+        const updatedProj = { ...p, storyboards: nextSbs };
+        syncProjectToSupabase(updatedProj);
+        return updatedProj;
       }));
 
       // Sync active UI state
@@ -7942,36 +7986,65 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
               height: '350px',
               position: 'relative'
             }}>
-              {previewVideo.src ? (
-                <video
-                  src={previewVideo.src}
-                  controls
-                  autoPlay
-                  loop
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    display: 'block'
-                  }}
-                />
-              ) : (
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '16px',
-                  textAlign: 'center',
-                  color: 'var(--text-muted)',
-                  fontSize: '12px',
-                  gap: '8px'
-                }}>
-                  <span style={{ fontSize: '32px' }}>📽️</span>
-                  <span>暂无视频</span>
-                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>请点击下方按钮上传视频，或重新生成</span>
-                </div>
-              )}
+              {(() => {
+                const targetSb = storyboards.find(s => s.id === previewVideo.id);
+                if (targetSb?.isGeneratingVideo) {
+                  return (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '16px',
+                      textAlign: 'center',
+                      color: 'var(--accent-cyan)',
+                      fontSize: '12px',
+                      gap: '12px',
+                      height: '100%',
+                      width: '100%',
+                      background: 'rgba(0,0,0,0.85)'
+                    }}>
+                      <div style={{ border: '3px solid rgba(255,255,255,0.2)', borderTop: '3px solid var(--accent-cyan)', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite' }} />
+                      <span style={{ fontWeight: 'bold' }}>视频生成中... {targetSb.progress}%</span>
+                      <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)' }}>请稍候，生成的视频将自动替换并播放</span>
+                    </div>
+                  );
+                }
+                if (previewVideo.src) {
+                  return (
+                    <video
+                      key={previewVideo.src}
+                      src={previewVideo.src}
+                      controls
+                      autoPlay
+                      loop
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block'
+                      }}
+                    />
+                  );
+                }
+                return (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '16px',
+                    textAlign: 'center',
+                    color: 'var(--text-muted)',
+                    fontSize: '12px',
+                    gap: '8px'
+                  }}>
+                    <span style={{ fontSize: '32px' }}>📽️</span>
+                    <span>暂无视频</span>
+                    <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>请点击下方按钮上传视频，或重新生成</span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Modal Actions */}
@@ -8019,13 +8092,15 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
                     return (
                       <button
                         className="btn-secondary"
+                        disabled={targetStoryboard?.isGeneratingVideo}
                         onClick={() => {
                           handleRedownloadVideo(previewVideo.id, targetStoryboard.videoTaskId!);
                         }}
                         style={{
                           padding: '8px 16px',
                           fontSize: '12px',
-                          cursor: 'pointer',
+                          cursor: targetStoryboard?.isGeneratingVideo ? 'not-allowed' : 'pointer',
+                          opacity: targetStoryboard?.isGeneratingVideo ? 0.6 : 1,
                           border: '1px solid var(--accent-cyan)',
                           borderRadius: '4px',
                           color: 'var(--accent-cyan)',
@@ -8041,29 +8116,36 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
                     );
                   })()}
 
-                  <button
-                    className="ai-btn"
-                    onClick={async () => {
-                      const sbId = previewVideo.id;
-                      setPreviewVideo(null);
-                      await handleRegenerateStoryboardVideo(sbId);
-                    }}
-                    style={{
-                      padding: '8px 16px',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      background: 'linear-gradient(135deg, var(--accent-purple), var(--accent-pink))',
-                      border: 'none',
-                      borderRadius: '4px',
-                      color: '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      height: '32px'
-                    }}
-                  >
-                    🔄 重新生成此分镜视频
-                  </button>
+                  {(() => {
+                    const targetStoryboard = storyboards.find(s => s.id === previewVideo.id);
+                    const isGenerating = !!targetStoryboard?.isGeneratingVideo;
+                    return (
+                      <button
+                        className="ai-btn"
+                        disabled={isGenerating}
+                        onClick={async () => {
+                          const sbId = previewVideo.id;
+                          await handleRegenerateStoryboardVideo(sbId);
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          fontSize: '12px',
+                          cursor: isGenerating ? 'not-allowed' : 'pointer',
+                          opacity: isGenerating ? 0.6 : 1,
+                          background: 'linear-gradient(135deg, var(--accent-purple), var(--accent-pink))',
+                          border: 'none',
+                          borderRadius: '4px',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          height: '32px'
+                        }}
+                      >
+                        {isGenerating ? '⏳ 视频生成中...' : '🔄 重新生成此分镜视频'}
+                      </button>
+                    );
+                  })()}
                 </>
               )}
               <button
