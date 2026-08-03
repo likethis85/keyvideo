@@ -1,8 +1,13 @@
-name: 'publish'
+name: 'Publish Tauri Desktop Apps'
+
 on:
   push:
     branches:
       - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   publish-tauri:
@@ -26,7 +31,7 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: 20
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -48,3 +53,4 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
