@@ -206,6 +206,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
   const [outfitGenInterrupted, setOutfitGenInterrupted] = useState(false);
   const [outfitEditPrompt, setOutfitEditPrompt] = useState('');
   const [outfitPoseImageUrl, setOutfitPoseImageUrl] = useState<string | null>(null);
+  const [usePoseCameraFraming, setUsePoseCameraFraming] = useState<boolean>(true);
   const [modelEditPrompt, setModelEditPrompt] = useState('');
   const [sceneEditPrompt, setSceneEditPrompt] = useState('');
   const [localModelSwapRunning, setLocalModelSwapRunning] = useState(false);
@@ -1997,19 +1998,25 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
         const poseIndex = modelIndex + 1;
         const clothingRef = bottomClothing ? '图1 and 图2' : '图1';
         const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+        const cameraFramingRule = usePoseCameraFraming
+          ? `CAMERA FRAMING & SHOT DISTANCE (CRITICAL STRICT): Strictly follow and mirror the pose, posture, gesture, camera framing, shot distance, crop level, zoom, and composition of the model in the pose reference image (图${poseIndex}). For example, if 图${poseIndex} is a close-up (特写), headshot/bust shot, half-body / medium shot (半身), 3/4 shot, or full-body (全身), the generated image MUST strictly adopt the exact same shot framing and crop level as 图${poseIndex}. Do NOT force outpainting or full-body framing if 图${poseIndex} is a close-up or half-body shot.`
+          : `CAMERA FRAMING & SHOT DISTANCE: Only extract and transfer the body pose, posture, gesture, and body angle of the model in the pose reference image (图${poseIndex}). Do NOT copy or follow the camera framing, zoom level, crop, or background layout of 图${poseIndex}. Keep the camera framing and composition consistent with 图${modelIndex}.`;
+
         const posePromptText = outfitPoseImageUrl
-          ? `\nPose Reference (Strict): Strictly follow and mirror the pose, posture, gesture, body angle, and camera framing of the model in the pose reference image (图${poseIndex}).\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
+          ? `\nPose Reference (Strict): ${cameraFramingRule}\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
           : '';
         const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
         const isPoseOnlyRegen = outfitPoseImageUrl && !outfitEditPrompt.trim();
         const taskPromptText = isPoseOnlyRegen
-          ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while changing only the pose to match the pose reference image (图${poseIndex}).${posePromptText}`
+          ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while strictly matching ${usePoseCameraFraming ? 'both the pose and exact camera framing / shot distance (close-up/half-body/full-body)' : 'only the pose'} of the pose reference image (图${poseIndex}).${posePromptText}`
           : `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}${posePromptText}`;
 
         const outfitStrictPrompt = isPoseOnlyRegen
           ? `Outfit (Strict): 100% exact, identical clothing, fabric, color, texture, and fit from 图${modelIndex} (and ${clothingRef}). Keep the outfit completely unchanged and identical to 图${modelIndex}.`
-          : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.`;
+          : (usePoseCameraFraming && outfitPoseImageUrl)
+            ? `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Match the exact shot crop level of 图${poseIndex}.`
+            : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.`;
 
         const customPromptText = `${taskPromptText}
 Model (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}${outfitPoseImageUrl ? ` or the pose reference image (图${poseIndex})` : ''}.
@@ -2084,20 +2091,26 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
           const poseIndex = modelIndex + 1;
           const clothingRef = clothingUrls.length > 1 ? '图1 and 图2' : '图1';
           const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+          const cameraFramingRule = usePoseCameraFraming
+            ? `CAMERA FRAMING & SHOT DISTANCE (CRITICAL STRICT): Strictly follow and mirror the pose, posture, gesture, camera framing, shot distance, crop level, zoom, and composition of the model in the pose reference image (图${poseIndex}). For example, if 图${poseIndex} is a close-up (特写), headshot/bust shot, half-body / medium shot (半身), 3/4 shot, or full-body (全身), the generated image MUST strictly adopt the exact same shot framing and crop level as 图${poseIndex}. Do NOT force outpainting or full-body framing if 图${poseIndex} is a close-up or half-body shot.`
+            : `CAMERA FRAMING & SHOT DISTANCE: Only extract and transfer the body pose, posture, gesture, and body angle of the model in the pose reference image (图${poseIndex}). Do NOT copy or follow the camera framing, zoom level, crop, or background layout of 图${poseIndex}. Keep the camera framing and composition consistent with 图${modelIndex}.`;
+
           const posePromptText = outfitPoseImageUrl
-            ? `\nPose Reference (Strict): Strictly follow and mirror the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}).\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
+            ? `\nPose Reference (Strict): ${cameraFramingRule}\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
             : '';
           const flatlayDetail = hasFlatlays ? `\nNote: ${flatlayDetailPrompt}` : '';
           const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
           const isPoseOnlyRegen = outfitPoseImageUrl && !outfitEditPrompt.trim();
           const taskPromptText = isPoseOnlyRegen
-            ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while changing only the pose to match the pose reference image (图${poseIndex}).${posePromptText}`
+            ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while strictly matching ${usePoseCameraFraming ? 'both the pose and exact camera framing / shot distance (close-up/half-body/full-body)' : 'only the pose'} of the pose reference image (图${poseIndex}).${posePromptText}`
             : `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}${posePromptText}`;
 
           const outfitStrictPrompt = isPoseOnlyRegen
             ? `Outfit (Strict): 100% exact, identical clothing, fabric, color, texture, and fit from 图${modelIndex} (and ${clothingRef}). Keep the outfit completely unchanged and identical to 图${modelIndex}.${flatlayDetail}`
-            : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}`;
+            : (usePoseCameraFraming && outfitPoseImageUrl)
+              ? `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Match the exact shot crop level of 图${poseIndex}.${flatlayDetail}`
+              : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}`;
 
           const customPromptText = `${taskPromptText}
 Model (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}${outfitPoseImageUrl ? ` or the pose reference image (图${poseIndex})` : ''}.
@@ -2141,20 +2154,26 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
             const poseIndex = modelIndex + 1;
             const clothingRef = clothingUrls.length > 1 ? '图1 and 图2' : '图1';
             const modificationText = modificationInfo.trim() ? `\nModification: Apply this request: ${modificationInfo.trim()}` : '';
+            const cameraFramingRule = usePoseCameraFraming
+              ? `CAMERA FRAMING & SHOT DISTANCE (CRITICAL STRICT): Strictly follow and mirror the pose, posture, gesture, camera framing, shot distance, crop level, zoom, and composition of the model in the pose reference image (图${poseIndex}). For example, if 图${poseIndex} is a close-up (特写), headshot/bust shot, half-body / medium shot (半身), 3/4 shot, or full-body (全身), the generated image MUST strictly adopt the exact same shot framing and crop level as 图${poseIndex}. Do NOT force outpainting or full-body framing if 图${poseIndex} is a close-up or half-body shot.`
+              : `CAMERA FRAMING & SHOT DISTANCE: Only extract and transfer the body pose, posture, gesture, and body angle of the model in the pose reference image (图${poseIndex}). Do NOT copy or follow the camera framing, zoom level, crop, or background layout of 图${poseIndex}. Keep the camera framing and composition consistent with 图${modelIndex}.`;
+
             const posePromptText = outfitPoseImageUrl
-              ? `\nPose Reference (Strict): Strictly follow and mirror the pose, posture, gesture, camera angle, and composition of the model in the pose reference image (图${poseIndex}).\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
+              ? `\nPose Reference (Strict): ${cameraFramingRule}\nCRITICAL MODEL FACE RULE: Only extract the body pose from 图${poseIndex}. Strictly do NOT copy, transfer, or retain any face, head, hair, facial features, or identity from the pose reference model in 图${poseIndex}. The face and facial identity of the generated model MUST be 100% strictly copied from 图${modelIndex}.\nHANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or accessory, dynamically adapt its placement according to the new pose in 图${poseIndex}. If holding a bag is unnatural or incompatible with the new posture in 图${poseIndex}, automatically omit the bag completely from the image.`
               : '';
             const flatlayDetail = hasFlatlays ? `\nNote: ${flatlayDetailPrompt}` : '';
             const styleDetails = `High-resolution, detailed skin, professional studio lighting, solid light grey/white background.${stylingInfo}`;
 
             const isPoseOnlyRegen = outfitPoseImageUrl && !outfitEditPrompt.trim();
             const taskPromptText = isPoseOnlyRegen
-              ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while changing only the pose to match the pose reference image (图${poseIndex}).${posePromptText}`
+              ? `Task: Generate a premium fashion catalog photo by retaining the exact model and exact outfit from 图${modelIndex}, while strictly matching ${usePoseCameraFraming ? 'both the pose and exact camera framing / shot distance (close-up/half-body/full-body)' : 'only the pose'} of the pose reference image (图${poseIndex}).${posePromptText}`
               : `Task: Generate a premium fashion catalog photo by transferring the exact outfit from ${clothingRef} onto the model from 图${modelIndex}.${modificationText}${posePromptText}`;
 
             const outfitStrictPrompt = isPoseOnlyRegen
               ? `Outfit (Strict): 100% exact, identical clothing, fabric, color, texture, and fit from 图${modelIndex} (and ${clothingRef}). Keep the outfit completely unchanged and identical to 图${modelIndex}.${flatlayDetail}`
-              : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}`;
+              : (usePoseCameraFraming && outfitPoseImageUrl)
+                ? `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Match the exact shot crop level of 图${poseIndex}.${flatlayDetail}`
+                : `Outfit (Strict): Identical clothing from ${clothingRef} (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.${flatlayDetail}`;
 
             const customPromptText = `${taskPromptText}
 Model (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图${modelIndex}. Do NOT retain any facial features from ${clothingRef}${outfitPoseImageUrl ? ` or the pose reference image (图${poseIndex})` : ''}.
@@ -2191,6 +2210,21 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
       }
     }
 
+    // Preload newly generated images into browser cache before ending loading state
+    if (generatedUrls.length > 0) {
+      await Promise.all(
+        generatedUrls.map(url => {
+          if (!url) return Promise.resolve();
+          return new Promise(resolve => {
+            const img = new Image();
+            img.onload = resolve;
+            img.onerror = resolve;
+            img.src = url;
+          });
+        })
+      );
+    }
+
     setProjects(prev => prev.map(p => p.id === currentProjId ? {
       ...p,
       modelOutfitImgUrls: generatedUrls,
@@ -2204,8 +2238,10 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
       setPreviewModel(prev => prev && prev.storyboardId === undefined ? { ...prev, src: generatedUrls[displayIndex] || '' } : prev);
     }
     
-    alert(isEditMode ? '修改生成成功！' : `模特服装穿搭参考图生成成功！已为您渲染生成 ${generatedUrls.length} 套对应效果图。`);
     setProjectIsOutfitImgGenerating(currentProjId, false);
+    setTimeout(() => {
+      alert(isEditMode ? '修改生成成功！' : `模特服装穿搭参考图生成成功！已为您渲染生成 ${generatedUrls.length} 套对应效果图。`);
+    }, 50);
   };
 
   const handleGeneratePromptsFromSkill = async () => {
@@ -7119,20 +7155,16 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
                     maxHeight: '50vh',
                     objectFit: 'contain',
                     display: 'block',
-                    opacity: (previewModel.storyboardId && isRegeneratingShotId === previewModel.storyboardId) || (previewModel.src === modelOutfitImgUrl && isOutfitImgGenerating) ? 0.3 : 1,
+                    opacity: ((previewModel.storyboardId && isRegeneratingShotId === previewModel.storyboardId) || (previewModel.storyboardId === undefined && isOutfitImgGenerating)) ? 0.3 : 1,
                     transition: 'opacity 0.2s'
                   }}
                 />
-                {previewModel.storyboardId && isRegeneratingShotId === previewModel.storyboardId && (
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
-                    <div style={{ border: '3px solid rgba(255,255,255,0.1)', borderTop: '3px solid var(--accent-purple)', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite' }} />
-                    <span style={{ fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 'bold' }}>正在努力重新生成，请稍候...</span>
-                  </div>
-                )}
-                {previewModel.src === modelOutfitImgUrl && isOutfitImgGenerating && (
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(0,0,0,0.4)', zIndex: 10 }}>
-                    <div style={{ border: '3px solid rgba(255,255,255,0.1)', borderTop: '3px solid var(--accent-purple)', borderRadius: '50%', width: '32px', height: '32px', animation: 'spin 1s linear infinite' }} />
-                    <span style={{ fontSize: '11px', color: 'var(--accent-purple)', fontWeight: 'bold' }}>正在努力重新生成，请稍候...</span>
+                {((previewModel.storyboardId && isRegeneratingShotId === previewModel.storyboardId) || (previewModel.storyboardId === undefined && isOutfitImgGenerating)) && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', background: 'rgba(0,0,0,0.5)', zIndex: 10, backdropFilter: 'blur(2px)' }}>
+                    <div style={{ border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid var(--accent-purple)', borderRadius: '50%', width: '36px', height: '36px', animation: 'spin 1s linear infinite' }} />
+                    <span style={{ fontSize: '12px', color: '#ffffff', fontWeight: 'bold', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+                      正在努力重新生成穿搭图，请稍候...
+                    </span>
                   </div>
                 )}
               </div>
@@ -7400,6 +7432,35 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
                           )}
                         </div>
                       </div>
+                      {outfitPoseImageUrl && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', margin: '2px 0' }}>
+                          <label
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              fontSize: '11px',
+                              color: 'rgba(255, 255, 255, 0.85)',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              transition: 'all 0.2s'
+                            }}
+                            title="勾选后，生成时将同时参考姿势图的镜头画面、构图视角与景别；取消勾选则仅参考动作姿势"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={usePoseCameraFraming}
+                              onChange={(e) => setUsePoseCameraFraming(e.target.checked)}
+                              style={{ accentColor: 'var(--accent-purple)', cursor: 'pointer' }}
+                            />
+                            🎥 同时参考姿势图的镜头画面与景别构图
+                          </label>
+                        </div>
+                      )}
                       {/* Action buttons row */}
                       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                         <button
