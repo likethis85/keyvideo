@@ -170,7 +170,7 @@ export const Timeline: React.FC<TimelineProps> = ({
     };
   }, [resizing]);
 
-  // Global useEffect for dragging/translating block
+  // Global useEffect for dragging/translating block and swapping video clip order
   React.useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (draggingBlock) {
@@ -184,32 +184,8 @@ export const Timeline: React.FC<TimelineProps> = ({
           if (!draggedLayer) return prev;
 
           let newStart = draggingBlock.initialStart + deltaTime;
-          let newEnd = draggingBlock.initialEnd + deltaTime;
-
-          if (draggedLayer.type === 'text' || draggedLayer.type === 'media') {
-            const siblings = prev.filter(l => l.id !== draggedLayer.id && l.type === draggedLayer.type && l.visible);
-            
-            const siblingsBefore = siblings.filter(l => l.end <= draggingBlock.initialStart);
-            const maxBeforeEnd = siblingsBefore.length > 0 
-              ? Math.max(...siblingsBefore.map(l => l.end)) 
-              : 0;
-
-            const siblingsAfter = siblings.filter(l => l.start >= draggingBlock.initialEnd);
-            const minAfterStart = siblingsAfter.length > 0 
-              ? Math.min(...siblingsAfter.map(l => l.start)) 
-              : totalDuration;
-
-            newStart = Math.max(maxBeforeEnd, Math.min(minAfterStart - duration, newStart));
-            newEnd = newStart + duration;
-          } else {
-            if (newStart < 0) {
-              newStart = 0;
-              newEnd = duration;
-            } else if (newEnd > totalDuration) {
-              newEnd = totalDuration;
-              newStart = totalDuration - duration;
-            }
-          }
+          newStart = Math.max(0, Math.min(totalDuration - duration, newStart));
+          let newEnd = newStart + duration;
 
           return prev.map(layer => {
             if (layer.id === draggingBlock.layerId) {
@@ -227,6 +203,53 @@ export const Timeline: React.FC<TimelineProps> = ({
 
     const handleMouseUp = () => {
       if (draggingBlock) {
+        // When mouse is released, automatically re-sort and pack video clips seamlessly (excluding LOGO & overlays)
+        setLayers(prev => {
+          const draggedLayer = prev.find(l => l.id === draggingBlock.layerId);
+          if (!draggedLayer) return prev;
+
+          // Helper to identify main video storyboards (excluding LOGO & static overlay images)
+          const isVideoClip = (l: Layer) => {
+            if (l.type !== 'media') return false;
+            if (l.id.includes('logo') || l.name.includes('LOGO') || l.name.includes('Logo') || l.name.includes('贴纸')) {
+              return false;
+            }
+            return true;
+          };
+
+          // If the dragged item is a LOGO or overlay, do not auto-pack main video clips
+          if (!isVideoClip(draggedLayer)) {
+            return prev;
+          }
+
+          const videoLayers = prev.filter(l => l.visible && isVideoClip(l));
+          if (videoLayers.length <= 1) return prev;
+
+          // Sort only main video layers by their updated start position
+          const sortedVideo = [...videoLayers].sort((a, b) => a.start - b.start);
+
+          // Re-pack main video layers back-to-back without gaps
+          let cursor = 0;
+          const packedMap = new Map<string, { start: number; end: number }>();
+          sortedVideo.forEach(layer => {
+            const dur = layer.end - layer.start;
+            const s = cursor;
+            const e = cursor + dur;
+            packedMap.set(layer.id, {
+              start: Math.round(s * 10) / 10,
+              end: Math.round(e * 10) / 10
+            });
+            cursor = e;
+          });
+
+          return prev.map(layer => {
+            if (packedMap.has(layer.id)) {
+              const packed = packedMap.get(layer.id)!;
+              return { ...layer, start: packed.start, end: packed.end };
+            }
+            return layer;
+          });
+        });
         setDraggingBlock(null);
       }
     };
@@ -240,7 +263,7 @@ export const Timeline: React.FC<TimelineProps> = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingBlock]);
+  }, [draggingBlock, totalDuration]);
 
   const handleResizeStart = (e: React.MouseEvent, layerId: string, edge: 'left' | 'right', currentStart: number, currentEnd: number) => {
     e.stopPropagation();
@@ -314,11 +337,13 @@ export const Timeline: React.FC<TimelineProps> = ({
                 left: `${left}%`,
                 width: `${width}%`,
                 top: `${top}px`,
-                height: `${rowHeight - 6}px`, // 32px height for block
+                height: `${rowHeight - 6}px`,
                 position: 'absolute',
                 paddingLeft: isActive ? '12px' : '10px',
-                paddingRight: isActive ? '12px' : '10px'
+                paddingRight: isActive ? '12px' : '10px',
+                cursor: draggingBlock?.layerId === layer.id ? 'grabbing' : 'grab'
               }}
+              title="↔️ 按住鼠标左右拖拽可调换视频分镜次序"
               onMouseDown={(e) => handleBlockMouseDown(e, layer)}
             >
               {/* Left resize handle - Render only when active */}

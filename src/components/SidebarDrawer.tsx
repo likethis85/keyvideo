@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import type { Layer } from './VideoCanvas';
-import { generateMannequinImage, generateTryOnImage, generateVideoTask, pollVideoTask, getVideoContent, generateOutfitSuggestion, generatePromptsFromSkill, generateBackgroundImage } from '../utils/aiGateway';
+import { generateMannequinImage, generateTryOnImage, generateVideoTask, pollVideoTask, getVideoContent, generateOutfitSuggestion, generatePromptsFromSkill, generateBackgroundImage, getRecentTasks } from '../utils/aiGateway';
 import { localDB } from '../utils/db';
 import { supabase } from '../utils/supabaseClient';
 import { uploadAudioToOSS, uploadFileToOSS, deleteFileFromOSS } from '../utils/ossClient';
@@ -2903,6 +2903,68 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
       }
       executeGenerateStoryboards(autoFocus);
     }
+  };
+
+  const [isFetchingRecent, setIsFetchingRecent] = useState(false);
+
+  const handleFetchRecentTasks = async () => {
+    const currentProjId = activeProjectId;
+    if (!currentProjId) return;
+
+    try {
+      setIsFetchingRecent(true);
+      const recentTasks = await getRecentTasks();
+      const completedTasks = recentTasks.filter(t => t.status === 'completed' && t.resultUrl);
+
+      if (completedTasks.length === 0) {
+        alert('ℹ️ 服务器后台未查找到已完成的生成记录，若任务刚提交请稍等片刻再点击。');
+        return;
+      }
+
+      setProjectStoryboards(currentProjId, prev => {
+        if (prev.length === 0) {
+          return completedTasks.slice(0, 5).map((t, idx) => ({
+            id: `storyboard_recovered_${t.taskId || idx}`,
+            name: `分镜 ${idx + 1} (恢复生成)`,
+            shotType: `shot-${idx + 1}` as any,
+            imageSrc: t.resultUrl!,
+            videoSrc: null,
+            isGeneratingVideo: false,
+            progress: 0,
+            isGeneratingImage: false
+          }));
+        }
+        return prev.map((sb, idx) => {
+          const matched = completedTasks[idx] || completedTasks[0];
+          return {
+            ...sb,
+            imageSrc: matched.resultUrl || sb.imageSrc,
+            isGeneratingImage: false
+          };
+        });
+      });
+
+      setProjectIsStoryboardGenerating(currentProjId, false);
+      alert(`🎉 已成功从服务器后台拉取并接收生成好的图片！`);
+    } catch (err: any) {
+      alert(`拉取后台结果失败: ${err.message}`);
+    } finally {
+      setIsFetchingRecent(false);
+    }
+  };
+
+  const [draggedStoryboardIndex, setDraggedStoryboardIndex] = useState<number | null>(null);
+
+  const handleReorderStoryboards = (fromIndex: number, toIndex: number) => {
+    const currentProjId = activeProjectId;
+    if (!currentProjId || fromIndex === toIndex) return;
+
+    setProjectStoryboards(currentProjId, prev => {
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+      return updated;
+    });
   };
 
   const handleGenerateI2V = async () => {
@@ -5902,37 +5964,77 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, si
 
               {/* Step 1: Generate Storyboards */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '10px' }}>
-                <button
-                  className="ai-btn"
-                  onClick={handleGenerateStoryboards}
-                  style={{
-                    background: isStoryboardGenerating
-                      ? 'linear-gradient(135deg, #ff5252, #ff7b7b)'
-                      : 'rgba(255,255,255,0.04)',
-                    borderColor: isStoryboardGenerating
-                      ? 'rgba(255, 82, 82, 0.6)'
-                      : (i2vStep !== 'idle' ? 'var(--accent-purple)' : 'var(--border-color)'),
-                    color: '#fff',
-                    justifyContent: 'center',
-                    boxShadow: isStoryboardGenerating ? '0 0 12px rgba(255, 82, 82, 0.4)' : 'none'
-                  }}
-                >
-                  {isStoryboardGenerating ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span>🛑</span>
-                      <span>停止生成 (点击中断)</span>
-                    </div>
-                  ) : (
-                    <>
-                      <span style={{ marginRight: '4px' }}>1️⃣</span> 一键生成模特场景分镜图
-                    </>
-                  )}
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="ai-btn"
+                    onClick={handleGenerateStoryboards}
+                    style={{
+                      flex: 1,
+                      background: isStoryboardGenerating
+                        ? 'linear-gradient(135deg, #ff5252, #ff7b7b)'
+                        : 'rgba(255,255,255,0.04)',
+                      borderColor: isStoryboardGenerating
+                        ? 'rgba(255, 82, 82, 0.6)'
+                        : (i2vStep !== 'idle' ? 'var(--accent-purple)' : 'var(--border-color)'),
+                      color: '#fff',
+                      justifyContent: 'center',
+                      boxShadow: isStoryboardGenerating ? '0 0 12px rgba(255, 82, 82, 0.4)' : 'none'
+                    }}
+                  >
+                    {isStoryboardGenerating ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🛑</span>
+                        <span>停止生成 (点击中断)</span>
+                      </div>
+                    ) : (
+                      <>
+                        <span style={{ marginRight: '4px' }}>1️⃣</span> 一键生成模特场景分镜图
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    className="ai-btn"
+                    onClick={handleFetchRecentTasks}
+                    disabled={isFetchingRecent}
+                    title="若上次生成网络中断或超时，点击直接从服务器拉取最新生成的图片"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      borderColor: 'rgba(255, 255, 255, 0.15)',
+                      color: '#64B5F6',
+                      fontSize: '11px',
+                      padding: '0 10px',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {isFetchingRecent ? '拉取中...' : '📥 补发/恢复结果'}
+                  </button>
+                </div>
 
                 {storyboards.length > 0 && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                    {storyboards.map((sb) => (
-                      <div key={sb.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                    {storyboards.map((sb, idx) => (
+                      <div
+                        key={sb.id}
+                        draggable={true}
+                        onDragStart={() => setDraggedStoryboardIndex(idx)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => {
+                          if (draggedStoryboardIndex !== null) {
+                            handleReorderStoryboards(draggedStoryboardIndex, idx);
+                          }
+                          setDraggedStoryboardIndex(null);
+                        }}
+                        title="按住鼠标可拖拽调换分镜位置次序"
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          position: 'relative',
+                          cursor: 'grab',
+                          opacity: draggedStoryboardIndex === idx ? 0.5 : 1
+                        }}
+                      >
                         <div
                           onMouseOver={(e) => {
                             const overlay = e.currentTarget.querySelector('.storyboard-hover-overlay') as HTMLElement;

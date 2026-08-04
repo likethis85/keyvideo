@@ -270,6 +270,78 @@ const pollSandbaseTask = async (taskId) => {
 };
 
 
+// --- Persistent AI Task Store Manager ---
+const TASKS_FILE = path.join(process.cwd(), 'tasks_history.json');
+let taskStore = {};
+
+try {
+  if (fs.existsSync(TASKS_FILE)) {
+    const raw = fs.readFileSync(TASKS_FILE, 'utf-8');
+    taskStore = JSON.parse(raw);
+  }
+} catch (e) {
+  console.warn('[TaskStore] Could not load tasks history:', e.message);
+  taskStore = {};
+}
+
+const saveTaskStore = () => {
+  try {
+    const keys = Object.keys(taskStore).sort((a, b) => (taskStore[b].createdAt || 0) - (taskStore[a].createdAt || 0)).slice(0, 100);
+    const trimmed = {};
+    keys.forEach(k => trimmed[k] = taskStore[k]);
+    fs.writeFileSync(TASKS_FILE, JSON.stringify(trimmed, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('[TaskStore] Failed to save tasks history:', e.message);
+  }
+};
+
+const registerTask = (taskId, meta = {}) => {
+  taskStore[taskId] = {
+    taskId,
+    status: 'pending',
+    createdAt: Date.now(),
+    ...meta
+  };
+  saveTaskStore();
+};
+
+const updateTaskStatus = (taskId, patch = {}) => {
+  if (taskStore[taskId]) {
+    taskStore[taskId] = {
+      ...taskStore[taskId],
+      ...patch,
+      updatedAt: Date.now()
+    };
+  } else {
+    taskStore[taskId] = { taskId, status: 'pending', createdAt: Date.now(), ...patch };
+  }
+  saveTaskStore();
+};
+
+// API: Query status and result of any task by taskId
+app.get('/api/ai/task/:taskId', (req, res) => {
+  const { taskId } = req.params;
+  const task = taskStore[taskId];
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+  res.json(task);
+});
+
+// API: Pull recent generated tasks history (for recovery after disconnect or cross-device)
+app.get('/api/ai/tasks/recent', (req, res) => {
+  const { userId } = req.query;
+  let list = Object.values(taskStore);
+  if (userId) {
+    list = list.filter(t => !t.userId || t.userId === userId);
+  }
+  list = list
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 50);
+  res.json({ tasks: list });
+});
+
+
 // 1. Raw Binary Upload to Aliyun OSS (drop-in replacement for Vite configureServer proxy)
 app.post('/api/upload', (req, res) => {
   const fileName = req.query.name || 'file.mp3';
@@ -477,9 +549,16 @@ HANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or acc
     };
 
     const taskId = await submitSandbaseTask(sandbasePayload);
-    const resultImageUrl = await pollSandbaseTask(taskId);
+    registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt });
 
-    res.status(200).json({ url: resultImageUrl });
+    try {
+      const resultImageUrl = await pollSandbaseTask(taskId);
+      updateTaskStatus(taskId, { status: 'completed', resultUrl: resultImageUrl });
+      res.status(200).json({ taskId, url: resultImageUrl });
+    } catch (pollErr) {
+      updateTaskStatus(taskId, { status: 'failed', error: pollErr.message });
+      throw pollErr;
+    }
   } catch (err) {
     console.error('Try-on failed:', err);
     res.status(500).json({ error: err.message || 'Try-on failed' });

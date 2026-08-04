@@ -181,3 +181,34 @@ export const getVideoContent = async (
   }
   return response.blob();
 };
+
+export const getRecentTasks = async (): Promise<Array<{
+  taskId: string;
+  status: string;
+  resultUrl?: string;
+  type?: string;
+  scene?: string;
+  createdAt?: number;
+}>> => {
+  try {
+    const response = await fetch(`${getBackendUrl()}/api/ai/tasks/recent`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.tasks || [];
+  } catch (err) {
+    console.warn('Failed to fetch recent tasks:', err);
+    return [];
+  }
+};
+
+export const getTaskStatus = async (taskId: string): Promise<{
+  taskId: string;
+  status: string;
+  resultUrl?: string;
+  error?: string;
+}> => {
+  const response = await fetch(`${getBackendUrl()}/api/ai/task/${taskId}`);
+  if (!response.ok) throw new Error('Task status fetch failed');
+  return response.json();
+};
+

@@ -1,0 +1,62 @@
+{
+  "d0229edf-4a25-47ec-8aed-7900a40e209a": {
+    "taskId": "d0229edf-4a25-47ec-8aed-7900a40e209a",
+    "status": "completed",
+    "createdAt": 1785814378370,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the middle panel (the second scene view) of the background reference image (图2). Shot details: 镜头缓慢向前推进聚焦于模特的下半身服饰，展示服装的版型 and 剪裁设计。. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the middle panel (the second scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels.",
+    "resultUrl": "https://media.sandbase.ai/files/d0229edf-4a25-47ec-8aed-7900a40e209a/0.jpg",
+    "updatedAt": 1785814443068
+  },
+  "41bea7af-6e97-4282-bab4-6922fd1751ac": {
+    "taskId": "41bea7af-6e97-4282-bab4-6922fd1751ac",
+    "status": "completed",
+    "createdAt": 1785812827013,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the middle panel (the second scene view) of the background reference image (图2). Shot details: 镜头缓慢向前推进聚焦于模特的下半身服饰，展示服装的版型 and 剪裁设计。, posing in a custom scene: WPS拼图1. Extreme close-up focusing on the collar, neckline, chest and upper body of the top garment.. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the middle panel (the second scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers.",
+    "resultUrl": "https://media.sandbase.ai/files/41bea7af-6e97-4282-bab4-6922fd1751ac/0.jpg",
+    "updatedAt": 1785812880048
+  },
+  "4ae7c45d-22ac-45b9-8ca2-19c967e22966": {
+    "taskId": "4ae7c45d-22ac-45b9-8ca2-19c967e22966",
+    "status": "completed",
+    "createdAt": 1785811987327,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the right panel (the third scene view) of the background reference image (图2). Shot details: 镜头平滑拉近对准模特的手部特写，模特手部微调姿态展示材质的质地细节。, posing in a custom scene: WPS拼图1. Close-up of the fabric texture, stitching, seams, or sleeve cuffs of the top outerwear.. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the right panel (the third scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers.",
+    "resultUrl": "https://media.sandbase.ai/files/4ae7c45d-22ac-45b9-8ca2-19c967e22966/0.jpg",
+    "updatedAt": 1785812137004
+  },
+  "290a0540-52d5-4701-abf5-d59115602c02": {
+    "taskId": "290a0540-52d5-4701-abf5-d59115602c02",
+    "status": "completed",
+    "createdAt": 1785811822984,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the middle panel (the second scene view) of the background reference image (图2). Shot details: 正面全身广角镜头，模特正面直视前方镜头站立，双手自然下垂，大方定格展示整体服装的穿着全貌。, posing in a custom scene: WPS拼图1. Front view focusing on the upper body and top garment details.. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the middle panel (the second scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers.",
+    "resultUrl": "https://media.sandbase.ai/files/290a0540-52d5-4701-abf5-d59115602c02/0.jpg",
+    "updatedAt": 1785811940889
+  },
+  "4c52065c-54a6-4fa9-aa53-de365c5b2012": {
+    "taskId": "4c52065c-54a6-4fa9-aa53-de365c5b2012",
+    "status": "completed",
+    "createdAt": 1785811817595,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the left panel (the first scene view) of the background reference image (图2). Shot details: 模特迈着从容的步伐从画外走入镜头中央并站定，微风轻轻吹动发丝和服装衣角。, posing in a custom scene: WPS拼图1. Focus on showing the overall silhouette of the top outerwear..\nBackground (Strict): The background must strictly and exactly match the left panel (the first scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers.",
+    "resultUrl": "https://media.sandbase.ai/files/4c52065c-54a6-4fa9-aa53-de365c5b2012/0.jpg",
+    "updatedAt": 1785811982587
+  },
+  "ab458c45-cf14-4ddc-88eb-9139946327de": {
+    "taskId": "ab458c45-cf14-4ddc-88eb-9139946327de",
+    "status": "completed",
+    "createdAt": 1785811775290,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the left panel (the first scene view) of the background reference image (图2). Shot details: 优雅侧面视角人像（模特微微侧身45度），模特微低头转身，展现别具一格的侧姿版型与剪裁。, posing in a custom scene: WPS拼图1. Medium shot focusing on the upper body and top garment fit.. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the left panel (the first scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers.",
+    "resultUrl": "https://media.sandbase.ai/files/ab458c45-cf14-4ddc-88eb-9139946327de/0.jpg",
+    "updatedAt": 1785811903901
+  }
+}
