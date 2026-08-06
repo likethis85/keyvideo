@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import type { Layer } from './VideoCanvas';
-import { generateMannequinImage, generateTryOnImage, generateVideoTask, pollVideoTask, getVideoContent, generateOutfitSuggestion, generatePromptsFromSkill, generateBackgroundImage, getRecentTasks } from '../utils/aiGateway';
+import { generateMannequinImage, generateTryOnImage, generateVideoTask, pollVideoTask, getVideoContent, generateOutfitSuggestion, generatePromptsFromSkill, generateBackgroundImage, getRecentTasks, getTaskStatus } from '../utils/aiGateway';
 import { localDB } from '../utils/db';
 import { supabase } from '../utils/supabaseClient';
 import { uploadAudioToOSS, uploadFileToOSS, deleteFileFromOSS } from '../utils/ossClient';
