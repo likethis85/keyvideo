@@ -1,7 +1,10 @@
 export const getBackendUrl = (): string => {
   const localUrl = localStorage.getItem('KEYVIDEO_BACKEND_URL');
-  if (localUrl) return localUrl;
-  return import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+  if (localUrl) {
+    return localUrl.replace('http://localhost:', 'http://127.0.0.1:');
+  }
+  const envUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:3001';
+  return envUrl.replace('http://localhost:', 'http://127.0.0.1:');
 };
 
 export const generateMannequinImage = async (params: {
@@ -40,6 +43,7 @@ export const generateTryOnImage = async (params: {
   poseImageUrl?: string;
   gatewayUrl?: string;
   gatewayToken?: string;
+  projectId?: string;
 }): Promise<string> => {
   const response = await fetch(`${getBackendUrl()}/api/ai/tryon`, {
     method: 'POST',
@@ -182,16 +186,20 @@ export const getVideoContent = async (
   return response.blob();
 };
 
-export const getRecentTasks = async (): Promise<Array<{
+export const getRecentTasks = async (projectId?: string): Promise<Array<{
   taskId: string;
   status: string;
   resultUrl?: string;
   type?: string;
   scene?: string;
+  projectId?: string;
   createdAt?: number;
+  error?: string;
 }>> => {
   try {
-    const response = await fetch(`${getBackendUrl()}/api/ai/tasks/recent`);
+    const url = new URL(`${getBackendUrl()}/api/ai/tasks/recent`);
+    if (projectId) url.searchParams.set('projectId', projectId);
+    const response = await fetch(url.toString());
     if (!response.ok) return [];
     const data = await response.json();
     return data.tasks || [];

@@ -75,7 +75,7 @@ function App() {
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [backendUrlInput, setBackendUrlInput] = useState(
-    localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001'
+    localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:3001'
   );
   const sidebarRef = useRef<SidebarDrawerRef | null>(null);
 

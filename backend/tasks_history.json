@@ -1,4 +1,168 @@
 {
+  "45c3b7c5-806f-412d-a8ee-54d6c9fc99d3": {
+    "taskId": "45c3b7c5-806f-412d-a8ee-54d6c9fc99d3",
+    "status": "pending",
+    "createdAt": 1785996203540,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the right panel (the third scene view) of the background reference image (图2). Shot details: 镜头平滑拉近对准模特的手臂特写，模特展示材质的质地细节。, posing in a custom scene: AI 场景. Close-up of the fabric texture, stitching, seams, or sleeve cuffs of the top outerwear.. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the right panel (the third scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers."
+  },
+  "960277dd-c533-4de4-a1f2-80f6a8e6a6da": {
+    "taskId": "960277dd-c533-4de4-a1f2-80f6a8e6a6da",
+    "status": "pending",
+    "createdAt": 1785996203334,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the middle panel (the second scene view) of the background reference image (图2). Shot details: 正面全身广角镜头，模特正面直视前方镜头站立，双手自然下垂，大方定格展示整体服装的穿着全貌。, posing in a custom scene: AI 场景. Front view focusing on the upper body and top garment details.. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the middle panel (the second scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers."
+  },
+  "a43d458c-d994-4875-a1b8-56352cdefd66": {
+    "taskId": "a43d458c-d994-4875-a1b8-56352cdefd66",
+    "status": "pending",
+    "createdAt": 1785996203303,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the left panel (the first scene view) of the background reference image (图2). Shot details: 优雅侧面视角人像（模特微微侧身45度），模特微低头转身，展现别具一格的侧姿版型与剪裁。, posing in a custom scene: AI 场景. Medium shot focusing on the upper body and top garment fit.. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the left panel (the first scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers."
+  },
+  "9c95d093-692d-4187-9179-0ff42da66969": {
+    "taskId": "9c95d093-692d-4187-9179-0ff42da66969",
+    "status": "pending",
+    "createdAt": 1785996202823,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the left panel (the first scene view) of the background reference image (图2). Shot details: 模特迈着从容的步伐从画外走入镜头中央并站定，微风轻轻吹动发丝和服装衣角。, posing in a custom scene: AI 场景. Focus on showing the overall silhouette of the top outerwear..\nBackground (Strict): The background must strictly and exactly match the left panel (the first scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers."
+  },
+  "7e3f5217-fd86-47f4-8478-5e60c94244ff": {
+    "taskId": "7e3f5217-fd86-47f4-8478-5e60c94244ff",
+    "status": "pending",
+    "createdAt": 1785996202812,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the middle panel (the second scene view) of the background reference image (图2). Shot details: 镜头缓慢向前推进聚焦于模特的上半身服饰，展示服装的版型 and 剪裁设计。, posing in a custom scene: AI 场景. Extreme close-up focusing on the collar, neckline, chest and upper body of the top garment.. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the middle panel (the second scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels. The generation must emphasize and highlight the design, silhouette, texture, and details of the outermost upper garment (outer top / jacket / coat / vest / outer layer). Make this outermost upper clothing layer the clear focal point of the visual composition, showcasing its texture, seams, and overall fit over any inner layers."
+  },
+  "0ff0f646-a807-4e3e-a9f9-947ea690ff3d": {
+    "taskId": "0ff0f646-a807-4e3e-a9f9-947ea690ff3d",
+    "status": "completed",
+    "createdAt": 1785995827750,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Generate a premium fashion catalog photo by transferring the exact outfit from 图1 onto the model from 图2.\nModel (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图2. Do NOT retain any facial features from 图1.\nOutfit (Strict): Identical clothing from 图1 (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.\nStyle & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.",
+    "projectId": "875108f4-7269-45fe-9965-e62b003d3f73",
+    "resultUrl": "https://media.sandbase.ai/files/0ff0f646-a807-4e3e-a9f9-947ea690ff3d/0.png",
+    "updatedAt": 1785995968950
+  },
+  "59211dff-016a-4a86-bd5d-55f93ec37a0a": {
+    "taskId": "59211dff-016a-4a86-bd5d-55f93ec37a0a",
+    "status": "completed",
+    "createdAt": 1785995661787,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Generate a premium fashion catalog photo by transferring the exact outfit from 图1 onto the model from 图2.\nModel (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图2. Do NOT retain any facial features from 图1.\nOutfit (Strict): Identical clothing from 图1 (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.\nStyle & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.",
+    "projectId": "875108f4-7269-45fe-9965-e62b003d3f73",
+    "resultUrl": "https://media.sandbase.ai/files/59211dff-016a-4a86-bd5d-55f93ec37a0a/0.png",
+    "updatedAt": 1785995827198
+  },
+  "e2aafac2-d1f5-46b1-8751-48f9a670a3f9": {
+    "taskId": "e2aafac2-d1f5-46b1-8751-48f9a670a3f9",
+    "status": "completed",
+    "createdAt": 1785995250665,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Generate a premium fashion catalog photo by transferring the exact outfit from 图1 onto the model from 图2.\nModel (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图2. Do NOT retain any facial features from 图1.\nOutfit (Strict): Identical clothing from 图1 (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.\nStyle & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.",
+    "projectId": "875108f4-7269-45fe-9965-e62b003d3f73",
+    "resultUrl": "https://media.sandbase.ai/files/e2aafac2-d1f5-46b1-8751-48f9a670a3f9/0.png",
+    "updatedAt": 1785995385573
+  },
+  "35a7bccb-971a-42a4-bca1-0fbc4d978fe9": {
+    "taskId": "35a7bccb-971a-42a4-bca1-0fbc4d978fe9",
+    "status": "completed",
+    "createdAt": 1785995074446,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Generate a premium fashion catalog photo by transferring the exact outfit from 图1 onto the model from 图2.\nModel (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图2. Do NOT retain any facial features from 图1.\nOutfit (Strict): Identical clothing from 图1 (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.\nStyle & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.",
+    "projectId": "875108f4-7269-45fe-9965-e62b003d3f73",
+    "resultUrl": "https://media.sandbase.ai/files/35a7bccb-971a-42a4-bca1-0fbc4d978fe9/0.png",
+    "updatedAt": 1785995250185
+  },
+  "d42637e6-1fee-4dae-b00e-497bc48356d8": {
+    "taskId": "d42637e6-1fee-4dae-b00e-497bc48356d8",
+    "status": "failed",
+    "createdAt": 1785994553193,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Generate a premium fashion catalog photo by transferring the exact outfit from 图1 onto the model from 图2.\nModel (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图2. Do NOT retain any facial features from 图1.\nOutfit (Strict): Identical clothing from 图1 (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.\nStyle & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.",
+    "error": "Sandbase task timed out",
+    "updatedAt": 1785994705389
+  },
+  "7d592605-1298-4c23-aa7c-09bb108f3b1c": {
+    "taskId": "7d592605-1298-4c23-aa7c-09bb108f3b1c",
+    "status": "failed",
+    "createdAt": 1785993349484,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Generate a premium fashion catalog photo by transferring the exact outfit from 图1 onto the model from 图2.\nModel (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图2. Do NOT retain any facial features from 图1.\nOutfit (Strict): Identical clothing from 图1 (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.\nStyle & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.",
+    "error": "Sandbase task failed: [object Object]",
+    "updatedAt": 1785993378251
+  },
+  "431426f7-3555-4d14-a7c6-07057d317594": {
+    "taskId": "431426f7-3555-4d14-a7c6-07057d317594",
+    "status": "failed",
+    "createdAt": 1785987468772,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Generate a premium fashion catalog photo by transferring the exact outfit from 图1 onto the model from 图2.\nModel (Strict): 100% exact face, facial features, head, hair, skin tone, and body of 图2. Do NOT retain any facial features from 图1.\nOutfit (Strict): Identical clothing from 图1 (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.\nStyle & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.",
+    "error": "Sandbase task failed: [object Object]",
+    "updatedAt": 1785987521127
+  },
+  "22efe6f7-0aab-4dae-a9c2-792a1c54869a": {
+    "taskId": "22efe6f7-0aab-4dae-a9c2-792a1c54869a",
+    "status": "completed",
+    "createdAt": 1785987339561,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Generate a premium fashion catalog photo by transferring the exact outfit from  onto the model from .\nModel (Strict): 100% exact face, facial features, head, hair, skin tone, and body of . Do NOT retain any facial features or identity from .\nOutfit (Strict): Identical clothing from  (fabric, drapery, and fit). Automatically outpaint missing lower body parts (bottoms/footwear) for a cohesive full-body look.\nStyle & Setting: High-resolution, detailed skin, professional studio lighting, solid light grey/white background.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.",
+    "resultUrl": "https://media.sandbase.ai/files/22efe6f7-0aab-4dae-a9c2-792a1c54869a/0.jpg",
+    "updatedAt": 1785987374524
+  },
+  "505568b0-ed78-450b-a02d-861756d7e6b1": {
+    "taskId": "505568b0-ed78-450b-a02d-861756d7e6b1",
+    "status": "completed",
+    "createdAt": 1785842401847,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the left panel (the first scene view) of the background reference image (图2). Shot details: 优雅侧面视角人像（模特微微侧身45度），模特微低头转身，展现别具一格的侧姿版型与剪裁。. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the left panel (the first scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels.",
+    "resultUrl": "https://media.sandbase.ai/files/505568b0-ed78-450b-a02d-861756d7e6b1/0.jpg",
+    "updatedAt": 1785842455300
+  },
+  "6fd6c2b3-8090-417d-8284-68d137d0f3a3": {
+    "taskId": "6fd6c2b3-8090-417d-8284-68d137d0f3a3",
+    "status": "completed",
+    "createdAt": 1785841866578,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the right panel (the third scene view) of the background reference image (图2). Shot details: 镜头平滑拉近对准模特的短袖，模特手部微调姿态展示材质的质地细节。. Additional instructions: 镜头平滑拉近对准模特的短袖，模特手部微调姿态展示材质的质地细节。. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the right panel (the third scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels.",
+    "resultUrl": "https://media.sandbase.ai/files/6fd6c2b3-8090-417d-8284-68d137d0f3a3/0.jpg",
+    "updatedAt": 1785841911351
+  },
+  "c6fbb572-d079-4333-9155-60c6a067abdd": {
+    "taskId": "c6fbb572-d079-4333-9155-60c6a067abdd",
+    "status": "completed",
+    "createdAt": 1785841682989,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the right panel (the third scene view) of the background reference image (图2). Shot details: 镜头平滑拉近对准聚焦于模特的下半身服饰，模特侧身。. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the right panel (the third scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels.",
+    "resultUrl": "https://media.sandbase.ai/files/c6fbb572-d079-4333-9155-60c6a067abdd/0.jpg",
+    "updatedAt": 1785841815601
+  },
+  "7f6418b7-914a-4d10-94f3-8804bf6406f8": {
+    "taskId": "7f6418b7-914a-4d10-94f3-8804bf6406f8",
+    "status": "completed",
+    "createdAt": 1785841203721,
+    "type": "tryon",
+    "scene": "studio",
+    "prompt": "Task: Place the dressed model from 图1 into the new background scene.\nModel (Strict): 100% exact face, hair, skin tone, and body from the dressed model in 图1. Maintain perfect character consistency with 图1.\nOutfit (Strict): Replicate the complete outfit exactly as shown on the model in 图1.\nStyle & Setting: High-resolution cinematic portrait shot, detailed skin, natural lighting, posing in: the specific scene shown in the right panel (the third scene view) of the background reference image (图2). Shot details: 镜头平滑拉近对准模特的手部特写，模特手部微调姿态展示材质的质地细节。. No bags or handbags should be visible in this view.\nBackground (Strict): The background must strictly and exactly match the right panel (the third scene view) of the provided background reference image (图2) in every pixel, detail, color, furniture, layout, texture, and structure. Seamlessly integrate the model into this specific background view.\nNegative constraints: Clean image, strictly NO text, logos, watermarks, tags, signatures, duplicate limbs, extra hands, floating fingers, or split/multiple panels.",
+    "resultUrl": "https://media.sandbase.ai/files/7f6418b7-914a-4d10-94f3-8804bf6406f8/0.jpg",
+    "updatedAt": 1785841226169
+  },
   "d0229edf-4a25-47ec-8aed-7900a40e209a": {
     "taskId": "d0229edf-4a25-47ec-8aed-7900a40e209a",
     "status": "completed",

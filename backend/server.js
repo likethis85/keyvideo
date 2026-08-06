@@ -214,12 +214,12 @@ const submitSandbaseTask = async (payload) => {
 };
 
 // Helper: Poll sandbase.ai task until completed (with retry on transient errors)
-const pollSandbaseTask = async (taskId) => {
+const pollSandbaseTask = async (taskId, timeoutSeconds = 360) => {
   const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
-  const maxRetries = 60; // 60 retries * 2 seconds = 120 seconds max
-  const pollInterval = 2000;
+  const pollInterval = 3000; // 3 seconds
+  const maxRetries = Math.ceil((timeoutSeconds * 1000) / pollInterval);
 
-  console.log(`[Sandbase API] <<< Started polling for Task ID: ${taskId}`);
+  console.log(`[Sandbase API] <<< Started polling for Task ID: ${taskId} (Timeout: ${timeoutSeconds}s)`);
 
   for (let i = 0; i < maxRetries; i++) {
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
@@ -243,7 +243,8 @@ const pollSandbaseTask = async (taskId) => {
       }
 
       const data = await response.json();
-      console.log(`[Sandbase API] Polling Task ID: ${taskId} | Status: ${data.status}`);
+      const elapsedSeconds = Math.round(((i + 1) * pollInterval) / 1000);
+      console.log(`[Sandbase API] Polling Task ID: ${taskId} | Status: ${data.status} | Elapsed: ${elapsedSeconds}s/${timeoutSeconds}s`);
 
       if (data.status === 'completed') {
         if (data.outputs && data.outputs.length > 0 && data.outputs[0].url) {
@@ -256,7 +257,8 @@ const pollSandbaseTask = async (taskId) => {
         }
         throw new Error('Sandbase task completed but no images returned');
       } else if (data.status === 'failed') {
-        throw new Error(`Sandbase task failed: ${data.error || 'Unknown error'}`);
+        const errMsg = typeof data.error === 'object' ? (data.error?.message || JSON.stringify(data.error)) : (data.error || 'Unknown error');
+        throw new Error(`Sandbase task failed: ${errMsg}`);
       }
     } catch (err) {
       // Log error and continue loop unless it's a non-transient assertion failure
@@ -266,7 +268,7 @@ const pollSandbaseTask = async (taskId) => {
       console.warn(`[Sandbase API] Polling encountered network error: ${err.message}. Retrying on next tick...`);
     }
   }
-  throw new Error('Sandbase task timed out');
+  throw new Error(`Sandbase task timed out (exceeded ${timeoutSeconds}s)`);
 };
 
 
@@ -330,10 +332,13 @@ app.get('/api/ai/task/:taskId', (req, res) => {
 
 // API: Pull recent generated tasks history (for recovery after disconnect or cross-device)
 app.get('/api/ai/tasks/recent', (req, res) => {
-  const { userId } = req.query;
+  const { userId, projectId } = req.query;
   let list = Object.values(taskStore);
   if (userId) {
     list = list.filter(t => !t.userId || t.userId === userId);
+  }
+  if (projectId) {
+    list = list.filter(t => t.projectId === projectId);
   }
   list = list
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
@@ -444,7 +449,7 @@ app.post('/api/ai/mannequin', async (req, res) => {
 // 3. AI Try-On & Pose Integration
 app.post('/api/ai/tryon', async (req, res) => {
   try {
-    const { clothingUrl, clothingBottomUrl, modelUrl, gender, region, scene, ratio, customPrompt, backgroundImageUrl, poseImageUrl } = req.body;
+    const { clothingUrl, clothingBottomUrl, modelUrl, gender, region, scene, ratio, customPrompt, backgroundImageUrl, poseImageUrl, projectId } = req.body;
 
     console.log(`[/api/ai/tryon] backgroundImageUrl present: ${!!backgroundImageUrl}, length: ${backgroundImageUrl ? backgroundImageUrl.length : 0}, prefix: ${backgroundImageUrl ? backgroundImageUrl.substring(0, 40) : 'N/A'}`);
 
@@ -549,7 +554,7 @@ HANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or acc
     };
 
     const taskId = await submitSandbaseTask(sandbasePayload);
-    registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt });
+    registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt, projectId });
 
     try {
       const resultImageUrl = await pollSandbaseTask(taskId);
@@ -1042,6 +1047,6 @@ app.get('/api/video/content/:taskId', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`KeyVideo backend microservice running on http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`KeyVideo backend microservice running on http://127.0.0.1:${port}`);
 });

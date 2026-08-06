@@ -479,7 +479,6 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
             .order('created_at', { ascending: true });
             
           if (!dbError && dbProjects && dbProjects.length > 0) {
-            let hadInterruptedOutfitGen = false;
             loadedProjects = dbProjects.map((p: any) => {
               let refUrls: string[] = [];
               if (p.reference_outfit_url) {
@@ -497,10 +496,9 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
                   outfitImgUrls = [p.model_outfit_img_url];
                 }
               }
-              // Detect interrupted outfit generation (status was persisted as generating_outfit)
-              if (p.status === 'generating_outfit') {
-                hadInterruptedOutfitGen = true;
-                // Reset status in DB so it won't keep showing on next reload
+              const isGenerating = p.status === 'generating_outfit';
+              if (isGenerating) {
+                // Reset status in DB so it won't persist generating_outfit forever
                 supabase.from('ai_video_projects').update({ status: 'idle' }).eq('id', p.id).then(() => {});
               }
               return {
@@ -521,13 +519,10 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
                 storyboards: p.storyboards || [],
                 i2vStep: p.i2v_step || 'idle',
                 videoDuration: p.video_duration === '4s' ? '3s' : (p.video_duration || '15s'),
-                isOutfitImgGenerating: false,
+                isOutfitImgGenerating: isGenerating,
                 isI2vGenerating: false
               };
             });
-            if (hadInterruptedOutfitGen) {
-              setOutfitGenInterrupted(true);
-            }
           }
         }
         
@@ -648,6 +643,104 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
       localDB.set('ai_active_project_id', activeProjectId).catch(err => console.warn(err));
     }
   }, [activeProjectId, isConfigLoaded]);
+
+  const activePollingOutfitTasksRef = useRef<{ [taskId: string]: boolean }>({});
+
+  const pollPendingOutfitTask = async (projId: string, taskId: string) => {
+    console.log(`[Outfit Recovery] Polling pending outfit task ${taskId} for project ${projId}`);
+    setProjects(prev => prev.map(p => p.id === projId ? { ...p, isOutfitImgGenerating: true } : p));
+    if (projId === activeProjectIdRef.current) setIsOutfitImgGenerating(true);
+
+    let attempts = 0;
+    const maxAttempts = 120;
+    while (attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 3000));
+      attempts++;
+      try {
+        const statusRes = await getTaskStatus(taskId);
+        if (statusRes.status === 'completed' && statusRes.resultUrl) {
+          console.log(`[Outfit Recovery] Pending task ${taskId} completed! Result: ${statusRes.resultUrl}`);
+          setProjects(prev => prev.map(p => {
+            if (p.id !== projId) return p;
+            const newUrls = p.modelOutfitImgUrls && p.modelOutfitImgUrls.length > 0
+              ? [statusRes.resultUrl!, ...p.modelOutfitImgUrls.slice(1)]
+              : [statusRes.resultUrl!];
+            return {
+              ...p,
+              modelOutfitImgUrl: statusRes.resultUrl!,
+              modelOutfitImgUrls: newUrls,
+              isOutfitImgGenerating: false
+            };
+          }));
+          if (projId === activeProjectIdRef.current) {
+            setModelOutfitImgUrl(statusRes.resultUrl);
+            setModelOutfitImgUrls(prev => prev.length > 0 ? [statusRes.resultUrl!, ...prev.slice(1)] : [statusRes.resultUrl!]);
+            setIsOutfitImgGenerating(false);
+          }
+          delete activePollingOutfitTasksRef.current[taskId];
+          break;
+        } else if (statusRes.status === 'failed') {
+          console.warn(`[Outfit Recovery] Task ${taskId} failed: ${statusRes.error}`);
+          setProjects(prev => prev.map(p => p.id === projId ? { ...p, isOutfitImgGenerating: false } : p));
+          if (projId === activeProjectIdRef.current) setIsOutfitImgGenerating(false);
+          delete activePollingOutfitTasksRef.current[taskId];
+          break;
+        }
+      } catch (err) {
+        console.warn(`[Outfit Recovery] Network error checking task ${taskId}:`, err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!isConfigLoaded || projects.length === 0) return;
+
+    const recoverOutfitTasks = async () => {
+      try {
+        const recentTasks = await getRecentTasks();
+        if (!recentTasks || recentTasks.length === 0) return;
+
+        for (const t of recentTasks) {
+          const targetProj = t.projectId
+            ? projects.find(p => p.id === t.projectId)
+            : projects.find(p => !p.modelOutfitImgUrl);
+          if (!targetProj) continue;
+
+          if (t.status === 'completed' && t.resultUrl) {
+            if (!targetProj.modelOutfitImgUrl || targetProj.isOutfitImgGenerating) {
+              console.log(`[Outfit Recovery] Restoring completed outfit task ${t.taskId} for project ${targetProj.id}`);
+              setProjects(prev => prev.map(p => {
+                if (p.id !== targetProj.id) return p;
+                const newUrls = p.modelOutfitImgUrls && p.modelOutfitImgUrls.length > 0
+                  ? [t.resultUrl!, ...p.modelOutfitImgUrls.slice(1)]
+                  : [t.resultUrl!];
+                return {
+                  ...p,
+                  modelOutfitImgUrl: t.resultUrl!,
+                  modelOutfitImgUrls: newUrls,
+                  isOutfitImgGenerating: false
+                };
+              }));
+              if (targetProj.id === activeProjectIdRef.current) {
+                setModelOutfitImgUrl(t.resultUrl);
+                setModelOutfitImgUrls(prev => prev.length > 0 ? [t.resultUrl!, ...prev.slice(1)] : [t.resultUrl!]);
+                setIsOutfitImgGenerating(false);
+              }
+            }
+          } else if (t.status === 'pending' && t.taskId) {
+            if (!activePollingOutfitTasksRef.current[t.taskId]) {
+              activePollingOutfitTasksRef.current[t.taskId] = true;
+              pollPendingOutfitTask(targetProj.id, t.taskId);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to recover recent outfit tasks:', e);
+      }
+    };
+
+    recoverOutfitTasks();
+  }, [isConfigLoaded]);
 
   const activePollingTasksRef = useRef<{ [storyboardId: string]: boolean }>({});
 
@@ -2132,7 +2225,8 @@ Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or
               gatewayUrl,
               gatewayToken,
               customPrompt: customPromptText,
-              poseImageUrl: outfitPoseImageUrl || undefined
+              poseImageUrl: outfitPoseImageUrl || undefined,
+              projectId: currentProjId
             });
           } else {
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -2181,30 +2275,49 @@ ${outfitStrictPrompt}
 Style & Setting: ${styleDetails}
 Negative constraints: Clean image, strictly NO text, logos, watermarks, tags, or signatures.`;
 
-            let generatedUrl = '';
-            if (gatewayUrl && gatewayToken) {
-              generatedUrl = await generateTryOnImage({
-                clothingUrl: clothingUrls,
-                modelUrl: swapModelUrl,
-                gender: modelGender,
-                region: modelRegion,
-                scene: 'studio',
-                ratio,
-                gatewayUrl,
-                gatewayToken,
-                customPrompt: customPromptText,
-                poseImageUrl: outfitPoseImageUrl || undefined
-              });
-            } else {
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              generatedUrl = swapModelUrl;
+            try {
+              let generatedUrl = '';
+              if (gatewayUrl && gatewayToken) {
+                generatedUrl = await generateTryOnImage({
+                  clothingUrl: clothingUrls,
+                  modelUrl: swapModelUrl,
+                  gender: modelGender,
+                  region: modelRegion,
+                  scene: 'studio',
+                  ratio,
+                  gatewayUrl,
+                  gatewayToken,
+                  customPrompt: customPromptText,
+                  poseImageUrl: outfitPoseImageUrl || undefined,
+                  projectId: currentProjId
+                });
+              } else {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                generatedUrl = swapModelUrl;
+              }
+              if (generatedUrl) {
+                generatedUrls.push(generatedUrl);
+                // Live progressive UI update as each outfit image completes!
+                if (currentProjId === activeProjectIdRef.current) {
+                  setModelOutfitImgUrls([...generatedUrls]);
+                  if (i === 0) setModelOutfitImgUrl(generatedUrl);
+                }
+                setProjects(prev => prev.map(p => p.id === currentProjId ? {
+                  ...p,
+                  modelOutfitImgUrls: [...generatedUrls],
+                  modelOutfitImgUrl: generatedUrls[0] || p.modelOutfitImgUrl
+                } : p));
+              }
+            } catch (itemErr: any) {
+              console.warn(`[Multi Outfit Gen] Outfit ${i + 1}/${referenceOutfitUrls.length} request timed out on client, backend will auto-recover it:`, itemErr);
             }
-            generatedUrls.push(generatedUrl);
           }
         }
       } catch (error: any) {
         console.error(error);
-        alert(`穿搭图生成失败: ${error.message}`);
+        if (generatedUrls.length === 0) {
+          alert(`穿搭图生成网络中断，但后端后台依然在生成中，稍后会自动帮您拉取回填！`);
+        }
         setProjectIsOutfitImgGenerating(currentProjId, false);
         return;
       }
