@@ -1,8 +1,22 @@
+import type Database from '@tauri-apps/plugin-sql';
+
 // localDB - keyvalue store with SQLite backend in Tauri and IndexedDB fallback in browser
 
-const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
 
-let sqliteDbPromise: Promise<any> | null = null;
+let sqliteDbPromise: Promise<Database | null> | null = null;
+
+interface StoredValueRow {
+  value: string;
+}
+
+export interface LocalVideoAsset {
+  id: string;
+  name: string;
+  src: string;
+  desc: string;
+  duration?: number;
+}
 
 if (isTauri) {
   sqliteDbPromise = (async () => {
@@ -46,17 +60,17 @@ class LocalDB {
     });
   }
 
-  async get(key: string): Promise<any> {
+  async get<T = unknown>(key: string): Promise<T | null> {
     if (isTauri) {
       try {
         const db = await sqliteDbPromise;
         if (db) {
-          const result: any[] = await db.select('SELECT value FROM keyvalue_store WHERE key = ?', [key]);
+          const result = await db.select<StoredValueRow[]>('SELECT value FROM keyvalue_store WHERE key = ?', [key]);
           if (result && result.length > 0) {
             try {
-              return JSON.parse(result[0].value);
-            } catch (e) {
-              return result[0].value;
+              return JSON.parse(result[0].value) as T;
+            } catch {
+              return result[0].value as T;
             }
           }
           return null;
@@ -69,11 +83,11 @@ class LocalDB {
     // IndexedDB Fallback
     try {
       const db = await this.getDB();
-      return new Promise((resolve, reject) => {
+      return new Promise<T | null>((resolve, reject) => {
         const transaction = db.transaction(this.storeName, 'readonly');
         const store = transaction.objectStore(this.storeName);
         const request = store.get(key);
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => resolve((request.result as T | undefined) ?? null);
         request.onerror = () => reject(request.error);
       });
     } catch (e) {
@@ -82,7 +96,7 @@ class LocalDB {
     }
   }
 
-  async set(key: string, val: any): Promise<boolean> {
+  async set(key: string, val: unknown): Promise<boolean> {
     if (isTauri) {
       try {
         const db = await sqliteDbPromise;
@@ -113,12 +127,12 @@ class LocalDB {
   }
 
   // SQLite Specific local video asset management (with IndexedDB fallback)
-  async getLocalVideos(): Promise<any[]> {
+  async getLocalVideos(): Promise<LocalVideoAsset[]> {
     if (isTauri) {
       try {
         const db = await sqliteDbPromise;
         if (db) {
-          const rows: any[] = await db.select('SELECT * FROM local_video_assets');
+          const rows = await db.select<LocalVideoAsset[]>('SELECT * FROM local_video_assets');
           return rows;
         }
       } catch (e) {
@@ -126,11 +140,11 @@ class LocalDB {
       }
     }
 
-    const val = await this.get('ai_local_videos');
+    const val = await this.get<LocalVideoAsset[]>('ai_local_videos');
     return Array.isArray(val) ? val : [];
   }
 
-  async saveLocalVideo(video: { id: string; name: string; src: string; desc: string; duration?: number }): Promise<boolean> {
+  async saveLocalVideo(video: LocalVideoAsset): Promise<boolean> {
     if (isTauri) {
       try {
         const db = await sqliteDbPromise;

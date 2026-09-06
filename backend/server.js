@@ -13,10 +13,124 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+const DEFAULT_EXTERNAL_TIMEOUT_MS = Math.max(5, Number(process.env.EXTERNAL_REQUEST_TIMEOUT_SECONDS) || 30) * 1000;
+const LONG_EXTERNAL_TIMEOUT_MS = Math.max(30, Number(process.env.LONG_AI_REQUEST_TIMEOUT_SECONDS) || 180) * 1000;
 
-app.use(cors());
+const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_EXTERNAL_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  timeout.unref?.();
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`External request timed out after ${Math.round(timeoutMs / 1000)}s`, { cause: error });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const requiredEnv = [
+  'AIGATEWAY_URL',
+  'AIGATEWAY_TOKEN',
+  'OSS_ACCESS_KEY_ID',
+  'OSS_ACCESS_KEY_SECRET',
+  'OSS_BUCKET'
+];
+const missingEnv = requiredEnv.filter((name) => !process.env[name]);
+if (missingEnv.length > 0) {
+  console.error(`Missing required environment variables: ${missingEnv.join(', ')}`);
+  process.exit(1);
+}
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.disable('x-powered-by');
+app.use(cors({
+  origin(origin, callback) {
+    // Native Tauri and server-to-server requests generally have no Origin header.
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin is not allowed by CORS'));
+  },
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key'],
+  exposedHeaders: ['X-Idempotency-Replayed']
+}));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+const idempotencyStore = new Map();
+const idempotencyTtlMs = Math.max(5, Number(process.env.IDEMPOTENCY_TTL_SECONDS) || 30) * 1000;
+const idempotentGenerationPaths = [
+  '/api/ai/mannequin',
+  '/api/ai/tryon',
+  '/api/ai/background',
+  '/api/ai/stylist',
+  '/api/ai/prompts-skill',
+  '/api/video/task'
+];
+
+app.use(idempotentGenerationPaths, async (req, res, next) => {
+  const requestKey = req.get('X-Idempotency-Key');
+  if (!requestKey || requestKey.length > 200) return next();
+
+  const scopedKey = `${req.path}:${requestKey}`;
+  const now = Date.now();
+  const existing = idempotencyStore.get(scopedKey);
+  if (existing && existing.expiresAt > now) {
+    try {
+      const replay = existing.response || await existing.promise;
+      res.set('X-Idempotency-Replayed', 'true');
+      return res.status(replay.status).json(replay.body);
+    } catch (error) {
+      idempotencyStore.delete(scopedKey);
+      return next(error);
+    }
+  }
+  if (existing) idempotencyStore.delete(scopedKey);
+
+  let settleRequest;
+  const promise = new Promise(resolve => { settleRequest = resolve; });
+  const record = { promise, response: null, expiresAt: now + idempotencyTtlMs };
+  idempotencyStore.set(scopedKey, record);
+
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    const response = { status: res.statusCode, body };
+    record.response = response;
+    settleRequest(response);
+    if (res.statusCode >= 500) idempotencyStore.delete(scopedKey);
+    return originalJson(body);
+  };
+
+  res.once('close', () => {
+    if (!record.response) {
+      const response = { status: 503, body: { error: 'Original idempotent request disconnected' } };
+      settleRequest(response);
+      idempotencyStore.delete(scopedKey);
+    }
+  });
+
+  // Keep the in-memory store bounded on long-running backend processes.
+  if (idempotencyStore.size > 1000) {
+    for (const [key, value] of idempotencyStore) {
+      if (value.expiresAt <= now) idempotencyStore.delete(key);
+    }
+  }
+  return next();
+});
+
+app.use((err, _req, res, next) => {
+  if (err?.message === 'Origin is not allowed by CORS') {
+    return res.status(403).json({ error: err.message });
+  }
+  return next(err);
+});
 
 const TRYON_SCENE_PROMPT_DESCRIPTIONS = {
   street: 'posing in a modern urban street with city lights and soft outdoor background',
@@ -83,7 +197,7 @@ const fetchImageAsBase64 = async (url) => {
   if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
     return normalized;
   }
-  const response = await fetch(normalized);
+  const response = await fetchWithTimeout(normalized, {}, 60_000);
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.statusText}`);
   }
@@ -98,9 +212,16 @@ const fetchImageAsBase64 = async (url) => {
 
 const resolveLocalAssetToBase64 = normalizeImageUrl;
 
+const extractTaskOutputUrl = (data) => {
+  if (data?.outputs?.[0]?.url) return data.outputs[0].url;
+  if (data?.result?.videos?.[0]) return data.result.videos[0];
+  if (data?.result?.images?.[0]) return data.result.images[0];
+  return '';
+};
+
 // Helper: Upload remote URL directly to Alibaba Cloud OSS
 const uploadUrlToOSS = async (imageUrl) => {
-  const response = await fetch(imageUrl);
+  const response = await fetchWithTimeout(imageUrl, {}, 60_000);
   if (!response.ok) {
     throw new Error(`Failed to fetch image from URL: ${response.statusText}`);
   }
@@ -173,7 +294,7 @@ const submitSandbaseTask = async (payload) => {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch('https://api.sandbase.ai/v1/run', {
+      const response = await fetchWithTimeout('https://api.sandbase.ai/v1/run', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -225,7 +346,7 @@ const pollSandbaseTask = async (taskId, timeoutSeconds = 360) => {
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
 
     try {
-      const response = await fetch(`https://api.sandbase.ai/v1/run/${taskId}`, {
+      const response = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${taskId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`
@@ -273,49 +394,142 @@ const pollSandbaseTask = async (taskId, timeoutSeconds = 360) => {
 
 
 // --- Persistent AI Task Store Manager ---
-const TASKS_FILE = path.join(process.cwd(), 'tasks_history.json');
-let taskStore = {};
+const sanitizeTaskRecord = (record = {}) => ({
+  taskId: record.taskId,
+  status: record.status || 'pending',
+  createdAt: record.createdAt || Date.now(),
+  ...(record.updatedAt ? { updatedAt: record.updatedAt } : {}),
+  ...(record.type ? { type: record.type } : {}),
+  ...(record.scene ? { scene: String(record.scene).slice(0, 100) } : {}),
+  ...(record.projectId ? { projectId: record.projectId } : {}),
+  ...(record.userId ? { userId: record.userId } : {}),
+  ...(record.resultUrl ? { resultUrl: record.resultUrl } : {}),
+  ...(record.error ? { error: typeof record.error === 'string' ? record.error.slice(0, 1000) : JSON.stringify(record.error).slice(0, 1000) } : {}),
+  ...(record.model ? { model: String(record.model).slice(0, 150) } : {}),
+  ...(record.duration ? { duration: record.duration } : {})
+});
 
-try {
-  if (fs.existsSync(TASKS_FILE)) {
-    const raw = fs.readFileSync(TASKS_FILE, 'utf-8');
-    taskStore = JSON.parse(raw);
+const compactTaskStore = () => {
+  const keys = Object.keys(taskStore)
+    .sort((a, b) => (taskStore[b].createdAt || 0) - (taskStore[a].createdAt || 0))
+    .slice(0, 100);
+  const compacted = {};
+  keys.forEach(key => { compacted[key] = sanitizeTaskRecord(taskStore[key]); });
+  return compacted;
+};
+
+const TASKS_FILE = path.join(__dirname, 'tasks_history.json');
+const TASKS_BACKUP_FILE = `${TASKS_FILE}.bak`;
+let taskStore = {};
+let primaryTaskStoreIsValid = !fs.existsSync(TASKS_FILE);
+
+const loadTaskStoreFile = (filePath) => {
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const parsed = JSON.parse(raw);
+  return Object.fromEntries(
+    Object.entries(parsed).map(([key, value]) => [key, sanitizeTaskRecord(value)])
+  );
+};
+
+if (fs.existsSync(TASKS_FILE)) {
+  try {
+    taskStore = loadTaskStoreFile(TASKS_FILE);
+    primaryTaskStoreIsValid = true;
+  } catch (primaryError) {
+    primaryTaskStoreIsValid = false;
+    console.warn('[TaskStore] Primary history is unreadable:', primaryError.message);
+    if (fs.existsSync(TASKS_BACKUP_FILE)) {
+      try {
+        taskStore = loadTaskStoreFile(TASKS_BACKUP_FILE);
+        console.warn('[TaskStore] Recovered task history from backup.');
+      } catch (backupError) {
+        console.warn('[TaskStore] Backup history is also unreadable:', backupError.message);
+      }
+    }
   }
-} catch (e) {
-  console.warn('[TaskStore] Could not load tasks history:', e.message);
-  taskStore = {};
 }
 
-const saveTaskStore = () => {
+let saveTimer = null;
+const writeTaskStoreSync = () => {
+  const trimmed = compactTaskStore();
+  const tmpFile = `${TASKS_FILE}.tmp.${process.pid}.${Date.now()}`;
   try {
-    const keys = Object.keys(taskStore).sort((a, b) => (taskStore[b].createdAt || 0) - (taskStore[a].createdAt || 0)).slice(0, 100);
-    const trimmed = {};
-    keys.forEach(k => trimmed[k] = taskStore[k]);
-    fs.writeFileSync(TASKS_FILE, JSON.stringify(trimmed, null, 2), 'utf-8');
-  } catch (e) {
-    console.warn('[TaskStore] Failed to save tasks history:', e.message);
+    fs.writeFileSync(tmpFile, JSON.stringify(trimmed, null, 2), 'utf-8');
+    if (primaryTaskStoreIsValid && fs.existsSync(TASKS_FILE)) {
+      fs.copyFileSync(TASKS_FILE, TASKS_BACKUP_FILE);
+    }
+    fs.renameSync(tmpFile, TASKS_FILE);
+    primaryTaskStoreIsValid = true;
+    taskStore = trimmed;
+  } catch (error) {
+    try {
+      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+    } catch {
+      // Best-effort cleanup; preserve the original write error below.
+    }
+    throw error;
   }
 };
 
+const saveTaskStore = () => {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try {
+      writeTaskStoreSync();
+    } catch (e) {
+      console.warn('[TaskStore] Failed to atomically save tasks history:', e.message);
+    }
+  }, 100);
+};
+
+process.on('beforeExit', () => {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    try {
+      writeTaskStoreSync();
+    } catch (error) {
+      console.warn('[TaskStore] Final save failed:', error.message);
+    }
+  }
+});
+
+let isShuttingDown = false;
+const handleShutdown = (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  if (saveTimer) clearTimeout(saveTimer);
+  try {
+    writeTaskStoreSync();
+    console.log(`[TaskStore] Saved task history before ${signal}.`);
+  } catch (error) {
+    console.error(`[TaskStore] Could not save task history before ${signal}:`, error.message);
+  }
+  process.exit(0);
+};
+
+process.once('SIGINT', () => handleShutdown('SIGINT'));
+process.once('SIGTERM', () => handleShutdown('SIGTERM'));
+
 const registerTask = (taskId, meta = {}) => {
-  taskStore[taskId] = {
+  taskStore[taskId] = sanitizeTaskRecord({
     taskId,
     status: 'pending',
     createdAt: Date.now(),
     ...meta
-  };
+  });
   saveTaskStore();
 };
 
 const updateTaskStatus = (taskId, patch = {}) => {
   if (taskStore[taskId]) {
-    taskStore[taskId] = {
+    taskStore[taskId] = sanitizeTaskRecord({
       ...taskStore[taskId],
       ...patch,
       updatedAt: Date.now()
-    };
+    });
   } else {
-    taskStore[taskId] = { taskId, status: 'pending', createdAt: Date.now(), ...patch };
+    taskStore[taskId] = sanitizeTaskRecord({ taskId, status: 'pending', createdAt: Date.now(), ...patch });
   }
   saveTaskStore();
 };
@@ -351,9 +565,23 @@ app.get('/api/ai/tasks/recent', (req, res) => {
 app.post('/api/upload', (req, res) => {
   const fileName = req.query.name || 'file.mp3';
   const chunks = [];
+  const maxUploadBytes = Math.max(1, Number(process.env.MAX_UPLOAD_MB) || 100) * 1024 * 1024;
+  let receivedBytes = 0;
+  let uploadRejected = false;
   
-  req.on('data', (chunk) => chunks.push(chunk));
+  req.on('data', (chunk) => {
+    if (uploadRejected) return;
+    receivedBytes += chunk.length;
+    if (receivedBytes > maxUploadBytes) {
+      uploadRejected = true;
+      chunks.length = 0;
+      res.status(413).json({ error: 'Upload exceeds the configured size limit' });
+      return;
+    }
+    chunks.push(chunk);
+  });
   req.on('end', async () => {
+    if (uploadRejected) return;
     try {
       if (chunks.length === 0) {
         return res.status(400).json({ error: 'No file data received' });
@@ -397,9 +625,17 @@ app.post('/api/upload/delete', async (req, res) => {
       secure: true
     });
 
-    // Parse path key from public URL
+    // Only permit deletion from the configured bucket and managed upload prefix.
     const urlObj = new URL(url);
+    const bucket = process.env.OSS_BUCKET;
+    const expectedHost = `${bucket}.${process.env.OSS_REGION || 'oss-cn-shanghai'}.aliyuncs.com`;
+    if (urlObj.protocol !== 'https:' || urlObj.hostname !== expectedHost) {
+      return res.status(400).json({ error: 'URL does not belong to the configured OSS bucket' });
+    }
     const key = decodeURIComponent(urlObj.pathname.slice(1));
+    if (!key.startsWith('audio/') || key.includes('..')) {
+      return res.status(400).json({ error: 'Object is outside the managed upload prefix' });
+    }
 
     await client.delete(key);
     console.log(`Successfully deleted key ${key} from OSS`);
@@ -436,9 +672,26 @@ app.post('/api/ai/mannequin', async (req, res) => {
     };
 
     const taskId = await submitSandbaseTask(sandbasePayload);
-    const resultImageUrl = await pollSandbaseTask(taskId);
+    registerTask(taskId, { type: 'mannequin', prompt: textPrompt, status: 'processing' });
 
-    res.status(200).json({ url: resultImageUrl });
+    const poller = async () => {
+      try {
+        const resultImageUrl = await pollSandbaseTask(taskId);
+        updateTaskStatus(taskId, { status: 'completed', resultUrl: resultImageUrl });
+        return resultImageUrl;
+      } catch (pollErr) {
+        updateTaskStatus(taskId, { status: 'failed', error: pollErr.message });
+        throw pollErr;
+      }
+    };
+
+    if (req.query.async === 'true' || req.body.async === true) {
+      poller().catch(e => console.warn(`[Mannequin Task ${taskId}] Background polling error:`, e.message));
+      return res.status(200).json({ taskId, status: 'processing' });
+    }
+
+    const resultImageUrl = await poller();
+    res.status(200).json({ taskId, url: resultImageUrl });
   } catch (err) {
     console.error('Mannequin generation failed:', err);
     res.status(500).json({ error: err.message || 'Mannequin generation failed' });
@@ -554,16 +807,26 @@ HANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or acc
     };
 
     const taskId = await submitSandbaseTask(sandbasePayload);
-    registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt, projectId });
+    registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt, projectId, status: 'processing' });
 
-    try {
-      const resultImageUrl = await pollSandbaseTask(taskId);
-      updateTaskStatus(taskId, { status: 'completed', resultUrl: resultImageUrl });
-      res.status(200).json({ taskId, url: resultImageUrl });
-    } catch (pollErr) {
-      updateTaskStatus(taskId, { status: 'failed', error: pollErr.message });
-      throw pollErr;
+    const poller = async () => {
+      try {
+        const resultImageUrl = await pollSandbaseTask(taskId);
+        updateTaskStatus(taskId, { status: 'completed', resultUrl: resultImageUrl });
+        return resultImageUrl;
+      } catch (pollErr) {
+        updateTaskStatus(taskId, { status: 'failed', error: pollErr.message });
+        throw pollErr;
+      }
+    };
+
+    if (req.query.async === 'true' || req.body.async === true) {
+      poller().catch(e => console.warn(`[Tryon Task ${taskId}] Background polling error:`, e.message));
+      return res.status(200).json({ taskId, status: 'processing' });
     }
+
+    const resultImageUrl = await poller();
+    res.status(200).json({ taskId, url: resultImageUrl });
   } catch (err) {
     console.error('Try-on failed:', err);
     res.status(500).json({ error: err.message || 'Try-on failed' });
@@ -648,14 +911,14 @@ Output ONLY the JSON object, no markdown wrappers, no other text.`
     const gatewayToken = process.env.AIGATEWAY_TOKEN;
     const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}chat/completions` : `${gatewayUrl}/chat/completions`;
 
-    const response = await fetch(requestUrl, {
+    const response = await fetchWithTimeout(requestUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${gatewayToken}`
       },
       body: JSON.stringify(requestBody)
-    });
+    }, LONG_EXTERNAL_TIMEOUT_MS);
 
     if (!response.ok) throw new Error(`AI Stylist failed (${response.status})`);
 
@@ -897,14 +1160,14 @@ ${is15s ? `最终生成的提示词应该类似：
     const gatewayToken = process.env.AIGATEWAY_TOKEN;
     const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}chat/completions` : `${gatewayUrl}/chat/completions`;
 
-    const response = await fetch(requestUrl, {
+    const response = await fetchWithTimeout(requestUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${gatewayToken}`
       },
       body: JSON.stringify(requestBody)
-    });
+    }, LONG_EXTERNAL_TIMEOUT_MS);
 
     if (!response.ok) throw new Error(`AI prompt generator failed (${response.status})`);
 
@@ -928,7 +1191,7 @@ ${is15s ? `最终生成的提示词应该类似：
 // 7. Video Generation Task Creator
 app.post('/api/video/task', async (req, res) => {
   try {
-    const { model, prompt, imageSrc, modelOutfitImgUrl, storyboardImgUrls, sceneImgUrl, seconds = 4, size = '720p', aspectRatio } = req.body;
+    const { model, prompt, imageSrc, modelOutfitImgUrl, storyboardImgUrls, sceneImgUrl, seconds = 4, size = '720p', aspectRatio, projectId } = req.body;
 
     // Use sandbase.ai's Kling 3.0 Omni Pro Video model
     const sandbaseVideoModel = "kwaivgi/kling-video/3.0/omni/pro/image-to-video";
@@ -950,6 +1213,14 @@ app.post('/api/video/task', async (req, res) => {
 
     const taskId = await submitSandbaseTask(sandbasePayload);
 
+    registerTask(taskId, {
+      type: 'video',
+      model: sandbaseVideoModel,
+      duration,
+      projectId,
+      status: 'processing'
+    });
+
     res.status(200).json({ id: taskId });
   } catch (err) {
     console.error('Video task creation failed:', err);
@@ -963,7 +1234,7 @@ app.get('/api/video/poll/:taskId', async (req, res) => {
     const { taskId } = req.params;
     const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
 
-    const response = await fetch(`https://api.sandbase.ai/v1/run/${taskId}`, {
+    const response = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${taskId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`
@@ -978,9 +1249,17 @@ app.get('/api/video/poll/:taskId', async (req, res) => {
     const data = await response.json();
     console.log(`[Sandbase API] Polling Video Task ID: ${taskId} | Status: ${data.status}`);
 
+    const resultUrl = data.status === 'completed' ? extractTaskOutputUrl(data) : '';
+    updateTaskStatus(taskId, {
+      status: data.status,
+      error: data.error || null,
+      ...(resultUrl ? { resultUrl } : {})
+    });
+
     res.status(200).json({
       status: data.status,
-      error: data.error || null
+      error: data.error || null,
+      ...(resultUrl ? { resultUrl } : {})
     });
   } catch (err) {
     console.error('Video status polling failed:', err);
@@ -995,7 +1274,7 @@ app.get('/api/video/content/:taskId', async (req, res) => {
     const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
 
     // 1. Get task status to find the output URL
-    const statusResponse = await fetch(`https://api.sandbase.ai/v1/run/${taskId}`, {
+    const statusResponse = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${taskId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`
@@ -1012,23 +1291,18 @@ app.get('/api/video/content/:taskId', async (req, res) => {
       throw new Error(`Video task is not completed yet (current status: ${data.status})`);
     }
 
-    let videoUrl = '';
-    if (data.outputs && data.outputs.length > 0 && data.outputs[0].url) {
-      videoUrl = data.outputs[0].url;
-    } else if (data.result && data.result.videos && data.result.videos.length > 0) {
-      videoUrl = data.result.videos[0];
-    } else if (data.result && data.result.images && data.result.images.length > 0) {
-      videoUrl = data.result.images[0]; // fallback
-    }
+    const videoUrl = extractTaskOutputUrl(data);
 
     if (!videoUrl) {
       throw new Error('No video URL returned in sandbase task outputs');
     }
 
+    updateTaskStatus(taskId, { status: 'completed', resultUrl: videoUrl, error: null });
+
     console.log(`[Sandbase API] Fetching video binary from URL: ${videoUrl}`);
 
     // 2. Fetch the actual video binary
-    const videoResponse = await fetch(videoUrl);
+    const videoResponse = await fetchWithTimeout(videoUrl, {}, LONG_EXTERNAL_TIMEOUT_MS);
     if (!videoResponse.ok) {
       throw new Error(`Failed to fetch video binary from ${videoUrl} (${videoResponse.status})`);
     }

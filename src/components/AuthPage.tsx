@@ -32,10 +32,10 @@ export const AuthPage: React.FC = () => {
       });
       if (error) throw error;
       setSuccessMsg('登录成功！正在载入您的编辑器...');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Auth error:', err);
       // Simplify error messages for standard Supabase codes
-      let msg = err.message || '操作失败，请重试';
+      let msg = err instanceof Error ? err.message : '操作失败，请重试';
       if (msg.includes('Invalid login credentials')) {
         msg = '邮箱或密码不正确';
       }

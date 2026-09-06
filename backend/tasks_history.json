@@ -1,4 +1,67 @@
 {
+  "b66d1da9-60d1-40b3-8ff7-6ded5912c06e": {
+    "taskId": "b66d1da9-60d1-40b3-8ff7-6ded5912c06e",
+    "status": "completed",
+    "createdAt": 1788415837140,
+    "type": "video",
+    "model": "kwaivgi/kling-video/3.0/omni/pro/image-to-video",
+    "prompt": "Referencing 图1 (outfit model) as the strict character consistency reference, and referencing 图2 (storyboard frame) as the first-frame layout and pose. Referencing 图3 (scene template) to lock background scene consistency. 镜头缓慢向前推进聚焦于模特的上半身服饰，展示服装的版型 and 剪裁设计。。The background scene environment is: posing in a custom scene: Gemini_Generated_Image_pcqa51pcq(1). A high-end cinematic fashion commercial blockbuster style. The camera performs slow-motion elegant operations like dolly zoom, slow panning, or orbital rotation. The model performs high-fashion micro-movements with subtle elegant posture adjustments, keeping action amplitude small and natural. Premium Vogue-style chiaroscuro studio lighting, highly detailed skin textures, realistic fabric folds, smooth continuous motion, 8k resolution, cinematic color grading. The background scene, environment layout, colors, and lighting of the generated video clip must strictly match and remain consistent with the provided scene background reference image (图3). Keep the background stable.",
+    "imageSrc": "https://marius.oss-cn-shanghai.aliyuncs.com/audio/1784634387428_51nqea4q1.jpeg",
+    "duration": 3,
+    "projectId": "4c11c19f-f4d0-42df-9b20-60188c23354d",
+    "error": null,
+    "updatedAt": 1788415933953
+  },
+  "51a07061-08ca-4b57-b391-35ae11189813": {
+    "taskId": "51a07061-08ca-4b57-b391-35ae11189813",
+    "status": "completed",
+    "createdAt": 1788415837133,
+    "type": "video",
+    "model": "kwaivgi/kling-video/3.0/omni/pro/image-to-video",
+    "prompt": "Referencing 图1 (outfit model) as the strict character consistency reference, and referencing 图2 (storyboard frame) as the first-frame layout and pose. Referencing 图3 (scene template) to lock background scene consistency. 正面全身广角镜头，模特正面直视前方镜头站立，双手自然下垂，大方定格展示整体服装的穿着全貌。。The background scene environment is: posing in a custom scene: Gemini_Generated_Image_pcqa51pcq(1). A high-end cinematic fashion commercial blockbuster style. The camera performs slow-motion elegant operations like dolly zoom, slow panning, or orbital rotation. The model performs high-fashion micro-movements with subtle elegant posture adjustments, keeping action amplitude small and natural. Premium Vogue-style chiaroscuro studio lighting, highly detailed skin textures, realistic fabric folds, smooth continuous motion, 8k resolution, cinematic color grading. The background scene, environment layout, colors, and lighting of the generated video clip must strictly match and remain consistent with the provided scene background reference image (图3). Keep the background stable.",
+    "imageSrc": "https://marius.oss-cn-shanghai.aliyuncs.com/audio/1784653493925_hi60f14zi.jpeg",
+    "duration": 3,
+    "projectId": "4c11c19f-f4d0-42df-9b20-60188c23354d",
+    "error": null,
+    "updatedAt": 1788415926915
+  },
+  "76862823-610f-4e2e-a663-6b87ac68f3c1": {
+    "taskId": "76862823-610f-4e2e-a663-6b87ac68f3c1",
+    "status": "completed",
+    "createdAt": 1788415837108,
+    "type": "video",
+    "model": "kwaivgi/kling-video/3.0/omni/pro/image-to-video",
+    "prompt": "Referencing 图1 (outfit model) as the strict character consistency reference, and referencing 图2 (storyboard frame) as the first-frame layout and pose. Referencing 图3 (scene template) to lock background scene consistency. 模特迈着从容的步伐从画外走入镜头中央并站定，微风轻轻吹动发丝和服装衣角。。The background scene environment is: posing in a custom scene: Gemini_Generated_Image_pcqa51pcq(1). A high-end cinematic fashion commercial blockbuster style. The camera performs slow-motion elegant operations like dolly zoom, slow panning, or orbital rotation. The model performs high-fashion micro-movements with subtle elegant posture adjustments, keeping action amplitude small and natural. Premium Vogue-style chiaroscuro studio lighting, highly detailed skin textures, realistic fabric folds, smooth continuous motion, 8k resolution, cinematic color grading. The background scene, environment layout, colors, and lighting of the generated video clip must strictly match and remain consistent with the provided scene background reference image (图3). Keep the background stable.",
+    "imageSrc": "https://marius.oss-cn-shanghai.aliyuncs.com/audio/1784634387420_g9aapqdio.png",
+    "duration": 3,
+    "projectId": "4c11c19f-f4d0-42df-9b20-60188c23354d",
+    "error": null,
+    "updatedAt": 1788415923574
+  },
+  "8c1157dc-77e3-43c0-a05d-ff83556c61f5": {
+    "taskId": "8c1157dc-77e3-43c0-a05d-ff83556c61f5",
+    "status": "completed",
+    "createdAt": 1788415837107,
+    "type": "video",
+    "model": "kwaivgi/kling-video/3.0/omni/pro/image-to-video",
+    "prompt": "Referencing 图1 (outfit model) as the strict character consistency reference, and referencing 图2 (storyboard frame) as the first-frame layout and pose. Referencing 图3 (scene template) to lock background scene consistency. 优雅侧面视角人像（模特微微侧身45度），模特微低头转身，展现别具一格的侧姿版型与剪裁。。The background scene environment is: posing in a custom scene: Gemini_Generated_Image_pcqa51pcq(1). A high-end cinematic fashion commercial blockbuster style. The camera performs slow-motion elegant operations like dolly zoom, slow panning, or orbital rotation. The model performs high-fashion micro-movements with subtle elegant posture adjustments, keeping action amplitude small and natural. Premium Vogue-style chiaroscuro studio lighting, highly detailed skin textures, realistic fabric folds, smooth continuous motion, 8k resolution, cinematic color grading. The background scene, environment layout, colors, and lighting of the generated video clip must strictly match and remain consistent with the provided scene background reference image (图3). Keep the background stable.",
+    "imageSrc": "https://marius.oss-cn-shanghai.aliyuncs.com/audio/1784634387442_f0i9paco3.jpeg",
+    "duration": 3,
+    "projectId": "4c11c19f-f4d0-42df-9b20-60188c23354d",
+    "error": null,
+    "updatedAt": 1788415926916
+  },
+  "fb02c2d6-a23e-43f0-97a8-7a84db617f36": {
+    "taskId": "fb02c2d6-a23e-43f0-97a8-7a84db617f36",
+    "status": "processing",
+    "createdAt": 1788415837063,
+    "type": "video",
+    "model": "kwaivgi/kling-video/3.0/omni/pro/image-to-video",
+    "prompt": "Referencing 图1 (outfit model) as the strict character consistency reference, and referencing 图2 (storyboard frame) as the first-frame layout and pose. Referencing 图3 (scene template) to lock background scene consistency. 镜头平滑拉近对准模特的手部特写，模特手部微调姿态展示材质的质地细节。。The background scene environment is: posing in a custom scene: Gemini_Generated_Image_pcqa51pcq(1). A high-end cinematic fashion commercial blockbuster style. The camera performs slow-motion elegant operations like dolly zoom, slow panning, or orbital rotation. The model performs high-fashion micro-movements with subtle elegant posture adjustments, keeping action amplitude small and natural. Premium Vogue-style chiaroscuro studio lighting, highly detailed skin textures, realistic fabric folds, smooth continuous motion, 8k resolution, cinematic color grading. The background scene, environment layout, colors, and lighting of the generated video clip must strictly match and remain consistent with the provided scene background reference image (图3). Keep the background stable.",
+    "imageSrc": "https://marius.oss-cn-shanghai.aliyuncs.com/audio/1784634387435_qd4nei69g.png",
+    "duration": 3,
+    "projectId": "4c11c19f-f4d0-42df-9b20-60188c23354d"
+  },
   "630e8a55-d185-43e9-ba1a-83118d699f1f": {
     "taskId": "630e8a55-d185-43e9-ba1a-83118d699f1f",
     "status": "completed",

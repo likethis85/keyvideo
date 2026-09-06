@@ -1,21 +1,50 @@
-import { useState, useEffect, useRef } from 'react';
-import { VideoCanvas } from './components/VideoCanvas';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import type { Layer } from './components/VideoCanvas';
-import { Timeline } from './components/Timeline';
-import { SidebarDrawer } from './components/SidebarDrawer';
-import type { AIProject, SidebarDrawerRef } from './components/SidebarDrawer';
-import { PropertyInspector } from './components/PropertyInspector';
+import { BackendSettingsModal } from './components/app/BackendSettingsModal';
+import { ToolNavigation } from './components/app/ToolNavigation';
+import type { EditorToolTab } from './components/app/ToolNavigation';
+import { ProjectSelector } from './components/app/ProjectSelector';
+import { AspectRatioSelector } from './components/app/AspectRatioSelector';
+import { AppHeaderActions } from './components/app/AppHeaderActions';
+import { AppLoadingScreen } from './components/app/AppLoadingScreen';
+import { AppBrand } from './components/app/AppBrand';
+import type { AIProject, StoryboardItem } from './types/aiProject';
+import type { SidebarDrawerRef } from './components/sidebar/sidebarTypes';
 import { localDB } from './utils/db';
 import { supabase } from './utils/supabaseClient';
 import { AuthPage } from './components/AuthPage';
+import { ToastContainer } from './components/Toast';
+import { toast } from './components/toastStore';
+import { reflowLayersForRatio, RATIO_CONFIGS } from './utils/smartReflow';
+import type { AspectRatio } from './utils/smartReflow';
+import {
+  createInitialHistory,
+  pushHistorySnapshot,
+  undoHistory,
+  redoHistory
+} from './utils/historyManager';
+import type { HistoryState } from './utils/historyManager';
+import { createDefaultLayers } from './config/defaultLayers';
 import './App.css';
+
+const SidebarDrawer = lazy(() => import('./components/SidebarDrawer').then((module) => ({
+  default: module.SidebarDrawer
+})));
+const VideoCanvas = lazy(() => import('./components/VideoCanvas').then((module) => ({
+  default: module.VideoCanvas
+})));
+const PropertyInspector = lazy(() => import('./components/PropertyInspector').then((module) => ({
+  default: module.PropertyInspector
+})));
+const Timeline = lazy(() => import('./components/Timeline').then((module) => ({
+  default: module.Timeline
+})));
+const videoBlobUrls = new Map<string, string>();
 
 function App() {
   // History Undo/Redo states
-  const [historyState, setHistoryState] = useState<{
-    stack: Layer[][];
-    index: number;
-  }>({
+  const [historyState, setHistoryState] = useState<HistoryState>({
     stack: [],
     index: -1
   });
@@ -28,7 +57,7 @@ function App() {
 
   const selectedLayerIdRef = useRef<string | null>(null);
 
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
 
   // Check active session on mount
@@ -46,26 +75,51 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Close dropdown on click outside
+  // Bridge window.alert to modern toast system
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
-        setIsUserDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const originalAlert = window.alert;
+    window.alert = (msg?: unknown) => {
+      toast.info(String(msg));
+    };
+    return () => {
+      window.alert = originalAlert;
+    };
   }, []);
 
-  // 1. Ratio size setup: 1-1, 3-4, 9-16
-  const [ratio, setRatio] = useState<'1-1' | '3-4' | '9-16'>('3-4');
+  // 1. Ratio size setup: 1-1, 3-4, 9-16, 16-9
+  const [ratio, setRatio] = useState<AspectRatio>('9-16');
+
+  // Instant commit helper for discrete actions (delete, add, template, ratio)
+  const commitInstantHistory = (newLayers: Layer[], actionDesc: string) => {
+    setHistoryState(prev => pushHistorySnapshot(prev, newLayers, actionDesc));
+  };
+
+  const handleRatioChange = (newRatio: AspectRatio) => {
+    if (newRatio === ratio) return;
+    const reflowed = reflowLayersForRatio(layers, ratio, newRatio);
+    const cfg = RATIO_CONFIGS[newRatio];
+    setLayers(reflowed);
+    setRatio(newRatio);
+    commitInstantHistory(reflowed, `切换画幅至 ${cfg.label}`);
+    toast.success(`已切换至 ${cfg.label}（${cfg.name}），图层安全边距与模特比例已自适应重排！`);
+  };
+
+  const handleSmartReflow = () => {
+    const reflowed = reflowLayersForRatio(layers, ratio, ratio);
+    setLayers(reflowed);
+    commitInstantHistory(reflowed, '智能安全排版');
+    toast.success(`已依据当前 ${RATIO_CONFIGS[ratio].label} 画幅安全边距优化图层排版`);
+  };
 
   // 2. Playback state
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
   // 3. Tab navigation state
-  const [activeTab, setActiveTab] = useState<'template' | 'media' | 'text' | 'sticker' | 'ai' | 'audio'>('template');
+  const [activeTab, setActiveTab] = useState<EditorToolTab>('template');
+  const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(false);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // AI Project Management States
   const [projects, setProjects] = useState<AIProject[]>([]);
@@ -79,94 +133,27 @@ function App() {
   );
   const sidebarRef = useRef<SidebarDrawerRef | null>(null);
 
-  // User profile dropdown states
-  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
-  const userDropdownRef = useRef<HTMLDivElement | null>(null);
+  // Theme state ('dark' | 'light')
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('keyvideo_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('keyvideo_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    toast.info(`已切换至 ${nextTheme === 'dark' ? '🌙 暗黑主题' : '☀️ 浅色主题'}`);
+  };
 
   // 4. Initial Default Layers (Ready-to-use template for gorgeous first impression)
-  const [layers, setLayers] = useState<Layer[]>([
-    {
-      id: 'media_1',
-      type: 'media',
-      name: '商品图 (亚麻衬衫)',
-      start: 0,
-      end: 15,
-      visible: true,
-      x: 50,
-      y: 45,
-      scale: 0.95,
-      opacity: 1,
-      properties: { src: '/clothing_shirt.png', bgRemoved: false }
-    },
-    {
-      id: 'text_1',
-      type: 'text',
-      name: '主标题 (天然面料)',
-      start: 1,
-      end: 6.5,
-      visible: true,
-      x: 50,
-      y: 78,
-      scale: 1,
-      opacity: 1,
-      properties: { text: '100% 纯天然法国亚麻', fontSize: 32, color: '#ffffff', animation: 'zoom', bold: true, shadow: true }
-    },
-    {
-      id: 'text_2',
-      type: 'text',
-      name: '副标题 (透气排汗)',
-      start: 7,
-      end: 13,
-      visible: true,
-      x: 50,
-      y: 78,
-      scale: 1,
-      opacity: 1,
-      properties: { text: '干爽透气 • 不易起皱', fontSize: 32, color: '#00f2fe', animation: 'typewriter', bold: true, shadow: true }
-    },
-    {
-      id: 'sticker_1',
-      type: 'sticker',
-      name: '促销标签',
-      start: 2,
-      end: 14,
-      visible: true,
-      x: 80,
-      y: 18,
-      scale: 1.1,
-      opacity: 1,
-      properties: { text: '新品上市', style: 'purple' }
-    },
-    {
-      id: 'audio_1',
-      type: 'audio',
-      name: '动感时尚卡点音轨',
-      start: 0,
-      end: 15,
-      visible: true,
-      x: 0,
-      y: 0,
-      scale: 1,
-      opacity: 1,
-      properties: { src: 'fashion_beat.mp3', volume: 0.8 }
-    },
-    {
-      id: 'logo_layer',
-      type: 'media',
-      name: '品牌 LOGO',
-      start: 0,
-      end: 1,
-      visible: true,
-      x: 50,
-      y: 50,
-      scale: 1.5,
-      opacity: 1,
-      properties: { src: '/logo.png', bgRemoved: false }
-    }
-  ]);
+  const [layers, setLayers] = useState<Layer[]>(createDefaultLayers);
 
   // 5. Selected Layer state
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>('media_1');
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
 
   useEffect(() => {
     selectedLayerIdRef.current = selectedLayerId;
@@ -177,56 +164,23 @@ function App() {
     layersRef.current = layers;
   }, [layers]);
 
-  // Handle keyboard Delete / Backspace to remove selected layer, and Space to toggle play/pause
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
-        return;
-      }
 
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedLayerIdRef.current) {
-          const layerIdToDelete = selectedLayerIdRef.current;
-          const currentLayers = layersRef.current;
-          const targetLayer = currentLayers.find(l => l.id === layerIdToDelete);
-          const layerName = targetLayer ? targetLayer.name : '元素';
-
-          const confirmDelete = window.confirm(`是否确认删除选中的 "${layerName}"？`);
-          if (confirmDelete) {
-            setLayers(prev => prev.filter(l => l.id !== layerIdToDelete));
-            setSelectedLayerId(null);
-          }
-        }
-      } else if (e.key === ' ' || e.code === 'Space') {
-        e.preventDefault(); // Prevent standard page scrolling action
-        setIsPlaying(prev => !prev);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setSelectedLayerId, setLayers, setIsPlaying]);
 
   // Load saved state from database on mount
   useEffect(() => {
     const loadState = async () => {
-      const savedRatio = await localDB.get('keyvideo_ratio');
+      const savedRatio = await localDB.get('keyvideo_ratio') as AspectRatio | null;
       if (savedRatio) {
         setRatio(savedRatio);
       }
 
-      const savedLayers = await localDB.get('keyvideo_layers');
-      const savedStoryboards = await localDB.get('ai_storyboards');
+      const savedLayers = await localDB.get('keyvideo_layers') as Layer[] | null;
+      const savedStoryboards = await localDB.get('ai_storyboards') as StoryboardItem[] | null;
 
-      let initialLayers = layers;
+      let initialLayers = createDefaultLayers();
 
       if (savedLayers) {
-        const updatedLayers = savedLayers.map((layer: any) => {
+        const updatedLayers = savedLayers.map((layer) => {
           if (layer.type === 'media' && layer.properties.isVideo) {
             let sbIndex = -1;
             if (layer.id.startsWith('media_i2v_0_')) sbIndex = 0;
@@ -236,14 +190,11 @@ function App() {
             if (sbIndex !== -1 && savedStoryboards && savedStoryboards[sbIndex]) {
               const sb = savedStoryboards[sbIndex];
               if (sb.videoBlob) {
-                if (!(window as any)._videoBlobUrls) {
-                  (window as any)._videoBlobUrls = {};
-                }
                 const cacheKey = sb.id;
-                if (!(window as any)._videoBlobUrls[cacheKey]) {
-                  (window as any)._videoBlobUrls[cacheKey] = URL.createObjectURL(sb.videoBlob);
+                if (!videoBlobUrls.has(cacheKey)) {
+                  videoBlobUrls.set(cacheKey, URL.createObjectURL(sb.videoBlob));
                 }
-                layer.properties.src = (window as any)._videoBlobUrls[cacheKey];
+                layer.properties.src = videoBlobUrls.get(cacheKey);
               }
             }
           }
@@ -253,10 +204,7 @@ function App() {
         setLayers(updatedLayers);
       }
 
-      setHistoryState({
-        stack: [initialLayers],
-        index: 0
-      });
+      setHistoryState(createInitialHistory(initialLayers, '加载工程模板'));
     };
 
     loadState();
@@ -273,110 +221,102 @@ function App() {
     localDB.set('keyvideo_ratio', ratio);
   }, [ratio]);
 
-  // Track layer modifications with a 500ms debounce
+  // Track continuous layer modifications with a 400ms debounce
   useEffect(() => {
     if (isNavigatingRef.current) {
       isNavigatingRef.current = false;
       return;
     }
     // Only record when history has been initialized
-    if (historyState.index === -1) return;
+    if (historyStateRef.current.index === -1) return;
 
     const timer = setTimeout(() => {
-      setHistoryState(prev => {
-        // Discard any forward history (redo path) if we are making a new edit
-        const nextStack = prev.stack.slice(0, prev.index + 1);
-        const lastCommit = nextStack[nextStack.length - 1];
-        // Avoid duplicate commits if the current state is identical to the last commit
-        if (lastCommit && JSON.stringify(lastCommit) === JSON.stringify(layers)) {
-          return prev;
-        }
-        return {
-          stack: [...nextStack, layers],
-          index: nextStack.length
-        };
-      });
-    }, 500);
+      setHistoryState(prev => pushHistorySnapshot(prev, layers, '编辑图层属性'));
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [layers]);
 
   const undo = () => {
-    if (historyState.index > 0) {
-      const newIndex = historyState.index - 1;
-      const targetLayers = historyState.stack[newIndex];
+    const result = undoHistory(historyStateRef.current);
+    if (result) {
       isNavigatingRef.current = true;
-      setLayers(targetLayers);
-      setHistoryState(prev => ({ ...prev, index: newIndex }));
+      setLayers(result.restoredLayers);
+      setHistoryState(result.state);
+      toast.info(`↩️ 已撤销：${result.actionDesc}`);
 
-      if (selectedLayerId && !targetLayers.some(l => l.id === selectedLayerId)) {
+      if (selectedLayerIdRef.current && !result.restoredLayers.some(l => l.id === selectedLayerIdRef.current)) {
         setSelectedLayerId(null);
       }
     }
   };
 
   const redo = () => {
-    if (historyState.index < historyState.stack.length - 1) {
-      const newIndex = historyState.index + 1;
-      const targetLayers = historyState.stack[newIndex];
+    const result = redoHistory(historyStateRef.current);
+    if (result) {
       isNavigatingRef.current = true;
-      setLayers(targetLayers);
-      setHistoryState(prev => ({ ...prev, index: newIndex }));
+      setLayers(result.restoredLayers);
+      setHistoryState(result.state);
+      toast.info(`↪️ 已重做：${result.actionDesc}`);
 
-      if (selectedLayerId && !targetLayers.some(l => l.id === selectedLayerId)) {
+      if (selectedLayerIdRef.current && !result.restoredLayers.some(l => l.id === selectedLayerIdRef.current)) {
         setSelectedLayerId(null);
       }
     }
   };
 
-  // Keyboard hotkeys
+  // Unified Professional Keyboard hotkeys with input guard
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Guard: when typing in text input, textarea or select, leave shortcuts to browser native text editing!
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName;
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || target.isContentEditable) {
+          return;
+        }
+      }
+
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
       if (isCmdOrCtrl) {
         if (e.key.toLowerCase() === 'z') {
           e.preventDefault();
           if (e.shiftKey) {
-            // Redo: Cmd+Shift+Z
-            const current = historyStateRef.current;
-            if (current.index < current.stack.length - 1) {
-              const newIndex = current.index + 1;
-              const targetLayers = current.stack[newIndex];
-              isNavigatingRef.current = true;
-              setLayers(targetLayers);
-              setHistoryState(prev => ({ ...prev, index: newIndex }));
-              if (selectedLayerIdRef.current && !targetLayers.some(l => l.id === selectedLayerIdRef.current)) {
-                setSelectedLayerId(null);
-              }
-            }
+            redo();
           } else {
-            // Undo: Cmd+Z
-            const current = historyStateRef.current;
-            if (current.index > 0) {
-              const newIndex = current.index - 1;
-              const targetLayers = current.stack[newIndex];
-              isNavigatingRef.current = true;
-              setLayers(targetLayers);
-              setHistoryState(prev => ({ ...prev, index: newIndex }));
-              if (selectedLayerIdRef.current && !targetLayers.some(l => l.id === selectedLayerIdRef.current)) {
-                setSelectedLayerId(null);
-              }
-            }
+            undo();
           }
         } else if (e.key.toLowerCase() === 'y') {
           e.preventDefault();
-          // Redo: Cmd+Y / Ctrl+Y
-          const current = historyStateRef.current;
-          if (current.index < current.stack.length - 1) {
-            const newIndex = current.index + 1;
-            const targetLayers = current.stack[newIndex];
-            isNavigatingRef.current = true;
-            setLayers(targetLayers);
-            setHistoryState(prev => ({ ...prev, index: newIndex }));
-            if (selectedLayerIdRef.current && !targetLayers.some(l => l.id === selectedLayerIdRef.current)) {
-              setSelectedLayerId(null);
-            }
-          }
+          redo();
+        }
+      } else if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        setIsPlaying(prev => !prev);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedLayerIdRef.current) {
+          const idToDelete = selectedLayerIdRef.current;
+          setLayers(prev => {
+            const targetLayer = prev.find(l => l.id === idToDelete);
+            if (!targetLayer) return prev;
+            const updated = prev.filter(l => l.id !== idToDelete);
+            commitInstantHistory(updated, `删除图层「${targetLayer.name}」`);
+            toast.info(`已删除「${targetLayer.name}」，可按 Ctrl+Z 撤销`);
+            return updated;
+          });
+          setSelectedLayerId(null);
+        }
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const step = e.shiftKey ? 0.5 : 0.1;
+        setCurrentTime(prev => Math.max(0, parseFloat((prev - step).toFixed(2))));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        const step = e.shiftKey ? 0.5 : 0.1;
+        setCurrentTime(prev => Math.min(15, parseFloat((prev + step).toFixed(2))));
+      } else if (e.key === 'Escape') {
+        if (selectedLayerIdRef.current) {
+          setSelectedLayerId(null);
         }
       }
     };
@@ -401,37 +341,21 @@ function App() {
     }
   };
 
+  const addDefaultTextLayer = () => {
+    const id = `text_${Date.now()}`;
+    const newLayers: Layer[] = [...layers, {
+      id, type: 'text', name: '营销文案', start: currentTime, end: Math.min(15, currentTime + 4),
+      visible: true, x: 50, y: 50, scale: 1, opacity: 1,
+      properties: { text: '点击编辑营销卖点', fontSize: 32, color: '#ffffff', animation: 'zoom', bold: true, shadow: true }
+    }];
+    setLayers(newLayers);
+    setSelectedLayerId(id);
+    commitInstantHistory(newLayers, '添加文案图层');
+    toast.success('已添加文案图层');
+  };
+
   if (loadingSession) {
-    return (
-      <div style={{
-        width: '100vw',
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'radial-gradient(circle at center, #1a1c29 0%, #08090f 100%)',
-        color: '#ffffff',
-        fontFamily: "'Outfit', sans-serif",
-        fontSize: '16px',
-        fontWeight: 'bold',
-        gap: '12px'
-      }}>
-        <div style={{
-          width: '24px',
-          height: '24px',
-          border: '3px solid rgba(255,255,255,0.1)',
-          borderTopColor: 'var(--accent-cyan, #00f2fe)',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite'
-        }} />
-        <span>系统初始化中...</span>
-        <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
+    return <AppLoadingScreen />;
   }
 
   if (!session) {
@@ -439,362 +363,60 @@ function App() {
   }
 
   return (
-    <>
+    <Suspense fallback={<AppLoadingScreen />}>
       {/* Header bar */}
       <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
-          <div className="logo-section">
-            <div className="logo-icon">
-              {/* SVG wand icon */}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5">
-                <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 5.2l-1.4 1.4M7.6 15.4l-1.4 1.4M20.2 12.2l-1.4-1.4M6.2 6.2l1.4 1.4" />
-              </svg>
-            </div>
-            <span className="logo-text">KeyVideo <span className="logo-subtext">服装视频智剪</span></span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: '10px' }}>
+          <AppBrand />
 
-          {/* Project Selector Block */}
-          <div className="header-project-selector" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', padding: '4px 10px', borderRadius: '8px', marginLeft: '12px', flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
-            {isEditingProjName ? (
-              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 1, minWidth: 0 }}>
-                <input
-                  type="text"
-                  value={editingProjNameValue}
-                  onChange={(e) => setEditingProjNameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') sidebarRef.current?.saveProjectName();
-                    if (e.key === 'Escape') setIsEditingProjName(false);
-                  }}
-                  autoFocus
-                  style={{
-                    background: 'rgba(0,0,0,0.3)',
-                    border: '1px solid var(--accent-purple)',
-                    borderRadius: '6px',
-                    color: '#fff',
-                    fontSize: '12px',
-                    padding: '2px 8px',
-                    outline: 'none',
-                    height: '24px',
-                    width: '120px',
-                    flexShrink: 1,
-                    minWidth: 0
-                  }}
-                />
-                <button onClick={() => sidebarRef.current?.saveProjectName()} style={{ background: 'transparent', border: 'none', color: '#4caf50', cursor: 'pointer', padding: '0 4px', fontSize: '12px', flexShrink: 0 }} title="保存">💾</button>
-                <button onClick={() => setIsEditingProjName(false)} style={{ background: 'transparent', border: 'none', color: '#ff5252', cursor: 'pointer', padding: '0 4px', fontSize: '12px', flexShrink: 0 }} title="取消">❌</button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 1, minWidth: 0, overflow: 'hidden' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>📁</span>
-                <select
-                  value={activeProjectId}
-                  onChange={(e) => sidebarRef.current?.switchProject(e.target.value)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#fff',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    outline: 'none',
-                    cursor: 'pointer',
-                    paddingRight: '12px',
-                    maxWidth: '120px',
-                    flexShrink: 1,
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {projects.map(p => {
-                    let statusText = '';
-                    if (p.isI2vGenerating) statusText = ' (生视频中)';
-                    else if (p.isOutfitImgGenerating) statusText = ' (生穿搭中)';
-                    else if (p.i2vStep === 'video_generated') statusText = ' (已生视频)';
-                    return (
-                      <option key={p.id} value={p.id} style={{ background: '#14151f', color: '#fff' }}>
-                        {p.name}{statusText}
-                      </option>
-                    );
-                  })}
-                </select>
-                
-                {/* Action buttons */}
-                <button onClick={() => sidebarRef.current?.createNewProject()} style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px', flexShrink: 0 }} title="新建项目">➕</button>
-                <button onClick={() => sidebarRef.current?.startRenameProject()} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px', flexShrink: 0 }} title="重命名项目">✏️</button>
-                {projects.length > 1 && (
-                  <button onClick={() => sidebarRef.current?.deleteProject(activeProjectId)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px', flexShrink: 0 }} title="删除项目">🗑️</button>
-                )}
-                <button onClick={() => setIsProjectsModalOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', padding: '0 4px', flexShrink: 0 }} title="项目管理大屏看板">📊</button>
-              </div>
-            )}
-          </div>
+          <ProjectSelector
+            projects={projects}
+            activeProjectId={activeProjectId}
+            isEditing={isEditingProjName}
+            editingName={editingProjNameValue}
+            theme={theme}
+            onEditingNameChange={setEditingProjNameValue}
+            onCancelEditing={() => setIsEditingProjName(false)}
+            onSaveName={() => sidebarRef.current?.saveProjectName()}
+            onSwitchProject={(id) => sidebarRef.current?.switchProject(id)}
+            onCreateProject={() => sidebarRef.current?.createNewProject()}
+            onStartRename={() => sidebarRef.current?.startRenameProject()}
+            onDeleteProject={(id) => sidebarRef.current?.deleteProject(id)}
+            onOpenDashboard={() => setIsProjectsModalOpen(true)}
+          />
         </div>
 
-        {/* Ratio dimensions selectors */}
-        <div className="ratio-selector">
-          <button
-            className={`ratio-btn ${ratio === '1-1' ? 'active' : ''}`}
-            onClick={() => setRatio('1-1')}
-          >
-            {/* SVG 1:1 box */}
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="2" y="2" width="10" height="10" stroke="currentColor" fill="none" strokeWidth="1.5" />
-            </svg>
-            1:1
-          </button>
-          <button
-            className={`ratio-btn ${ratio === '3-4' ? 'active' : ''}`}
-            onClick={() => setRatio('3-4')}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="2.5" y="1" width="9" height="12" stroke="currentColor" fill="none" strokeWidth="1.5" />
-            </svg>
-            3:4
-          </button>
-          <button
-            className={`ratio-btn ${ratio === '9-16' ? 'active' : ''}`}
-            onClick={() => setRatio('9-16')}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="3" y="0" width="8" height="14" stroke="currentColor" fill="none" strokeWidth="1.5" />
-            </svg>
-            9:16
-          </button>
-        </div>
+        <AspectRatioSelector
+          ratio={ratio}
+          onRatioChange={handleRatioChange}
+          onSmartReflow={handleSmartReflow}
+        />
 
-        <div className="header-actions">
-          <button
-            className="btn-secondary"
-            onClick={undo}
-            disabled={historyState.index <= 0}
-            title="撤销 (Cmd+Z / Ctrl+Z)"
-            style={{ 
-              opacity: historyState.index <= 0 ? 0.4 : 1, 
-              cursor: historyState.index <= 0 ? 'not-allowed' : 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '6px 12px'
-            }}
-          >
-            ↩️ <span className="action-btn-text">撤销</span>
-          </button>
-          <button
-            className="btn-secondary"
-            onClick={redo}
-            disabled={historyState.index >= historyState.stack.length - 1}
-            title="重做 (Cmd+Shift+Z / Ctrl+Y)"
-            style={{ 
-              opacity: historyState.index >= historyState.stack.length - 1 ? 0.4 : 1, 
-              cursor: historyState.index >= historyState.stack.length - 1 ? 'not-allowed' : 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '6px 12px'
-            }}
-          >
-            ↪️ <span className="action-btn-text">重做</span>
-          </button>
-          <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 8px' }} />
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              // Add a default slogan
-              const id = `text_${Date.now()}`;
-              setLayers([...layers, {
-                id,
-                type: 'text',
-                name: '新段落字幕',
-                start: 3,
-                end: 9,
-                visible: true,
-                x: 50,
-                y: 60,
-                scale: 1,
-                opacity: 1,
-                properties: { text: '双击修改卖点文字', fontSize: 28, color: '#ffffff', animation: 'fade' }
-              }]);
-              setSelectedLayerId(id);
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span className="action-btn-text">添加图层</span>
-          </button>
-          <button
-            className="btn-primary"
-            onClick={triggerExport}
-          >
-            {/* Download icon */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-            </svg>
-            <span className="action-btn-text">一键导出 MP4</span>
-          </button>
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              setBackendUrlInput(localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001');
-              setIsSettingsModalOpen(true);
-            }}
-            title="后端服务器配置"
-            style={{ 
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '6px 12px',
-              gap: '4px'
-            }}
-          >
-            ⚙️ <span className="action-btn-text">服务配置</span>
-          </button>
-
-          {session?.user && (
-            <>
-              <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 8px', flexShrink: 0 }} />
-              
-              {/* Profile Avatar Clickable Container */}
-              <div ref={userDropdownRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <div
-                  onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, var(--accent-cyan, #00f2fe), var(--accent-purple, #8a2be2))',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: 'bold',
-                    color: '#090a0f',
-                    boxShadow: '0 2px 8px rgba(0, 242, 254, 0.15)',
-                    flexShrink: 0,
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    border: '1.5px solid rgba(255,255,255,0.15)',
-                    transition: 'transform 0.15s, border-color 0.15s'
-                  }}
-                  title={session.user.email}
-                  onMouseOver={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.4)'; }}
-                  onMouseOut={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.15)'; }}
-                >
-                  {session.user.email?.[0].toUpperCase()}
-                </div>
-
-                {/* Dropdown Menu */}
-                {isUserDropdownOpen && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      marginTop: '8px',
-                      background: '#14151f',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '8px',
-                      padding: '8px 0',
-                      minWidth: '160px',
-                      boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
-                      zIndex: 1000,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px'
-                    }}
-                  >
-                    {/* User Info Header */}
-                    <div style={{ padding: '6px 12px', display: 'flex', flexDirection: 'column', gap: '2px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '10px', color: '#9ca3af' }}>当前登录</span>
-                      <span style={{ fontSize: '11px', color: '#d1d5db', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={session.user.email}>
-                        {session.user.email}
-                      </span>
-                    </div>
-
-                    {/* Action: Sign Out */}
-                    <button
-                      onClick={async () => {
-                        setIsUserDropdownOpen(false);
-                        if (confirm('确定要退出登录吗？')) {
-                          await supabase.auth.signOut();
-                        }
-                      }}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--accent-red, #ff5252)',
-                        padding: '8px 12px',
-                        fontSize: '12px',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        width: '100%',
-                        transition: 'background 0.2s'
-                      }}
-                      onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,82,82,0.08)'; }}
-                      onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                    >
-                      🚪 <span>退出登录</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </header>
+        <AppHeaderActions
+          theme={theme}
+          userEmail={session.user.email}
+          onAddLayer={addDefaultTextLayer}
+          onExport={triggerExport}
+          onOpenSettings={() => {
+            setBackendUrlInput(localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001');
+            setIsSettingsModalOpen(true);
+          }}
+          onToggleTheme={toggleTheme}
+          onSignOut={async () => { await supabase.auth.signOut(); }}
+        />
+     </header>
 
       {/* Editor Body Workspace */}
       <div className="editor-container">
-        {/* Left side tabs nav */}
-        <nav className="editor-sidebar">
-          <button
-            className={`nav-tab ${activeTab === 'template' ? 'active' : ''}`}
-            onClick={() => setActiveTab('template')}
-          >
-            <span style={{ fontSize: '18px' }}>📋</span>
-            <span>模板</span>
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'media' ? 'active' : ''}`}
-            onClick={() => setActiveTab('media')}
-          >
-            <span style={{ fontSize: '18px' }}>🖼️</span>
-            <span>素材</span>
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'text' ? 'active' : ''}`}
-            onClick={() => setActiveTab('text')}
-          >
-            <span style={{ fontSize: '18px' }}>✍️</span>
-            <span>文本</span>
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'sticker' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sticker')}
-          >
-            <span style={{ fontSize: '18px' }}>🏷️</span>
-            <span>贴纸</span>
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'ai' ? 'active' : ''}`}
-            onClick={() => setActiveTab('ai')}
-          >
-            <span style={{ fontSize: '18px' }}>🤖</span>
-            <span>AI 工具</span>
-          </button>
-          <button
-            className={`nav-tab ${activeTab === 'audio' ? 'active' : ''}`}
-            onClick={() => setActiveTab('audio')}
-          >
-            <span style={{ fontSize: '18px' }}>🎵</span>
-            <span>音乐</span>
-          </button>
-        </nav>
+        <ToolNavigation
+          activeTab={activeTab}
+          isDrawerCollapsed={isDrawerCollapsed}
+          onSelectTab={(tab) => {
+            setActiveTab(tab);
+            setIsDrawerCollapsed(false);
+          }}
+          onReopenDrawer={() => setIsDrawerCollapsed(false)}
+        />
 
         <SidebarDrawer
           ref={sidebarRef}
@@ -817,6 +439,8 @@ function App() {
           setEditingProjNameValue={setEditingProjNameValue}
           isProjectsModalOpen={isProjectsModalOpen}
           setIsProjectsModalOpen={setIsProjectsModalOpen}
+          isCollapsed={isDrawerCollapsed}
+          onToggleCollapse={() => setIsDrawerCollapsed(!isDrawerCollapsed)}
         />
 
         <VideoCanvas
@@ -836,6 +460,8 @@ function App() {
           setExportProgress={setExportProgress}
           exportLogs={exportLogs}
           setExportLogs={setExportLogs}
+          isFullscreen={isFullscreen}
+          setIsFullscreen={setIsFullscreen}
         />
 
         {/* Right side settings column */}
@@ -844,124 +470,38 @@ function App() {
           setLayers={setLayers}
           selectedLayerId={selectedLayerId}
           setSelectedLayerId={setSelectedLayerId}
+          isCollapsed={isInspectorCollapsed}
+          onToggleCollapse={() => setIsInspectorCollapsed(!isInspectorCollapsed)}
         />
       </div>
 
-      {/* Bottom timeline track scrubbers */}
-      <Timeline
-        layers={layers}
-        setLayers={setLayers}
-        currentTime={currentTime}
-        setCurrentTime={setCurrentTime}
-        selectedLayerId={selectedLayerId}
-        setSelectedLayerId={setSelectedLayerId}
-      />
-
-      {/* Backend Settings Modal */}
-      {isSettingsModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            background: 'rgba(5, 6, 10, 0.85)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999
-          }}
-          onClick={() => setIsSettingsModalOpen(false)}
-        >
-          <div
-            style={{
-              width: '450px',
-              background: '#14151f',
-              border: '1px solid var(--border-color)',
-              borderRadius: '12px',
-              padding: '24px',
-              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '20px'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                ⚙️ 后端服务地址配置
-              </h3>
-              <button
-                onClick={() => setIsSettingsModalOpen(false)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#9ca3af',
-                  cursor: 'pointer',
-                  fontSize: '18px',
-                  lineHeight: '1',
-                  padding: '4px'
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500' }}>
-                后端基础 URL (BACKEND_BASE_URL)
-              </label>
-              <input
-                type="text"
-                value={backendUrlInput}
-                onChange={(e) => setBackendUrlInput(e.target.value)}
-                placeholder="例如 http://localhost:3001 或 http://1.2.3.4:3001"
-                style={{
-                  background: '#090a0f',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  padding: '10px 12px',
-                  color: '#fff',
-                  fontSize: '13px',
-                  outline: 'none'
-                }}
-              />
-              <span style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.4' }}>
-                * 默认值为本地运行的 http://localhost:3001。部署到生产服务器后，请填入服务器公网地址（包含 http:// 和端口号，无需斜杠结尾）。
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
-              <button
-                onClick={() => setIsSettingsModalOpen(false)}
-                className="btn-secondary"
-                style={{ padding: '8px 16px', fontSize: '12px' }}
-              >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  let url = backendUrlInput.trim();
-                  if (url.endsWith('/')) {
-                    url = url.slice(0, -1);
-                  }
-                  localStorage.setItem('KEYVIDEO_BACKEND_URL', url);
-                  setIsSettingsModalOpen(false);
-                  alert(`已成功配置后端地址为:\n${url || '默认值 (http://localhost:3001)'}`);
-                  window.location.reload();
-                }}
-                className="btn-primary"
-                style={{ padding: '8px 20px', fontSize: '12px', background: 'var(--accent-purple)' }}
-              >
-                保存并应用
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Bottom timeline track scrubbers (Hidden during fullscreen preview) */}
+      {!isFullscreen && (
+        <Timeline
+          layers={layers}
+          setLayers={setLayers}
+          currentTime={currentTime}
+          setCurrentTime={setCurrentTime}
+          selectedLayerId={selectedLayerId}
+          setSelectedLayerId={setSelectedLayerId}
+          undo={undo}
+          redo={redo}
+          canUndo={historyState.index > 0}
+          canRedo={historyState.index < historyState.stack.length - 1}
+          undoCount={historyState.index}
+          redoCount={historyState.stack.length - 1 - historyState.index}
+        />
       )}
-    </>
+
+      <BackendSettingsModal
+        isOpen={isSettingsModalOpen}
+        value={backendUrlInput}
+        onChange={setBackendUrlInput}
+        onClose={() => setIsSettingsModalOpen(false)}
+      />
+      {/* Global modern toast notifications */}
+      <ToastContainer />
+    </Suspense>
   );
 }
 

@@ -28,3 +28,8 @@ dist-ssr
 
 # Backend env files
 backend/.env
+
+# Backend runtime state may contain user prompts and generated asset URLs.
+backend/tasks_history.json
+backend/tasks_history.json.bak
+backend/tasks_history.json.tmp.*

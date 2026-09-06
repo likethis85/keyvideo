@@ -1,4 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
+import type { ViteDevServer } from 'vite'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
@@ -9,23 +11,24 @@ export default defineConfig(({ mode }) => {
       react(),
       {
         name: 'oss-upload-proxy',
-        configureServer(server: any) {
-          server.middlewares.use('/api/upload', (req: any, res: any) => {
+        configureServer(server: ViteDevServer) {
+          server.middlewares.use('/api/upload', (req: IncomingMessage, res: ServerResponse) => {
             if (req.method === 'POST') {
               const urlObj = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
               const fileName = urlObj.searchParams.get('name') || 'audio.mp3';
 
-              const chunks: any[] = [];
-              req.on('data', (chunk: any) => chunks.push(chunk));
+              const chunks: Buffer[] = [];
+              req.on('data', (chunk: Buffer) => chunks.push(chunk));
               req.on('end', async () => {
                 try {
                   const buffer = Buffer.concat(chunks);
                   const { default: OSS } = await import('ali-oss');
                   const client = new OSS({
-                    region: 'oss-cn-shanghai',
-                    accessKeyId: env.VITE_OSS_ACCESS_KEY_ID || '',
-                    accessKeySecret: env.VITE_OSS_ACCESS_KEY_SECRET || '',
-                    bucket: 'marius',
+                    region: env.OSS_REGION || 'oss-cn-shanghai',
+                    // Never accept VITE_ prefixed credentials: Vite exposes those to browser code.
+                    accessKeyId: env.OSS_ACCESS_KEY_ID || process.env.OSS_ACCESS_KEY_ID || '',
+                    accessKeySecret: env.OSS_ACCESS_KEY_SECRET || process.env.OSS_ACCESS_KEY_SECRET || '',
+                    bucket: env.OSS_BUCKET || 'marius',
                     secure: true
                   });
                 const fileExt = fileName.split('.').pop() || 'mp3';
@@ -38,14 +41,14 @@ export default defineConfig(({ mode }) => {
                   'Access-Control-Allow-Headers': '*'
                 });
                 res.end(JSON.stringify({ url: result.url }));
-              } catch (err: any) {
+              } catch (err: unknown) {
                 console.error('Vite upload middleware error:', err);
                 res.writeHead(500, { 
                   'Content-Type': 'application/json',
                   'Access-Control-Allow-Origin': '*',
                   'Access-Control-Allow-Headers': '*'
                 });
-                res.end(JSON.stringify({ error: err.message || 'Upload failed' }));
+                res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Upload failed' }));
               }
             });
           } else if (req.method === 'OPTIONS') {
@@ -87,13 +90,10 @@ export default defineConfig(({ mode }) => {
             }
           });
         },
-        // Typecast dynamic router option as any because vite's typings don't fully expose http-proxy's router option
-        ...({
-          router: (req: any) => {
+          router: (req: IncomingMessage) => {
             const targetUrl = req.headers['x-gateway-target'];
             return typeof targetUrl === 'string' ? targetUrl : undefined;
           }
-        } as any)
       }
     }
   }
