@@ -132,6 +132,10 @@ app.use((err, _req, res, next) => {
   return next(err);
 });
 
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'keyvideo-backend', timestamp: Date.now() });
+});
+
 const TRYON_SCENE_PROMPT_DESCRIPTIONS = {
   street: 'posing in a modern urban street with city lights and soft outdoor background',
   studio: 'posing in a professional indoor photo studio with clean lighting and neutral studio backdrop',

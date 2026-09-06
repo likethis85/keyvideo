@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { StoryboardItem } from './StoryboardStep';
 
 export interface StoryboardPreview {
@@ -24,6 +25,29 @@ const shotLabels: Record<string, string> = {
   'shot-1': '分镜一 (0-3s)', 'shot-2': '分镜二 (3-5s)', 'shot-3': '分镜三 (5-8s)',
   'shot-4': '分镜四 (8-12s)', 'shot-5': '分镜五 (12-15s)'
 };
+
+function StoryboardPanelThumbnail({ storyboard }: { storyboard: StoryboardItem }) {
+  const [imgError, setImgError] = useState(false);
+  if (!imgError && storyboard.imageSrc) {
+    return <img src={storyboard.imageSrc} alt={storyboard.name} onError={() => setImgError(true)} />;
+  }
+  if (storyboard.videoSrc) {
+    return (
+      <video
+        src={`${storyboard.videoSrc}#t=0.001`}
+        preload="metadata"
+        muted
+        playsInline
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+      />
+    );
+  }
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}>
+      <span>🎞️</span>
+    </div>
+  );
+}
 
 export function StoryboardGenerationPanel(props: Props) {
   return (
@@ -52,11 +76,11 @@ export function StoryboardGenerationPanel(props: Props) {
                 title="按住鼠标可拖拽调换分镜位置次序"
               >
                 <div className="storyboard-thumbnail">
-                  <img src={storyboard.imageSrc} alt={storyboard.name} />
+                  <StoryboardPanelThumbnail storyboard={storyboard} />
                   {busy ? (
                     <div className="storyboard-busy"><span className="storyboard-spinner" /><span>{props.regeneratingId === storyboard.id ? '重做中...' : '生成中...'}</span></div>
                   ) : (
-                    <button className="storyboard-preview-button" onClick={() => props.onPreview({ src: storyboard.imageSrc, name: `${storyboard.name} (静态分镜)`, storyboardId: storyboard.id })} title="预览图片">👁️</button>
+                    <button className="storyboard-preview-button" onClick={() => props.onPreview({ src: storyboard.imageSrc || storyboard.videoSrc || '', name: `${storyboard.name} (静态分镜)`, storyboardId: storyboard.id })} title="预览图片">👁️</button>
                   )}
                 </div>
                 <span className="storyboard-card-label" title={storyboard.name}>{shotLabels[storyboard.shotType || ''] || '分镜五 (12-15s)'}</span>

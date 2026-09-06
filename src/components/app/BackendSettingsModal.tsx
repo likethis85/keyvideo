@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { toast } from '../toastStore';
 
 interface BackendSettingsModalProps {
@@ -7,8 +8,63 @@ interface BackendSettingsModalProps {
   onClose: () => void;
 }
 
+const PRESETS = [
+  { label: '本地默认 (localhost)', url: 'http://localhost:3001' },
+  { label: '环回地址 (127.0.0.1)', url: 'http://127.0.0.1:3001' }
+];
+
 export function BackendSettingsModal({ isOpen, value, onChange, onClose }: BackendSettingsModalProps) {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    status: 'idle' | 'success' | 'error';
+    message?: string;
+    latency?: number;
+  }>({ status: 'idle' });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setTestResult({ status: 'idle' });
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        save();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, value]);
+
   if (!isOpen) return null;
+
+  const testConnection = async (targetUrl?: string) => {
+    const urlToTest = (targetUrl ?? value).trim().replace(/\/$/, '') || 'http://localhost:3001';
+    setTesting(true);
+    setTestResult({ status: 'idle' });
+    const startTime = Date.now();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const resp = await fetch(`${urlToTest}/api/health`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      const latency = Date.now() - startTime;
+      if (resp.ok) {
+        setTestResult({ status: 'success', message: `服务连通正常 (${latency}ms)`, latency });
+      } else {
+        setTestResult({ status: 'error', message: `响应异常 HTTP ${resp.status}` });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error && err.name === 'AbortError' 
+        ? '请求超时 (3.5s)' 
+        : '无法连通服务，请确认后端已启动';
+      setTestResult({ status: 'error', message: msg });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const save = () => {
     const url = value.trim().replace(/\/$/, '');
     localStorage.setItem('KEYVIDEO_BACKEND_URL', url);
@@ -16,12 +72,307 @@ export function BackendSettingsModal({ isOpen, value, onChange, onClose }: Backe
     toast.success(`已成功配置后端地址为: ${url || '默认值 (http://localhost:3001)'}`);
     window.setTimeout(() => window.location.reload(), 600);
   };
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,6,10,.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={onClose}>
-      <div style={{ width: '450px', background: 'var(--modal-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }} onClick={event => event.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}><h3 style={{ margin: 0 }}>⚙️ 后端服务地址配置</h3><button onClick={onClose}>✕</button></div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>后端基础 URL (BACKEND_BASE_URL)<input value={value} onChange={event => onChange(event.target.value)} placeholder="例如 http://localhost:3001" /><small>* 默认值为 http://localhost:3001；生产环境请填写服务器公网地址。</small></label>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}><button className="btn-secondary" onClick={onClose}>取消</button><button className="btn-primary" onClick={save}>保存并应用</button></div>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(5, 6, 12, 0.78)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        animation: 'fadeIn 0.2s ease-out'
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: '490px',
+          maxWidth: '92vw',
+          background: 'var(--modal-bg, #14151f)',
+          border: '1px solid var(--border-color, rgba(255, 255, 255, 0.1))',
+          borderRadius: '16px',
+          padding: '24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '18px',
+          color: 'var(--text-primary, #ffffff)',
+          boxShadow: '0 24px 48px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-color, rgba(255, 255, 255, 0.05))',
+          position: 'relative'
+        }}
+        onClick={event => event.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, rgba(138, 43, 226, 0.2), rgba(0, 242, 254, 0.15))',
+                border: '1px solid rgba(138, 43, 226, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '18px'
+              }}
+            >
+              ⚙️
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary, #ffffff)', letterSpacing: '-0.01em' }}>
+                后端服务地址配置
+              </h3>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary, #9ca3af)', marginTop: '2px' }}>
+                配置微服务网关通信地址与服务连通性
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary, #9ca3af)',
+              cursor: 'pointer',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '16px',
+              transition: 'all 0.15s ease',
+              padding: 0
+            }}
+            onMouseOver={e => {
+              e.currentTarget.style.background = 'var(--bg-element-hover, rgba(255,255,255,0.08))';
+              e.currentTarget.style.color = 'var(--text-primary, #ffffff)';
+            }}
+            onMouseOut={e => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-secondary, #9ca3af)';
+            }}
+            title="关闭 (Esc)"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Input Field Section */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary, #ffffff)' }}>
+              后端基础 URL (BACKEND_BASE_URL)
+            </label>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted, #6b7280)', fontFamily: 'var(--mono, monospace)' }}>
+              端口 :3001
+            </span>
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              value={value}
+              onChange={event => {
+                onChange(event.target.value);
+                setTestResult({ status: 'idle' });
+              }}
+              placeholder="例如 http://localhost:3001"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '11px 14px',
+                fontSize: '13px',
+                fontFamily: 'var(--mono, monospace)',
+                background: 'var(--bg-element, rgba(255, 255, 255, 0.05))',
+                color: 'var(--text-primary, #ffffff)',
+                border: '1px solid var(--border-color, rgba(255, 255, 255, 0.12))',
+                borderRadius: '10px',
+                outline: 'none',
+                transition: 'all 0.2s ease',
+                boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.2)'
+              }}
+              onFocus={e => {
+                e.currentTarget.style.borderColor = 'var(--accent-purple, #8a2be2)';
+                e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-purple-glow, rgba(138, 43, 226, 0.25))';
+              }}
+              onBlur={e => {
+                e.currentTarget.style.borderColor = 'var(--border-color, rgba(255, 255, 255, 0.12))';
+                e.currentTarget.style.boxShadow = 'inset 0 1px 2px rgba(0, 0, 0, 0.2)';
+              }}
+            />
+          </div>
+
+          {/* Preset Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted, #6b7280)' }}>快速预设:</span>
+            {PRESETS.map(p => {
+              const isActive = value.trim().replace(/\/$/, '') === p.url;
+              return (
+                <button
+                  key={p.url}
+                  type="button"
+                  onClick={() => {
+                    onChange(p.url);
+                    testConnection(p.url);
+                  }}
+                  style={{
+                    background: isActive ? 'rgba(138, 43, 226, 0.18)' : 'var(--bg-element, rgba(255,255,255,0.04))',
+                    border: `1px solid ${isActive ? 'var(--accent-purple, #8a2be2)' : 'var(--border-color, rgba(255,255,255,0.08))'}`,
+                    color: isActive ? 'var(--accent-purple, #a855f7)' : 'var(--text-secondary, #9ca3af)',
+                    fontSize: '11px',
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    fontWeight: isActive ? 600 : 400
+                  }}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Connectivity Status Bar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '9px 12px',
+            background: 'var(--card-bg, rgba(255,255,255,0.02))',
+            border: '1px solid var(--border-color, rgba(255,255,255,0.06))',
+            borderRadius: '10px',
+            fontSize: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                display: 'inline-block',
+                background:
+                  testResult.status === 'success'
+                    ? '#10b981'
+                    : testResult.status === 'error'
+                    ? '#ef4444'
+                    : '#6b7280',
+                boxShadow:
+                  testResult.status === 'success'
+                    ? '0 0 8px #10b981'
+                    : testResult.status === 'error'
+                    ? '0 0 8px #ef4444'
+                    : 'none',
+                transition: 'all 0.2s'
+              }}
+            />
+            <span
+              style={{
+                color:
+                  testResult.status === 'success'
+                    ? '#10b981'
+                    : testResult.status === 'error'
+                    ? '#ef4444'
+                    : 'var(--text-secondary, #9ca3af)'
+              }}
+            >
+              {testResult.status === 'idle' ? '未检测服务连通性' : testResult.message}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => testConnection()}
+            disabled={testing}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--border-color, rgba(255,255,255,0.15))',
+              color: 'var(--text-primary, #ffffff)',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              cursor: testing ? 'not-allowed' : 'pointer',
+              opacity: testing ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseOver={e => {
+              if (!testing) e.currentTarget.style.borderColor = 'var(--accent-purple, #8a2be2)';
+            }}
+            onMouseOut={e => {
+              if (!testing) e.currentTarget.style.borderColor = 'var(--border-color, rgba(255,255,255,0.15))';
+            }}
+          >
+            {testing ? '⏳ 测试中...' : '⚡ 测试连通性'}
+          </button>
+        </div>
+
+        {/* Tip & Documentation Card */}
+        <div
+          style={{
+            padding: '12px 14px',
+            borderRadius: '10px',
+            background: 'rgba(0, 242, 254, 0.04)',
+            border: '1px solid rgba(0, 242, 254, 0.12)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+            fontSize: '12px',
+            lineHeight: '1.6',
+            color: 'var(--text-secondary, #9ca3af)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-cyan, #00f2fe)', fontWeight: 600 }}>
+            <span>💡</span>
+            <span>配置说明</span>
+          </div>
+          <div>• <strong>本地运行</strong>：默认值即为本地开发微服务端口 <code>http://localhost:3001</code>。</div>
+          <div>• <strong>远程/局域网</strong>：跨设备或局域网联调时，请填写真机/服务器 IP（如 <code>http://192.168.1.10:3001</code>）。</div>
+          <div>• 点击「保存并应用」将自动持久化至浏览器 LocalStorage 并重载生效。</div>
+        </div>
+
+        {/* Footer Actions */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onClose}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              cursor: 'pointer'
+            }}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={save}
+            style={{
+              padding: '8px 20px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            保存并应用
+          </button>
+        </div>
       </div>
     </div>
   );

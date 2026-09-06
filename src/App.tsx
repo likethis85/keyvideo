@@ -2,6 +2,9 @@ import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { Layer } from './components/VideoCanvas';
 import { BackendSettingsModal } from './components/app/BackendSettingsModal';
+import { AICopilotDrawer } from './components/app/AICopilotDrawer';
+import { CustomApiScriptModal } from './components/app/CustomApiScriptModal';
+import { exportProjectPackage, importProjectPackage } from './utils/projectPackageExporter';
 import { ToolNavigation } from './components/app/ToolNavigation';
 import type { EditorToolTab } from './components/app/ToolNavigation';
 import { ProjectSelector } from './components/app/ProjectSelector';
@@ -128,6 +131,8 @@ function App() {
   const [editingProjNameValue, setEditingProjNameValue] = useState('');
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [isCustomApiModalOpen, setIsCustomApiModalOpen] = useState(false);
   const [backendUrlInput, setBackendUrlInput] = useState(
     localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:3001'
   );
@@ -397,6 +402,27 @@ function App() {
           userEmail={session.user.email}
           onAddLayer={addDefaultTextLayer}
           onExport={triggerExport}
+          onToggleCopilot={() => setIsCopilotOpen(prev => !prev)}
+          onOpenCustomApiModal={() => setIsCustomApiModalOpen(true)}
+          onExportProjectPackage={() => {
+            const curProj = projects.find(p => p.id === activeProjectId);
+            exportProjectPackage({ project: curProj, ratio, layers });
+            toast.success('已导出当前工程包 (.keyvideo.json)！');
+          }}
+          onImportProjectPackage={async (file) => {
+            try {
+              const pkg = await importProjectPackage(file);
+              if (pkg.canvas?.layers) {
+                setLayers(pkg.canvas.layers);
+              }
+              if (pkg.canvas?.ratio) {
+                setRatio(pkg.canvas.ratio);
+              }
+              toast.success(`已恢复工程「${pkg.project?.name || '导入工程'}」的全量配置！`);
+            } catch (err) {
+              toast.error(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }}
           onOpenSettings={() => {
             setBackendUrlInput(localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001');
             setIsSettingsModalOpen(true);
@@ -499,6 +525,32 @@ function App() {
         onChange={setBackendUrlInput}
         onClose={() => setIsSettingsModalOpen(false)}
       />
+
+      {/* AI Copilot & Custom API Modals */}
+      <AICopilotDrawer
+        isOpen={isCopilotOpen}
+        onClose={() => setIsCopilotOpen(false)}
+        context={{
+          layers,
+          setLayers,
+          ratio,
+          onRatioChange: handleRatioChange,
+          onSmartReflow: handleSmartReflow,
+          currentTime,
+          setCurrentTime,
+          isPlaying,
+          setIsPlaying,
+          selectedLayerId,
+          setSelectedLayerId,
+          triggerExport
+        }}
+      />
+
+      <CustomApiScriptModal
+        isOpen={isCustomApiModalOpen}
+        onClose={() => setIsCustomApiModalOpen(false)}
+      />
+
       {/* Global modern toast notifications */}
       <ToastContainer />
     </Suspense>

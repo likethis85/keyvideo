@@ -2,7 +2,7 @@ import type React from 'react';
 import type { Layer } from '../VideoCanvas';
 import type { AIProject } from '../../types/aiProject';
 
-export type SidebarTab = 'template' | 'media' | 'text' | 'sticker' | 'ai' | 'audio';
+export type SidebarTab = 'template' | 'media' | 'text' | 'sticker' | 'ai' | 'audio' | 'prompt';
 
 export interface SidebarDrawerRef {
   switchProject: (id: string) => void;

@@ -111,7 +111,7 @@ export const AuthPage: React.FC = () => {
               <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 5.2l-1.4 1.4M7.6 15.4l-1.4 1.4M20.2 12.2l-1.4-1.4M6.2 6.2l1.4 1.4" />
             </svg>
           </div>
-          <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#ffffff', marginTop: '8px' }}>KeyVideo 服装视频智剪</span>
+          <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#ffffff', marginTop: '8px' }}>KeyVideo 智能剪辑</span>
           <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)' }}>
             邮箱安全登录进入工作台
           </span>

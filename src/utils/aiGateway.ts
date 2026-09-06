@@ -1,4 +1,5 @@
 import { runPollingTask } from './aiTaskStateMachine';
+import { getCustomApiConfig, executeCustomApi } from './customApiRunner';
 
 export const getBackendUrl = (): string => {
   const localUrl = localStorage.getItem('KEYVIDEO_BACKEND_URL');
@@ -155,6 +156,9 @@ export const generateMannequinImage = async (params: {
   gatewayUrl?: string;
   gatewayToken?: string;
 }): Promise<string> => {
+  if (getCustomApiConfig().enabled) {
+    return executeCustomApi(params);
+  }
   return dedupeGenerationRequest('mannequin', params, async (requestKey) => {
     const data = await requestJson<{ url?: string; taskId?: string }>(`${getBackendUrl()}/api/ai/mannequin?async=true`, {
       method: 'POST',
@@ -207,6 +211,9 @@ export const generateBackgroundImage = async (params: {
   gatewayUrl?: string;
   gatewayToken?: string;
 }): Promise<string> => {
+  if (getCustomApiConfig().enabled) {
+    return executeCustomApi(params);
+  }
   return dedupeGenerationRequest('background', params, async (requestKey) => {
     const data = await requestJson<{ url: string }>(`${getBackendUrl()}/api/ai/background`, {
       method: 'POST',

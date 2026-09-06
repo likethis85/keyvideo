@@ -347,8 +347,8 @@ body[data-theme="light"] {
 
 /* Sidebar Drawer Content */
 .sidebar-drawer {
-  width: 280px;
-  min-width: 280px;
+  width: var(--sidebar-drawer-width, 340px);
+  min-width: var(--sidebar-drawer-width, 340px);
   background: var(--bg-surface);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -357,6 +357,24 @@ body[data-theme="light"] {
   overflow: visible;
   position: relative;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, padding 0.25s ease;
+}
+
+.sidebar-drawer-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 90;
+  user-select: none;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sidebar-drawer-resizer:hover,
+.sidebar-drawer-resizer:active {
+  background: var(--accent-purple, #8a2be2);
+  box-shadow: 0 0 10px var(--accent-purple-glow, rgba(138, 43, 226, 0.6));
 }
 
 .sidebar-drawer.collapsed {

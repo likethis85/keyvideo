@@ -13,6 +13,85 @@ export interface VideoStepProps {
   setAiWizardStep: (step: 1 | 2 | 3) => void;
 }
 
+const StoryboardCardThumbnail: React.FC<{ sb: StoryboardItem }> = ({ sb }) => {
+  const [videoError, setVideoError] = React.useState(false);
+  const [imgError, setImgError] = React.useState(false);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+
+  // 1. If video source is available, render video element with first frame (#t=0.001)
+  if (sb.videoSrc && !videoError) {
+    return (
+      <video
+        ref={videoRef}
+        src={`${sb.videoSrc}#t=0.001`}
+        preload="metadata"
+        muted
+        playsInline
+        loop
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          display: 'block'
+        }}
+        onError={() => setVideoError(true)}
+        onMouseEnter={() => {
+          videoRef.current?.play().catch(() => {});
+        }}
+        onMouseLeave={() => {
+          if (videoRef.current) {
+            videoRef.current.pause();
+            videoRef.current.currentTime = 0.001;
+          }
+        }}
+      />
+    );
+  }
+
+  // 2. If image source is available and not broken, render image
+  if (sb.imageSrc && !imgError) {
+    return (
+      <img
+        src={sb.imageSrc}
+        alt={sb.name}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          opacity: sb.videoSrc ? 0.95 : 0.4,
+          display: 'block'
+        }}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  // 3. Resilient fallback card if both expired/failed
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, rgba(30, 33, 48, 0.9), rgba(16, 18, 28, 0.95))',
+        color: 'var(--text-secondary, #9ca3af)',
+        gap: '2px',
+        padding: '2px',
+        textAlign: 'center',
+        userSelect: 'none'
+      }}
+    >
+      <span style={{ fontSize: '15px' }}>{sb.videoSrc ? '🎬' : '🎞️'}</span>
+      <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted, #6b7280)' }}>
+        {sb.videoSrc ? '视频就绪' : '静态分镜'}
+      </span>
+    </div>
+  );
+};
+
 export const VideoStep: React.FC<VideoStepProps> = ({
   storyboards,
   setPreviewVideo,
@@ -63,7 +142,7 @@ export const VideoStep: React.FC<VideoStepProps> = ({
                       setPreviewVideo({ id: sb.id, src: sb.videoSrc || '', name: sb.name });
                     }}
                   >
-                    <img src={sb.imageSrc} alt={sb.name} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: sb.videoSrc ? 0.95 : 0.4 }} />
+                    <StoryboardCardThumbnail sb={sb} />
 
                     {/* Generating Video Progress Spinner */}
                     {sb.isGeneratingVideo && (

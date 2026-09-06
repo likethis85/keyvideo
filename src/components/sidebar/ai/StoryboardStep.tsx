@@ -2,6 +2,8 @@ import React from 'react';
 import { StoryboardGenerationPanel } from './StoryboardGenerationPanel';
 import type { StoryboardPreview } from './StoryboardGenerationPanel';
 import type { AIProject } from '../../../types/aiProject';
+import { MentionTextarea } from '../../common/MentionTextarea';
+import type { MentionableItem } from '../../../utils/mentionResolver';
 
 export interface StoryboardItem {
   id: string;
@@ -85,6 +87,17 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   setI2vPrompts,
   setAiWizardStep
 }) => {
+  const mentionableItems: MentionableItem[] = [
+    ...(modelOutfitImgUrl ? [{ id: 'model_outfit', type: 'model' as const, label: '当前穿搭模特', previewUrl: modelOutfitImgUrl }] : []),
+    ...storyboards.map((sb, idx) => ({
+      id: sb.id,
+      type: 'storyboard' as const,
+      label: `分镜${idx + 1}`,
+      description: sb.name,
+      previewUrl: sb.imageSrc
+    }))
+  ];
+
   return (
     <>
       {/* I2V Storyboard Panel */}
@@ -239,28 +252,13 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
           {(videoDuration === '15s' || videoDuration === '3s') ? (
             storyboardMode === 'composite_no_slice' ? (
               <div className="property-group" style={{ marginBottom: 0, width: '100%' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '4px' }}>15s 视频完整脚本提示词 (一整段叙事)</span>
-                <textarea
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '4px' }}>15s 视频完整脚本提示词 (输入 @ 可引用模特与分镜)</span>
+                <MentionTextarea
                   value={i2vMasterPrompt15s}
-                  onChange={(e) => setI2vMasterPrompt15s(e.target.value)}
-                  className="text-input"
+                  onChange={setI2vMasterPrompt15s}
                   rows={9}
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '11px',
-                    lineHeight: '1.6',
-                    width: '100%',
-                    resize: 'vertical',
-                    background: 'var(--bg-element)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text-primary)',
-                    fontFamily: 'inherit',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent-purple)'; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-color)'; }}
-                  placeholder="15秒快节奏连贯 5 幕叙事，引用参考图作为服装和模特的严格一致性参考。场景设定：[场景] 第一幕：... 镜头切换（Cut to）第二幕：... 原生音效：..."
+                  availableItems={mentionableItems}
+                  placeholder="15秒快节奏连贯 5 幕叙事，输入 @ 即可引用模特或分镜。第一幕：... 镜头切换（Cut to）第二幕：..."
                 />
               </div>
             ) : (

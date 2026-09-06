@@ -13,6 +13,9 @@ import type { StoryboardStepProps } from './sidebar/ai/StoryboardStep';
 import { AIWizardPanel } from './sidebar/ai/AIWizardPanel';
 import { ModelSelectorModal } from './sidebar/ModelSelectorModal';
 import { SceneSelectorModal } from './sidebar/SceneSelectorModal';
+import { PromptLibraryTab } from './sidebar/PromptLibraryTab';
+import { toast } from './toastStore';
+import { exportProjectPackage } from '../utils/projectPackageExporter';
 import { ConfirmDialog } from './sidebar/ConfirmDialog';
 import { ClothingFocusModal } from './sidebar/ai/ClothingFocusModal';
 import { VideoPreviewModal } from './sidebar/ai/VideoPreviewModal';
@@ -460,10 +463,76 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     storyboards, setPreviewVideo, videoModel, setVideoModel, handleGenerateI2V,
     isI2vGenerating, i2vStep, handleApplyI2VToTimeline, setAiWizardStep: changeAiWizardStep
   };
+  const DEFAULT_DRAWER_WIDTH = 340;
+  const MIN_DRAWER_WIDTH = 280;
+  const MAX_DRAWER_WIDTH = 640;
+
+  const [drawerWidth, setDrawerWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('keyvideo_sidebar_width');
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= MIN_DRAWER_WIDTH && parsed <= MAX_DRAWER_WIDTH) {
+        return parsed;
+      }
+    }
+    return DEFAULT_DRAWER_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleStartResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startWidth = drawerWidth;
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.min(Math.max(startWidth + deltaX, MIN_DRAWER_WIDTH), MAX_DRAWER_WIDTH);
+      setDrawerWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setDrawerWidth(w => {
+        localStorage.setItem('keyvideo_sidebar_width', w.toString());
+        return w;
+      });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   return (
-    <div className={`sidebar-drawer ${isCollapsed ? 'collapsed' : ''}`}>
+    <div
+      className={`sidebar-drawer ${isCollapsed ? 'collapsed' : ''}`}
+      style={{
+        width: isCollapsed ? 0 : `${drawerWidth}px`,
+        minWidth: isCollapsed ? 0 : `${drawerWidth}px`,
+        transition: isResizing ? 'none' : undefined
+      }}
+    >
       <SidebarCollapseButton collapsed={isCollapsed} onToggle={onToggleCollapse} />
+
+      {!isCollapsed && (
+        <div
+          className="sidebar-drawer-resizer"
+          onMouseDown={handleStartResize}
+          onDoubleClick={() => {
+            const nextWidth = drawerWidth > 380 ? DEFAULT_DRAWER_WIDTH : 480;
+            setDrawerWidth(nextWidth);
+            localStorage.setItem('keyvideo_sidebar_width', nextWidth.toString());
+          }}
+          title="左右拖拽调节侧边栏宽度；双击可切换宽屏视图"
+        />
+      )}
 
       {/* 1. TEMPLATES PANEL */}
       {activeTab === 'template' && (
@@ -484,6 +553,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
           showConfirm={showConfirm}
           supabase={supabase}
           setModelLibrary={setModelLibrary}
+
           saveModelLibrarySafely={saveModelLibrarySafely}
           handleSceneUpload={handleSceneUpload}
           setShowAiSceneModal={setShowAiSceneModal}
@@ -499,6 +569,20 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
           localVideos={localVideos}
           addLocalVideoLayer={addLocalVideoLayer}
           handleDeleteLocalVideo={handleDeleteLocalVideo}
+        />
+      )}
+
+      {/* 2.5 PROMPTS & INSPIRATION */}
+      {activeTab === 'prompt' && (
+        <PromptLibraryTab
+          onApplyPrompt={(text) => {
+            setStoryboardEditPrompt(prev => prev ? `${prev}, ${text}` : text);
+            setOutfitEditPrompt(prev => prev ? `${prev}, ${text}` : text);
+            toast.success('已应用提示词至分镜与试衣设定');
+          }}
+          onAddTextLayer={(text) => addTextLayer(text)}
+          setLayers={setLayers}
+          setSelectedLayerId={setSelectedLayerId}
         />
       )}
 
@@ -627,6 +711,33 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
         switchProject={switchProject}
         setProjects={setProjects}
         deleteProject={deleteProject}
+        onExportPackage={() => {
+          const curProj = projects.find(p => p.id === activeProjectId);
+          exportProjectPackage({
+            project: curProj,
+            ratio,
+            layers,
+            storyboards,
+            modelOutfitImgUrl,
+            referenceOutfitUrls,
+            modelScene,
+            customPrompt
+          });
+          toast.success('已成功导出完整工程包 (.keyvideo.json)！');
+        }}
+        onImportPackage={(pkg) => {
+          if (pkg.canvas?.layers) {
+            setLayers(pkg.canvas.layers);
+          }
+          if (pkg.aiState?.storyboards) {
+            setStoryboards(pkg.aiState.storyboards);
+          }
+          if (pkg.aiState?.modelOutfitImgUrl) {
+            setModelOutfitImgUrl(pkg.aiState.modelOutfitImgUrl);
+          }
+          setIsProjectsModalOpen(false);
+          toast.success(`已恢复「${pkg.project?.name || '导入工程'}」的全量配置！`);
+        }}
       />
 
       <VideoPreviewModal

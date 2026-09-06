@@ -114,7 +114,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                     transition: 'all 0.2s'
                   }}
                 >
-                  <div style={{ width: '100%', aspectRatio: '1/1', background: 'url(/clothing_model.png) center/cover', borderRadius: '6px' }} />
+                  <div style={{ width: '100%', aspectRatio: '1/1', background: 'url(/clothing_model.png) center top / cover', borderRadius: '6px' }} />
                   <span style={{ fontSize: '10px', fontWeight: '500', color: isActive ? 'var(--accent-cyan)' : '#d1d5db', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     默认风衣模特
                   </span>
@@ -146,7 +146,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                     transition: 'all 0.2s'
                   }}
                 >
-                  <div style={{ width: '100%', aspectRatio: '1/1', background: `url(${model.src}) center/cover`, borderRadius: '6px' }} />
+                  <div style={{ width: '100%', aspectRatio: '1/1', background: `url(${model.src}) center top / cover`, borderRadius: '6px' }} />
                   <span style={{ fontSize: '10px', fontWeight: '500', color: isActive ? 'var(--accent-cyan)' : '#d1d5db', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 4px' }} title={model.name}>
                     {formatFileName(model.name)}
                   </span>

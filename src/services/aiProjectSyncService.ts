@@ -13,10 +13,15 @@ function dataUrlToBlob(dataUrl: string): Blob {
 
 async function ensurePublicAssetUrl(sourceUrl: string, prefix: string): Promise<string> {
   if (!sourceUrl) return '';
+  const isExpiringUrl = sourceUrl.includes('Expires=')
+    || sourceUrl.includes('OSSAccessKeyId=')
+    || sourceUrl.includes('dashscope-result')
+    || sourceUrl.includes('x-oss-expires');
   const requiresUpload = sourceUrl.startsWith('data:')
     || sourceUrl.startsWith('blob:')
     || sourceUrl.startsWith('http://localhost')
-    || sourceUrl.startsWith('https://localhost');
+    || sourceUrl.startsWith('https://localhost')
+    || isExpiringUrl;
   if (!requiresUpload) return sourceUrl;
 
   try {

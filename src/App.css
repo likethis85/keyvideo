@@ -156,7 +156,7 @@
 .try-on-selector-group { display: flex; flex-direction: column; gap: 4px; color: var(--text-secondary); font-size: 11px; font-weight: 500; }
 .try-on-selector-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; color: var(--text-primary); cursor: pointer; background: var(--bg-surface-solid); border: 1px solid var(--border-color); border-radius: 8px; }
 .try-on-selector-row:hover { border-color: var(--border-accent); }
-.try-on-selector-row img, .try-on-selector-placeholder { display: grid; width: 32px; height: 32px; flex-shrink: 0; object-fit: cover; place-items: center; background: var(--bg-element); border: 1px solid var(--border-color); border-radius: 4px; }
+.try-on-selector-row img, .try-on-selector-placeholder { display: grid; width: 32px; height: 32px; flex-shrink: 0; object-fit: cover; object-position: top; place-items: center; background: var(--bg-element); border: 1px solid var(--border-color); border-radius: 4px; }
 .try-on-selector-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; margin: 0 8px; text-align: left; }
 .try-on-selector-copy strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .try-on-selector-copy small { color: var(--text-secondary); font-size: 10px; }
