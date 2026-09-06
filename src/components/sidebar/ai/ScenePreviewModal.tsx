@@ -26,9 +26,17 @@ export function ScenePreviewModal(props: ScenePreviewModalProps) {
       <div style={{ maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto', background: 'rgba(20,21,31,.95)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', color: '#fff' }} onClick={event => event.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,.08)', paddingBottom: '12px' }}>
           {props.editingName ? (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}><span>🖼️</span><input value={props.nameValue} onChange={event => props.onNameChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void props.onSaveName(); }} autoFocus className="text-input" /><button onClick={() => void props.onSaveName()}>✓</button><button onClick={props.onCancelRename}>×</button></div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span>🖼️</span>
+              <input value={props.nameValue} onChange={event => props.onNameChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void props.onSaveName(); }} autoFocus className="text-input" style={{ width: '160px', height: '28px', padding: '0 8px' }} />
+              <button className="icon-btn-micro project-confirm" onClick={() => void props.onSaveName()} title="保存">✓</button>
+              <button className="icon-btn-micro project-cancel" onClick={props.onCancelRename} title="取消">×</button>
+            </div>
           ) : (
-            <h3 style={{ margin: 0, fontSize: '16px' }}>🖼️ 背景场景: {scene.name} {scene.id && <button onClick={props.onStartRename} title="修改名称">✎</button>}</h3>
+            <h3 style={{ margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🖼️ 背景场景: {scene.name}
+              {scene.id && <button className="icon-btn-micro project-action" onClick={props.onStartRename} title="修改名称">✎</button>}
+            </h3>
           )}
           <button onClick={props.onClose} style={{ background: 'none', border: 0, color: 'var(--text-muted)', fontSize: '20px', cursor: 'pointer' }}>×</button>
         </div>

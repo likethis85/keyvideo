@@ -1303,8 +1303,6 @@ app.get('/api/video/content/:taskId', async (req, res) => {
 
     updateTaskStatus(taskId, { status: 'completed', resultUrl: videoUrl, error: null });
 
-    console.log(`[Sandbase API] Fetching video binary from URL: ${videoUrl}`);
-
     // 2. Fetch the actual video binary
     const videoResponse = await fetchWithTimeout(videoUrl, {}, LONG_EXTERNAL_TIMEOUT_MS);
     if (!videoResponse.ok) {
@@ -1323,6 +1321,52 @@ app.get('/api/video/content/:taskId', async (req, res) => {
     console.error('Failed to retrieve video content:', err);
     res.status(500).json({ error: err.message || 'Failed to fetch video content' });
   }
+});
+
+// ==================== Infinite Canvas REST APIs (Route B) ====================
+const CANVAS_STORE_PATH = path.join(__dirname, 'canvas_state.json');
+const getCanvasStore = () => {
+  try {
+    if (fs.existsSync(CANVAS_STORE_PATH)) {
+      return JSON.parse(fs.readFileSync(CANVAS_STORE_PATH, 'utf-8'));
+    }
+  } catch {}
+  return {};
+};
+const saveCanvasStore = (store) => {
+  try {
+    fs.writeFileSync(CANVAS_STORE_PATH, JSON.stringify(store, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to save canvas store:', err);
+  }
+};
+
+app.get('/api/canvas/state/:projectId', (req, res) => {
+  const { projectId } = req.params;
+  const store = getCanvasStore();
+  const canvas = store[projectId] || {
+    projectId,
+    viewport: { x: 80, y: 60, scale: 1 },
+    nodes: [],
+    connections: [],
+    updatedAt: new Date().toISOString()
+  };
+  res.json(canvas);
+});
+
+app.post('/api/canvas/state/:projectId', (req, res) => {
+  const { projectId } = req.params;
+  const { nodes, connections, viewport } = req.body || {};
+  const store = getCanvasStore();
+  store[projectId] = {
+    projectId,
+    nodes: Array.isArray(nodes) ? nodes : (store[projectId]?.nodes || []),
+    connections: Array.isArray(connections) ? connections : (store[projectId]?.connections || []),
+    viewport: viewport || store[projectId]?.viewport || { x: 80, y: 60, scale: 1 },
+    updatedAt: new Date().toISOString()
+  };
+  saveCanvasStore(store);
+  res.json({ success: true, canvas: store[projectId] });
 });
 
 app.listen(port, '0.0.0.0', () => {

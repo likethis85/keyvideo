@@ -60,7 +60,7 @@ export const executeCustomApi = async (params: Record<string, unknown>): Promise
     const requestFn = new Function('params', config.requestScript);
     requestBody = requestFn(params);
   } catch (err) {
-    throw new Error(`请求脚本解析失败: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`请求脚本解析失败: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
 
   // 2. Perform HTTP Fetch
@@ -93,6 +93,6 @@ export const executeCustomApi = async (params: Record<string, unknown>): Promise
     }
     return resultUrl;
   } catch (err) {
-    throw new Error(`响应解析失败: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`响应解析失败: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
 };

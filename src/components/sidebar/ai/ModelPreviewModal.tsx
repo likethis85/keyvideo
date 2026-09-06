@@ -42,20 +42,23 @@ interface ModelPreviewModalProps {
   onModelPromptChange: (value: string) => void;
   onEditModel: () => void | Promise<void>;
   onApplyModel: (src: string, name: string) => void;
+  onOpenInCanvas?: (src: string, name: string) => void;
 }
 
 export function ModelPreviewModal(props: ModelPreviewModalProps) {
+  const { onClose } = props;
+  const preview = props.preview;
+
   useEffect(() => {
-    if (!props.preview) return;
+    if (!preview) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') props.onClose();
+      if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [props.preview, props.onClose]);
+  }, [preview, onClose]);
 
-  if (!props.preview) return null;
-  const preview = props.preview;
+  if (!preview) return null;
   const storyboardIndex = preview.storyboardId
     ? props.storyboards.findIndex(item => item.id === preview.storyboardId)
     : -1;
@@ -222,6 +225,30 @@ export function ModelPreviewModal(props: ModelPreviewModalProps) {
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {props.onOpenInCanvas && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  props.onOpenInCanvas?.(preview.src, preview.name || '模特穿搭图');
+                  props.onClose();
+                }}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'rgba(0, 242, 254, 0.12)',
+                  border: '1px solid rgba(0, 242, 254, 0.35)',
+                  color: 'var(--accent-cyan, #00f2fe)'
+                }}
+                title="在无限节点画布中展开并编辑此图像节点"
+              >
+                <span>🎨</span>
+                <span>在画布中展开</span>
+              </button>
+            )}
             <button
               type="button"
               className="btn-secondary"

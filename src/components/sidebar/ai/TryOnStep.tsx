@@ -56,6 +56,7 @@ export interface TryOnStepProps {
   handleDeleteOutfitImg: (idx: number) => void;
   handleDeleteSingleOutfitImg: () => void;
   setAiWizardStep: (step: 1 | 2 | 3) => void;
+  onOpenInCanvas?: (options?: { type?: 'outfit' | 'storyboard' | 'image' | 'project'; src?: string; title?: string; prompt?: string }) => void;
 }
 
 export const TryOnStep: React.FC<TryOnStepProps> = ({
@@ -97,7 +98,8 @@ export const TryOnStep: React.FC<TryOnStepProps> = ({
   setPreviewModel,
   handleDeleteOutfitImg,
   handleDeleteSingleOutfitImg,
-  setAiWizardStep
+  setAiWizardStep,
+  onOpenInCanvas
 }) => {
   return (
     <>
@@ -382,6 +384,38 @@ export const TryOnStep: React.FC<TryOnStepProps> = ({
             onDelete={handleDeleteOutfitImg}
             onDeleteFallback={handleDeleteSingleOutfitImg}
           />
+
+          {onOpenInCanvas && (modelOutfitImgUrls.length > 0 || modelOutfitImgUrl) && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => onOpenInCanvas({
+                type: 'outfit',
+                src: modelOutfitImgUrls[0] || modelOutfitImgUrl || undefined,
+                title: '当前穿搭模特'
+              })}
+              style={{
+                width: '100%',
+                marginTop: '10px',
+                padding: '8px 12px',
+                fontSize: '11px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.1) 0%, rgba(121, 40, 202, 0.14) 100%)',
+                border: '1px solid rgba(0, 242, 254, 0.3)',
+                color: 'var(--accent-cyan, #00f2fe)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                fontWeight: '600'
+              }}
+              title="将此套模特穿搭导入无限画布，自由扩展多视角提示词与镜头生成管线"
+            >
+              <span>🎨</span>
+              <span>在无限画布中衍生更多分镜与镜头</span>
+            </button>
+          )}
         </div>
       </div>
 

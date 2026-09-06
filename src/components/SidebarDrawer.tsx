@@ -6,7 +6,6 @@ import { TextTab } from './sidebar/TextTab';
 import { StickerTab } from './sidebar/StickerTab';
 import { AudioTab } from './sidebar/AudioTab';
 import { MediaTab } from './sidebar/MediaTab';
-import { ProjectsModal } from './sidebar/ProjectsModal';
 import type { VideoStepProps } from './sidebar/ai/VideoStep';
 import type { TryOnStepProps } from './sidebar/ai/TryOnStep';
 import type { StoryboardStepProps } from './sidebar/ai/StoryboardStep';
@@ -15,7 +14,6 @@ import { ModelSelectorModal } from './sidebar/ModelSelectorModal';
 import { SceneSelectorModal } from './sidebar/SceneSelectorModal';
 import { PromptLibraryTab } from './sidebar/PromptLibraryTab';
 import { toast } from './toastStore';
-import { exportProjectPackage } from '../utils/projectPackageExporter';
 import { ConfirmDialog } from './sidebar/ConfirmDialog';
 import { ClothingFocusModal } from './sidebar/ai/ClothingFocusModal';
 import { VideoPreviewModal } from './sidebar/ai/VideoPreviewModal';
@@ -83,10 +81,9 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
   setIsEditingProjName,
   editingProjNameValue,
   setEditingProjNameValue,
-  isProjectsModalOpen,
-  setIsProjectsModalOpen,
   isCollapsed = false,
   onToggleCollapse,
+  onOpenInCanvas,
 }, ref) => {
   const {
     addTextLayer,
@@ -338,21 +335,6 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     setIsOutfitImgGenerating, videoModel, videoDuration, gatewayVideoUrl, gatewayVideoToken,
     cancelledProjectsRef, setStoryboards, setI2vStep, setIsI2vGenerating
   });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   const [customPrompt, setCustomPrompt] = useState('');
   const [showConfig, setShowConfig] = useState(false);
@@ -607,6 +589,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
           configExpanded={showConfig}
           onConfigToggle={() => setShowConfig(!showConfig)}
           backendUrl={import.meta.env.VITE_BACKEND_URL}
+          onOpenInCanvas={onOpenInCanvas}
         />
       )}
 
@@ -688,6 +671,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
         onModelPromptChange={setModelEditPrompt}
         onEditModel={() => handleCustomModelSwap(true)}
         onApplyModel={applyModelFromLibrary}
+        onOpenInCanvas={onOpenInCanvas ? (src, name) => onOpenInCanvas({ type: 'image', src, title: name }) : undefined}
       />
 
       <ClothingFocusModal
@@ -698,45 +682,6 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
           setClothingFocusModalOpen(false);
           setClothingFocus(focus);
           void executeGenerateStoryboards(focus);
-        }}
-      />
-
-      {/* AI Projects Management Dashboard Modal */}
-      <ProjectsModal
-        isOpen={isProjectsModalOpen}
-        onClose={() => setIsProjectsModalOpen(false)}
-        projects={projects}
-        activeProjectId={activeProjectId}
-        createNewProject={createNewProject}
-        switchProject={switchProject}
-        setProjects={setProjects}
-        deleteProject={deleteProject}
-        onExportPackage={() => {
-          const curProj = projects.find(p => p.id === activeProjectId);
-          exportProjectPackage({
-            project: curProj,
-            ratio,
-            layers,
-            storyboards,
-            modelOutfitImgUrl,
-            referenceOutfitUrls,
-            modelScene,
-            customPrompt
-          });
-          toast.success('已成功导出完整工程包 (.keyvideo.json)！');
-        }}
-        onImportPackage={(pkg) => {
-          if (pkg.canvas?.layers) {
-            setLayers(pkg.canvas.layers);
-          }
-          if (pkg.aiState?.storyboards) {
-            setStoryboards(pkg.aiState.storyboards);
-          }
-          if (pkg.aiState?.modelOutfitImgUrl) {
-            setModelOutfitImgUrl(pkg.aiState.modelOutfitImgUrl);
-          }
-          setIsProjectsModalOpen(false);
-          toast.success(`已恢复「${pkg.project?.name || '导入工程'}」的全量配置！`);
         }}
       />
 

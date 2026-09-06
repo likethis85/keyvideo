@@ -1,9 +1,11 @@
-import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { Layer } from './components/VideoCanvas';
 import { BackendSettingsModal } from './components/app/BackendSettingsModal';
 import { AICopilotDrawer } from './components/app/AICopilotDrawer';
 import { CustomApiScriptModal } from './components/app/CustomApiScriptModal';
+import { ProjectsModal } from './components/sidebar/ProjectsModal';
+import { createAIProject } from './utils/aiProjectFactory';
 import { exportProjectPackage, importProjectPackage } from './utils/projectPackageExporter';
 import { ToolNavigation } from './components/app/ToolNavigation';
 import type { EditorToolTab } from './components/app/ToolNavigation';
@@ -29,6 +31,10 @@ import {
 } from './utils/historyManager';
 import type { HistoryState } from './utils/historyManager';
 import { createDefaultLayers } from './config/defaultLayers';
+import { ViewModeSwitch } from './components/app/ViewModeSwitch';
+import type { WorkspaceViewMode } from './components/app/ViewModeSwitch';
+import type { CanvasNodeData, CanvasConnection, CanvasViewport } from './types/canvas';
+import { generateCanvasPipeline, saveCanvasTopologyToLocalDB, convertAiProjectToCanvas } from './utils/canvasBridge';
 import './App.css';
 
 const SidebarDrawer = lazy(() => import('./components/SidebarDrawer').then((module) => ({
@@ -42,6 +48,9 @@ const PropertyInspector = lazy(() => import('./components/PropertyInspector').th
 })));
 const Timeline = lazy(() => import('./components/Timeline').then((module) => ({
   default: module.Timeline
+})));
+const InfiniteCanvas = lazy(() => import('./components/canvas/InfiniteCanvas').then((module) => ({
+  default: module.InfiniteCanvas
 })));
 const videoBlobUrls = new Map<string, string>();
 
@@ -123,6 +132,7 @@ function App() {
   const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(false);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [viewMode, setViewMode] = useState<WorkspaceViewMode>('editor');
 
   // AI Project Management States
   const [projects, setProjects] = useState<AIProject[]>([]);
@@ -137,6 +147,7 @@ function App() {
     localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:3001'
   );
   const sidebarRef = useRef<SidebarDrawerRef | null>(null);
+  const canvasAutoLayoutRef = useRef<(() => void) | null>(null);
 
   // Theme state ('dark' | 'light')
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -346,6 +357,34 @@ function App() {
     }
   };
 
+  // Route C: Handle deep linking from Sidebar AI wizard directly into Infinite Canvas
+  const handleOpenInCanvas = async (options?: {
+    type?: 'outfit' | 'storyboard' | 'image' | 'project';
+    src?: string;
+    title?: string;
+    prompt?: string;
+  }) => {
+    const currentProj = projects.find(p => p.id === activeProjectId);
+    if (currentProj) {
+      const topology = convertAiProjectToCanvas(currentProj);
+      if (options?.type === 'image' && options.src) {
+        topology.nodes.push({
+          id: `node_preview_${Date.now()}`,
+          type: 'image',
+          title: options.title || '模特穿搭预览',
+          position: { x: 740, y: 300 },
+          width: 280,
+          height: 380,
+          status: 'success',
+          metadata: { imageSrc: options.src }
+        });
+      }
+      await saveCanvasTopologyToLocalDB(activeProjectId, topology.nodes, topology.connections);
+    }
+    setViewMode('canvas');
+    toast.success('已切换至无限画布，并为您载入当前方案节点拓扑！');
+  };
+
   const addDefaultTextLayer = () => {
     const id = `text_${Date.now()}`;
     const newLayers: Layer[] = [...layers, {
@@ -358,6 +397,76 @@ function App() {
     commitInstantHistory(newLayers, '添加文案图层');
     toast.success('已添加文案图层');
   };
+
+  const handleSwitchProject = useCallback((projectId: string) => {
+    setActiveProjectId(projectId);
+    if (sidebarRef.current) {
+      sidebarRef.current.switchProject(projectId);
+    }
+  }, []);
+
+  const handleCreateNewProject = useCallback(() => {
+    if (sidebarRef.current) {
+      sidebarRef.current.createNewProject();
+    } else {
+      const defaultName = `项目_${projects.length + 1}`;
+      const input = prompt('请输入新项目名称：', defaultName);
+      if (input === null) return;
+      const id = crypto.randomUUID?.() || `proj_${Date.now()}`;
+      const project = createAIProject({ id, name: input.trim() || defaultName, withDefaultPrompts: true });
+      setProjects(prev => [...prev, project]);
+      setActiveProjectId(project.id);
+      toast.success(`已创建并切换至新项目「${project.name}」！`);
+    }
+  }, [projects.length]);
+
+  const handleStartRenameProject = useCallback(() => {
+    if (sidebarRef.current) {
+      sidebarRef.current.startRenameProject();
+    } else {
+      const cur = projects.find(p => p.id === activeProjectId);
+      if (cur) {
+        setEditingProjNameValue(cur.name);
+        setIsEditingProjName(true);
+      }
+    }
+  }, [activeProjectId, projects]);
+
+  const handleSaveProjectName = useCallback(() => {
+    if (sidebarRef.current) {
+      sidebarRef.current.saveProjectName();
+    } else {
+      const name = editingProjNameValue.trim();
+      if (!name) {
+        toast.error('项目名称不能为空！');
+        return;
+      }
+      setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));
+      setIsEditingProjName(false);
+      toast.success('项目名称已更新！');
+    }
+  }, [activeProjectId, editingProjNameValue]);
+
+  const handleDeleteProject = useCallback((projectId: string) => {
+    if (projects.length <= 1) {
+      toast.warning('至少需要保留一个项目！');
+      return;
+    }
+    if (sidebarRef.current) {
+      sidebarRef.current.deleteProject(projectId);
+    } else {
+      const target = projects.find(p => p.id === projectId);
+      if (!confirm(`确认要删除项目「${target?.name || '当前项目'}」吗？`)) return;
+      const remaining = projects.filter(p => p.id !== projectId);
+      setProjects(remaining);
+      setActiveProjectId(remaining[0].id);
+      toast.info(`已删除项目「${target?.name || ''}」`);
+      void supabase.auth.getSession().then(({ data }) => {
+        if (data.session?.user?.id) return supabase.from('ai_video_projects').delete().eq('id', projectId);
+        return undefined;
+      }).catch(error => console.warn('Failed to delete project from Supabase:', error));
+    }
+  }, [projects]);
 
   if (loadingSession) {
     return <AppLoadingScreen />;
@@ -382,20 +491,25 @@ function App() {
             theme={theme}
             onEditingNameChange={setEditingProjNameValue}
             onCancelEditing={() => setIsEditingProjName(false)}
-            onSaveName={() => sidebarRef.current?.saveProjectName()}
-            onSwitchProject={(id) => sidebarRef.current?.switchProject(id)}
-            onCreateProject={() => sidebarRef.current?.createNewProject()}
-            onStartRename={() => sidebarRef.current?.startRenameProject()}
-            onDeleteProject={(id) => sidebarRef.current?.deleteProject(id)}
+            onSaveName={handleSaveProjectName}
+            onSwitchProject={handleSwitchProject}
+            onCreateProject={handleCreateNewProject}
+            onStartRename={handleStartRenameProject}
+            onDeleteProject={handleDeleteProject}
             onOpenDashboard={() => setIsProjectsModalOpen(true)}
           />
         </div>
 
-        <AspectRatioSelector
-          ratio={ratio}
-          onRatioChange={handleRatioChange}
-          onSmartReflow={handleSmartReflow}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <ViewModeSwitch mode={viewMode} onChange={setViewMode} />
+          {viewMode === 'editor' && (
+            <AspectRatioSelector
+              ratio={ratio}
+              onRatioChange={handleRatioChange}
+              onSmartReflow={handleSmartReflow}
+            />
+          )}
+        </div>
 
         <AppHeaderActions
           theme={theme}
@@ -404,10 +518,15 @@ function App() {
           onExport={triggerExport}
           onToggleCopilot={() => setIsCopilotOpen(prev => !prev)}
           onOpenCustomApiModal={() => setIsCustomApiModalOpen(true)}
-          onExportProjectPackage={() => {
+          onExportProjectPackage={async () => {
             const curProj = projects.find(p => p.id === activeProjectId);
-            exportProjectPackage({ project: curProj, ratio, layers });
-            toast.success('已导出当前工程包 (.keyvideo.json)！');
+            const canvasData = await localDB.get<{
+              nodes: CanvasNodeData[];
+              connections: CanvasConnection[];
+              viewport?: CanvasViewport;
+            }>(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`);
+            exportProjectPackage({ project: curProj, ratio, layers, infiniteCanvas: canvasData || undefined });
+            toast.success('已导出当前工程包（包含时间轴与无限画布数据）！');
           }}
           onImportProjectPackage={async (file) => {
             try {
@@ -418,7 +537,10 @@ function App() {
               if (pkg.canvas?.ratio) {
                 setRatio(pkg.canvas.ratio);
               }
-              toast.success(`已恢复工程「${pkg.project?.name || '导入工程'}」的全量配置！`);
+              if (pkg.infiniteCanvas) {
+                await localDB.set(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`, pkg.infiniteCanvas);
+              }
+              toast.success(`已恢复工程「${pkg.project?.name || '导入工程'}」的全量配置与画布！`);
             } catch (err) {
               toast.error(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
             }
@@ -428,81 +550,102 @@ function App() {
             setIsSettingsModalOpen(true);
           }}
           onToggleTheme={toggleTheme}
+          onSetTheme={(newTheme) => {
+            setTheme(newTheme);
+            toast.info(`已切换至 ${newTheme === 'dark' ? '🌙 暗黑主题' : '☀️ 浅色主题'}`);
+          }}
           onSignOut={async () => { await supabase.auth.signOut(); }}
         />
      </header>
 
       {/* Editor Body Workspace */}
       <div className="editor-container">
-        <ToolNavigation
-          activeTab={activeTab}
-          isDrawerCollapsed={isDrawerCollapsed}
-          onSelectTab={(tab) => {
-            setActiveTab(tab);
-            setIsDrawerCollapsed(false);
-          }}
-          onReopenDrawer={() => setIsDrawerCollapsed(false)}
-        />
+        {viewMode === 'canvas' ? (
+          <Suspense fallback={<AppLoadingScreen />}>
+            <InfiniteCanvas
+              projectId={activeProjectId}
+              activeProject={projects.find(p => p.id === activeProjectId)}
+              currentTime={currentTime}
+              layers={layers}
+              setLayers={setLayers}
+              commitHistory={commitInstantHistory}
+              onRegisterAutoLayout={(fn) => { canvasAutoLayoutRef.current = fn; }}
+            />
+          </Suspense>
+        ) : (
+          <>
+            <ToolNavigation
+              activeTab={activeTab}
+              isDrawerCollapsed={isDrawerCollapsed}
+              onSelectTab={(tab) => {
+                setActiveTab(tab);
+                setIsDrawerCollapsed(false);
+              }}
+              onReopenDrawer={() => setIsDrawerCollapsed(false)}
+            />
 
-        <SidebarDrawer
-          ref={sidebarRef}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          layers={layers}
-          setLayers={setLayers}
-          selectedLayerId={selectedLayerId}
-          setSelectedLayerId={setSelectedLayerId}
-          setModelSwapRunning={setModelSwapRunning}
-          ratio={ratio}
-          session={session}
-          projects={projects}
-          setProjects={setProjects}
-          activeProjectId={activeProjectId}
-          setActiveProjectId={setActiveProjectId}
-          isEditingProjName={isEditingProjName}
-          setIsEditingProjName={setIsEditingProjName}
-          editingProjNameValue={editingProjNameValue}
-          setEditingProjNameValue={setEditingProjNameValue}
-          isProjectsModalOpen={isProjectsModalOpen}
-          setIsProjectsModalOpen={setIsProjectsModalOpen}
-          isCollapsed={isDrawerCollapsed}
-          onToggleCollapse={() => setIsDrawerCollapsed(!isDrawerCollapsed)}
-        />
+            <SidebarDrawer
+              ref={sidebarRef}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              layers={layers}
+              setLayers={setLayers}
+              selectedLayerId={selectedLayerId}
+              setSelectedLayerId={setSelectedLayerId}
+              setModelSwapRunning={setModelSwapRunning}
+              ratio={ratio}
+              session={session}
+              projects={projects}
+              setProjects={setProjects}
+              activeProjectId={activeProjectId}
+              setActiveProjectId={setActiveProjectId}
+              isEditingProjName={isEditingProjName}
+              setIsEditingProjName={setIsEditingProjName}
+              editingProjNameValue={editingProjNameValue}
+              setEditingProjNameValue={setEditingProjNameValue}
+              isProjectsModalOpen={isProjectsModalOpen}
+              setIsProjectsModalOpen={setIsProjectsModalOpen}
+              isCollapsed={isDrawerCollapsed}
+              onToggleCollapse={() => setIsDrawerCollapsed(!isDrawerCollapsed)}
+              onOpenInCanvas={handleOpenInCanvas}
+            />
 
-        <VideoCanvas
-          ratio={ratio}
-          currentTime={currentTime}
-          setCurrentTime={setCurrentTime}
-          isPlaying={isPlaying}
-          setIsPlaying={setIsPlaying}
-          layers={layers}
-          setLayers={setLayers}
-          selectedLayerId={selectedLayerId}
-          setSelectedLayerId={setSelectedLayerId}
-          modelSwapRunning={modelSwapRunning}
-          exporting={exporting}
-          setExporting={setExporting}
-          exportProgress={exportProgress}
-          setExportProgress={setExportProgress}
-          exportLogs={exportLogs}
-          setExportLogs={setExportLogs}
-          isFullscreen={isFullscreen}
-          setIsFullscreen={setIsFullscreen}
-        />
+            <VideoCanvas
+              ratio={ratio}
+              currentTime={currentTime}
+              setCurrentTime={setCurrentTime}
+              isPlaying={isPlaying}
+              setIsPlaying={setIsPlaying}
+              layers={layers}
+              setLayers={setLayers}
+              selectedLayerId={selectedLayerId}
+              setSelectedLayerId={setSelectedLayerId}
+              modelSwapRunning={modelSwapRunning}
+              exporting={exporting}
+              setExporting={setExporting}
+              exportProgress={exportProgress}
+              setExportProgress={setExportProgress}
+              exportLogs={exportLogs}
+              setExportLogs={setExportLogs}
+              isFullscreen={isFullscreen}
+              setIsFullscreen={setIsFullscreen}
+            />
 
-        {/* Right side settings column */}
-        <PropertyInspector
-          layers={layers}
-          setLayers={setLayers}
-          selectedLayerId={selectedLayerId}
-          setSelectedLayerId={setSelectedLayerId}
-          isCollapsed={isInspectorCollapsed}
-          onToggleCollapse={() => setIsInspectorCollapsed(!isInspectorCollapsed)}
-        />
+            {/* Right side settings column */}
+            <PropertyInspector
+              layers={layers}
+              setLayers={setLayers}
+              selectedLayerId={selectedLayerId}
+              setSelectedLayerId={setSelectedLayerId}
+              isCollapsed={isInspectorCollapsed}
+              onToggleCollapse={() => setIsInspectorCollapsed(!isInspectorCollapsed)}
+            />
+          </>
+        )}
       </div>
 
-      {/* Bottom timeline track scrubbers (Hidden during fullscreen preview) */}
-      {!isFullscreen && (
+      {/* Bottom timeline track scrubbers (Hidden during fullscreen preview or canvas mode) */}
+      {!isFullscreen && viewMode === 'editor' && (
         <Timeline
           layers={layers}
           setLayers={setLayers}
@@ -524,6 +667,11 @@ function App() {
         value={backendUrlInput}
         onChange={setBackendUrlInput}
         onClose={() => setIsSettingsModalOpen(false)}
+        theme={theme}
+        onThemeChange={(newTheme) => {
+          setTheme(newTheme);
+          toast.info(`已切换至 ${newTheme === 'dark' ? '🌙 暗黑主题' : '☀️ 浅色主题'}`);
+        }}
       />
 
       {/* AI Copilot & Custom API Modals */}
@@ -542,7 +690,69 @@ function App() {
           setIsPlaying,
           selectedLayerId,
           setSelectedLayerId,
-          triggerExport
+          triggerExport,
+          viewMode,
+          setViewMode,
+          onCanvasGeneratePipeline: async (theme?: string) => {
+            const currentProj = projects.find(p => p.id === activeProjectId);
+            const pipeline = generateCanvasPipeline(theme || currentProj?.name || '法式复古小黑裙通勤穿搭', currentProj?.topClothingUrl);
+            await saveCanvasTopologyToLocalDB(activeProjectId, pipeline.nodes, pipeline.connections);
+            setViewMode('canvas');
+            toast.success(`已为「${theme || '当前项目'}」在无限画布中生成完整分镜管线！`);
+          },
+          onCanvasAddNode: (type, title) => {
+            setViewMode('canvas');
+            toast.info(`已切换至画布模式，请点击上方工具栏或快捷键添加「${title || type}」节点`);
+          },
+          onCanvasAutoLayout: () => {
+            if (canvasAutoLayoutRef.current) {
+              canvasAutoLayoutRef.current();
+            } else {
+              setViewMode('canvas');
+              setTimeout(() => {
+                canvasAutoLayoutRef.current?.();
+              }, 100);
+            }
+          }
+        }}
+      />
+
+      {/* Global AI Projects Management Dashboard Modal */}
+      <ProjectsModal
+        isOpen={isProjectsModalOpen}
+        onClose={() => setIsProjectsModalOpen(false)}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        createNewProject={handleCreateNewProject}
+        switchProject={handleSwitchProject}
+        setProjects={setProjects}
+        deleteProject={handleDeleteProject}
+        onExportPackage={async () => {
+          const curProj = projects.find(p => p.id === activeProjectId);
+          const canvasData = await localDB.get<{
+            nodes: CanvasNodeData[];
+            connections: CanvasConnection[];
+            viewport?: CanvasViewport;
+          }>(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`);
+          exportProjectPackage({ project: curProj, ratio, layers, infiniteCanvas: canvasData || undefined });
+          toast.success('已成功导出完整工程包 (.keyvideo.json)！');
+        }}
+        onImportPackage={async (pkg) => {
+          try {
+            if (pkg.canvas?.layers) {
+              setLayers(pkg.canvas.layers);
+            }
+            if (pkg.canvas?.ratio) {
+              setRatio(pkg.canvas.ratio);
+            }
+            if (pkg.infiniteCanvas) {
+              await localDB.set(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`, pkg.infiniteCanvas);
+            }
+            setIsProjectsModalOpen(false);
+            toast.success(`已恢复工程「${pkg.project?.name || '导入工程'}」的全量配置与画布！`);
+          } catch (err) {
+            toast.error(`导入失败: ${err instanceof Error ? err.message : String(err)}`);
+          }
         }}
       />
 

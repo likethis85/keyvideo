@@ -1,5 +1,6 @@
 import type { Layer } from '../components/VideoCanvas';
 import type { AspectRatio } from '../utils/smartReflow';
+import type { CanvasNodeType } from '../types/canvas';
 
 export interface EditorExecutionContext {
   layers: Layer[];
@@ -14,6 +15,14 @@ export interface EditorExecutionContext {
   selectedLayerId: string | null;
   setSelectedLayerId: (id: string | null) => void;
   triggerExport: () => void;
+
+  // Infinite Canvas integration (Route B)
+  viewMode?: 'editor' | 'canvas';
+  setViewMode?: (mode: 'editor' | 'canvas') => void;
+  onCanvasAddNode?: (type: CanvasNodeType, title?: string) => void;
+  onCanvasGeneratePipeline?: (theme?: string) => void;
+  onCanvasAutoLayout?: () => void;
+  onCanvasClear?: () => void;
 }
 
 export interface AgentExecutionResult {
@@ -23,7 +32,7 @@ export interface AgentExecutionResult {
 }
 
 /**
- * Parses and executes natural language commands on the active KeyVideo canvas
+ * Parses and executes natural language commands on the active KeyVideo workspace (Timeline + Canvas)
  */
 export const executeAgentInstruction = (
   instruction: string,
@@ -31,7 +40,83 @@ export const executeAgentInstruction = (
 ): AgentExecutionResult => {
   const text = instruction.trim().toLowerCase();
 
-  // 1. Switch Aspect Ratio
+  // 1. Switch View Mode (Editor vs Infinite Canvas)
+  if (/切换到画布|切换画布|打开画布|进入画布|无限画布|节点画布/.test(text)) {
+    if (context.setViewMode) {
+      context.setViewMode('canvas');
+      return {
+        success: true,
+        reply: '已为您切换至 AI 无限创作画布！您可以在此自由编排节点与多模态生成管线。',
+        actionExecuted: '切换至无限画布'
+      };
+    }
+  }
+
+  if (/回到时间轴|切换到时间轴|回到剪辑|视频剪辑模式|时间线模式/.test(text)) {
+    if (context.setViewMode) {
+      context.setViewMode('editor');
+      return {
+        success: true,
+        reply: '已为您切换至时间轴多轨视频剪辑界面！',
+        actionExecuted: '切换至时间轴模式'
+      };
+    }
+  }
+
+  // 2. Canvas 5-shot Pipeline Generation
+  if (/生成分镜管线|生成5个分镜|生成五镜|创建分镜流程|管线生成|画布管线/.test(text)) {
+    if (context.setViewMode) {
+      context.setViewMode('canvas');
+    }
+    if (context.onCanvasGeneratePipeline) {
+      let theme = instruction.replace(/.*(生成分镜管线|生成5个分镜|生成五镜|创建分镜流程|管线生成|画布管线)[:：\s]*/i, '').trim();
+      if (!theme || theme === instruction) {
+        theme = '爆款夏日法式碎花裙';
+      }
+      context.onCanvasGeneratePipeline(theme);
+      return {
+        success: true,
+        reply: `已在无限画布中为您自动生成「${theme}」的 5 镜头完整电商短视频管线（服装 -> 5镜提示词 -> 5镜生图 -> 5镜生视频）！`,
+        actionExecuted: `生成 5 镜头管线: ${theme}`
+      };
+    }
+  }
+
+  // 3. Canvas Add Node
+  if (/在画布添加|画布新建|添加节点|新建节点/.test(text)) {
+    if (context.setViewMode) {
+      context.setViewMode('canvas');
+    }
+    if (context.onCanvasAddNode) {
+      if (/提示词|文案|prompt/.test(text)) {
+        const title = instruction.replace(/.*(提示词|文案|prompt)[:：\s]*/i, '').trim() || '新提示词节点';
+        context.onCanvasAddNode('prompt', title);
+        return { success: true, reply: `已在画布为您创建提示词节点：「${title}」！`, actionExecuted: `新建提示词节点: ${title}` };
+      }
+      if (/服装|衣服|上装|下装|cloth/.test(text)) {
+        context.onCanvasAddNode('clothing', '服装款式节点');
+        return { success: true, reply: '已在画布为您创建服装参考节点！', actionExecuted: '新建服装节点' };
+      }
+      if (/生图|图片|模特图|image/.test(text)) {
+        context.onCanvasAddNode('image', 'AI 生图节点');
+        return { success: true, reply: '已在画布为您创建图片生成节点！', actionExecuted: '新建生图节点' };
+      }
+      if (/视频|镜头|video/.test(text)) {
+        context.onCanvasAddNode('video', '视频镜头');
+        return { success: true, reply: '已在画布为您创建视频镜头节点！', actionExecuted: '新建视频节点' };
+      }
+    }
+  }
+
+  // 4. Canvas Auto Layout & Anti-overlap
+  if (/画布排版|整理画布|排版节点|节点排版|自动排版|不要叠加|不要重叠|不要堆叠|分开节点|节点重叠|自动对齐|消除重叠/.test(text)) {
+    if (context.onCanvasAutoLayout) {
+      context.onCanvasAutoLayout();
+      return { success: true, reply: '已为您自动整理并对齐画布上的所有节点和连线，彻底消除了重叠与遮挡！', actionExecuted: '画布自动排版与消除重叠' };
+    }
+  }
+
+  // 5. Switch Aspect Ratio
   if (/切换画幅|改变画幅|切到|横屏|竖屏|方屏/.test(text)) {
     if (/16:9|横屏|横版/.test(text)) {
       context.onRatioChange('16-9');
@@ -51,7 +136,7 @@ export const executeAgentInstruction = (
     }
   }
 
-  // 2. Add Text Layer
+  // 6. Add Text Layer
   if (/加文案|添加文字|写一句|加标题|加卖点|添加文案/.test(text)) {
     let copyText = instruction.replace(/.*(加文案|添加文字|写一句|加标题|加卖点|添加文案)[:：\s]*/i, '').trim();
     if (!copyText || copyText === instruction) {
@@ -87,7 +172,7 @@ export const executeAgentInstruction = (
     };
   }
 
-  // 3. Playback Controls
+  // 7. Playback Controls
   if (/播放|暂停|停止/.test(text)) {
     context.setIsPlaying(prev => !prev);
     return {
@@ -97,7 +182,7 @@ export const executeAgentInstruction = (
     };
   }
 
-  // 4. Seek Time
+  // 8. Seek Time
   const timeMatch = text.match(/(?:跳到|跳转|定位到)\s*(\d+(?:\.\d+)?)\s*秒?/);
   if (timeMatch && timeMatch[1]) {
     const targetSeconds = Math.min(15, Math.max(0, parseFloat(timeMatch[1])));
@@ -109,7 +194,7 @@ export const executeAgentInstruction = (
     };
   }
 
-  // 5. Smart Reflow
+  // 9. Smart Reflow
   if (/智能排版|安全重排|重新排版|整理图层/.test(text)) {
     context.onSmartReflow();
     return {
@@ -119,7 +204,7 @@ export const executeAgentInstruction = (
     };
   }
 
-  // 6. Delete Layer
+  // 10. Delete Layer
   if (/删除选中|删除当前|删掉这个|移除图层/.test(text)) {
     if (context.selectedLayerId) {
       const targetId = context.selectedLayerId;
@@ -137,7 +222,7 @@ export const executeAgentInstruction = (
     };
   }
 
-  // 7. Trigger Export
+  // 11. Trigger Export
   if (/导出视频|生成视频|渲染视频|下载成片/.test(text)) {
     context.triggerExport();
     return {
@@ -150,6 +235,6 @@ export const executeAgentInstruction = (
   // Fallback assistant response
   return {
     success: true,
-    reply: `我理解您的要求：「${instruction}」。您可以尝试给我以下具体指令：\n• "帮我切换为 16:9 横屏"\n• "添加文案：首发限时立减50元"\n• "跳到第 5 秒"\n• "智能优化当前图层排版"\n• "立即导出当前视频"`
+    reply: `我理解您的要求：「${instruction}」。您可以尝试给我以下具体指令：\n• "切换到无限画布" 或 "回到时间轴剪辑"\n• "在画布生成5个分镜管线"\n• "在画布添加提示词节点：法式轻奢风格"\n• "画布自动排版"\n• "帮我切换为 16:9 横屏"\n• "添加文案：首发限时立减50元"\n• "立即导出当前视频"`
   };
 };

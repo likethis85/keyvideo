@@ -1,6 +1,7 @@
 import type { Layer } from '../components/VideoCanvas';
 import type { AspectRatio } from './smartReflow';
 import type { StoryboardItem, AIProject } from '../types/aiProject';
+import type { CanvasNodeData, CanvasConnection, CanvasViewport } from '../types/canvas';
 
 export interface KeyVideoProjectPackage {
   version: '1.0.0';
@@ -13,6 +14,11 @@ export interface KeyVideoProjectPackage {
   canvas: {
     ratio: AspectRatio;
     layers: Layer[];
+  };
+  infiniteCanvas?: {
+    nodes: CanvasNodeData[];
+    connections: CanvasConnection[];
+    viewport?: CanvasViewport;
   };
   aiState?: {
     storyboards?: StoryboardItem[];
@@ -30,6 +36,11 @@ export const exportProjectPackage = (data: {
   project?: AIProject | null;
   ratio: AspectRatio;
   layers: Layer[];
+  infiniteCanvas?: {
+    nodes: CanvasNodeData[];
+    connections: CanvasConnection[];
+    viewport?: CanvasViewport;
+  };
   storyboards?: StoryboardItem[];
   modelOutfitImgUrl?: string | null;
   referenceOutfitUrls?: string[];
@@ -48,6 +59,7 @@ export const exportProjectPackage = (data: {
       ratio: data.ratio,
       layers: data.layers
     },
+    infiniteCanvas: data.infiniteCanvas,
     aiState: {
       storyboards: data.storyboards,
       modelOutfitImgUrl: data.modelOutfitImgUrl,

@@ -50,6 +50,7 @@ export interface StoryboardStepProps {
   i2vPrompts: AIProject['i2vPrompts'];
   setI2vPrompts: React.Dispatch<React.SetStateAction<AIProject['i2vPrompts']>>;
   setAiWizardStep: (step: 1 | 2 | 3) => void;
+  onOpenInCanvas?: (options?: { type?: 'outfit' | 'storyboard' | 'image' | 'project'; src?: string; title?: string; prompt?: string }) => void;
 }
 
 export const StoryboardStep: React.FC<StoryboardStepProps> = ({
@@ -85,7 +86,8 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   setProjectI2vMasterPrompt15s,
   i2vPrompts,
   setI2vPrompts,
-  setAiWizardStep
+  setAiWizardStep,
+  onOpenInCanvas
 }) => {
   const mentionableItems: MentionableItem[] = [
     ...(modelOutfitImgUrl ? [{ id: 'model_outfit', type: 'model' as const, label: '当前穿搭模特', previewUrl: modelOutfitImgUrl }] : []),
@@ -207,6 +209,34 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
           onReorder={handleReorderStoryboards}
           onPreview={setPreviewModel}
         />
+
+        {onOpenInCanvas && storyboards.length > 0 && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => onOpenInCanvas({ type: 'storyboard' })}
+            style={{
+              width: '100%',
+              margin: '8px 0',
+              padding: '8px 12px',
+              fontSize: '11px',
+              fontWeight: '600',
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, rgba(121, 40, 202, 0.14) 0%, rgba(0, 242, 254, 0.1) 100%)',
+              border: '1px solid rgba(121, 40, 202, 0.35)',
+              color: '#c084fc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              cursor: 'pointer'
+            }}
+            title="在无限画布中自由拖拽比对、重新连线或调整分镜顺序"
+          >
+            <span>🎨</span>
+            <span>在无限画布中自由排版、比对与调序 (5镜拓扑)</span>
+          </button>
+        )}
 
        {/* Editable Storyboard Prompts */}
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>

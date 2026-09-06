@@ -6,7 +6,8 @@ interface Props {
   onAddLayer: () => void;
   onExport: () => void;
   onOpenSettings: () => void;
-  onToggleTheme: () => void;
+  onToggleTheme?: () => void;
+  onSetTheme?: (theme: 'dark' | 'light') => void;
   onSignOut: () => void | Promise<void>;
   onToggleCopilot?: () => void;
   onOpenCustomApiModal?: () => void;
@@ -269,8 +270,8 @@ export function AppHeaderActions(props: Props) {
             >
               <span style={{ fontSize: '15px' }}>⚙️</span>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '13px', fontWeight: 500 }}>服务配置</span>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary, #9ca3af)' }}>后端服务地址与连通性</span>
+                <span style={{ fontSize: '13px', fontWeight: 500 }}>系统设置与服务</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary, #9ca3af)' }}>主题外观、后端服务与连通性</span>
               </div>
             </button>
 
@@ -309,19 +310,120 @@ export function AppHeaderActions(props: Props) {
                 </div>
               </button>
             )}
+
+            {/* Subtle Divider */}
+            <div
+              style={{
+                height: '1px',
+                background: 'var(--border-color, rgba(255,255,255,0.08))',
+                margin: '4px 6px'
+              }}
+            />
+
+            {/* Group 3: Appearance & Theme */}
+            <div
+              style={{
+                padding: '6px 10px 4px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'var(--text-muted, #6b7280)',
+                letterSpacing: '0.04em',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span>外观主题</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted, #9ca3af)' }}>
+                {props.theme === 'dark' ? '暗黑科技' : '现代明亮'}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '6px',
+                padding: '2px 6px 4px'
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (props.onSetTheme) {
+                    props.onSetTheme('dark');
+                  } else if (props.theme !== 'dark') {
+                    props.onToggleTheme?.();
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  padding: '7px 8px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: props.theme === 'dark' ? 600 : 400,
+                  cursor: 'pointer',
+                  border: props.theme === 'dark'
+                    ? '1px solid var(--accent-purple, #8a2be2)'
+                    : '1px solid var(--border-color, rgba(255, 255, 255, 0.08))',
+                  background: props.theme === 'dark'
+                    ? 'rgba(138, 43, 226, 0.18)'
+                    : 'var(--bg-element, rgba(255, 255, 255, 0.04))',
+                  color: props.theme === 'dark'
+                    ? 'var(--accent-purple, #c084fc)'
+                    : 'var(--text-secondary, #9ca3af)',
+                  transition: 'all 0.15s ease'
+                }}
+                title="切换到暗黑主题"
+              >
+                <span>🌙</span>
+                <span>深色</span>
+                {props.theme === 'dark' && <span style={{ fontSize: '10px', marginLeft: '2px' }}>✓</span>}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (props.onSetTheme) {
+                    props.onSetTheme('light');
+                  } else if (props.theme !== 'light') {
+                    props.onToggleTheme?.();
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  padding: '7px 8px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: props.theme === 'light' ? 600 : 400,
+                  cursor: 'pointer',
+                  border: props.theme === 'light'
+                    ? '1px solid var(--accent-cyan, #0284c7)'
+                    : '1px solid var(--border-color, rgba(255, 255, 255, 0.08))',
+                  background: props.theme === 'light'
+                    ? 'rgba(2, 132, 199, 0.15)'
+                    : 'var(--bg-element, rgba(255, 255, 255, 0.04))',
+                  color: props.theme === 'light'
+                    ? 'var(--accent-cyan, #0284c7)'
+                    : 'var(--text-secondary, #9ca3af)',
+                  transition: 'all 0.15s ease'
+                }}
+                title="切换到浅色主题"
+              >
+                <span>☀️</span>
+                <span>浅色</span>
+                {props.theme === 'light' && <span style={{ fontSize: '10px', marginLeft: '2px' }}>✓</span>}
+              </button>
+            </div>
           </div>
         )}
       </div>
-
-      {/* Theme Toggle */}
-      <button
-        className="btn-secondary header-action-button"
-        onClick={props.onToggleTheme}
-        title={props.theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
-      >
-        {props.theme === 'dark' ? '☀️' : '🌙'}{' '}
-        <span className="action-btn-text">{props.theme === 'dark' ? '浅色' : '深色'}</span>
-      </button>
 
       {/* User Account Popover */}
       {props.userEmail && (

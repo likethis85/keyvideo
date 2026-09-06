@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { executeAgentInstruction } from '../../services/agentCommandService';
 import type { EditorExecutionContext } from '../../services/agentCommandService';
 import { toast } from '../toastStore';
@@ -18,10 +18,11 @@ interface ChatMessage {
 }
 
 const QUICK_ACTIONS = [
+  '🎨 切换至无限画布',
+  '✨ 在画布生成5个分镜管线',
+  '📐 画布排版整理',
   '帮我切换为 16:9 横屏',
   '添加文案：爆款特惠 · 显瘦天花板 ✨',
-  '跳到第 3 秒',
-  '智能安全排版',
   '立即导出当前视频'
 ];
 
@@ -30,7 +31,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
     {
       id: 'welcome',
       sender: 'assistant',
-      text: '👋 您好！我是 KeyVideo AI 剪辑助理。您可以直接使用自然语言命令我：\n• 切换任意画幅（如 16:9 横屏、9:16 竖屏）\n• 快速生成并添加营销卖点文案\n• 跳转时间轴或控制播放\n• 一键触发浏览器端原生渲染成片',
+      text: '👋 您好！我是 KeyVideo AI 智能创作助理。您可以直接使用自然语言控制时间轴剪辑与无限节点画布：\n• 切换时间轴 / 无限画布工作台\n• 一键在画布生成 5 镜头电商短视频管线\n• 智能排版画布节点或时间轴图层\n• 切换画幅或添加营销文案\n• 触发浏览器原生无损视频渲染',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -43,14 +44,12 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
     }
   }, [isOpen, messages]);
 
-  if (!isOpen) return null;
-
-  const handleSend = (textToSend?: string) => {
+  const handleSend = useCallback((textToSend?: string) => {
     const text = (textToSend || input).trim();
     if (!text) return;
 
     const userMsg: ChatMessage = {
-      id: `user_${Date.now()}`,
+      id: `user_${Math.random().toString(36).substr(2, 9)}`,
       sender: 'user',
       text,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -59,7 +58,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
     const result = executeAgentInstruction(text, context);
 
     const assistantMsg: ChatMessage = {
-      id: `assistant_${Date.now()}`,
+      id: `assistant_${Math.random().toString(36).substr(2, 9)}`,
       sender: 'assistant',
       text: result.reply,
       actionTag: result.actionExecuted,
@@ -72,7 +71,9 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
     if (result.actionExecuted) {
       toast.success(`🤖 Copilot: ${result.actionExecuted}`);
     }
-  };
+  }, [input, context]);
+
+  if (!isOpen) return null;
 
   return (
     <div

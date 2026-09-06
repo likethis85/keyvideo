@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   getCustomApiConfig,
   saveCustomApiConfig,
@@ -13,15 +13,17 @@ interface CustomApiScriptModalProps {
 }
 
 export const CustomApiScriptModal: React.FC<CustomApiScriptModalProps> = ({ isOpen, onClose }) => {
-  const [config, setConfig] = useState<CustomApiConfig>(DEFAULT_CUSTOM_API_CONFIG);
+  const [config, setConfig] = useState<CustomApiConfig>(getCustomApiConfig);
   const [testOutput, setTestOutput] = useState<string>('');
+  const [wasOpen, setWasOpen] = useState(isOpen);
 
-  useEffect(() => {
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
       setConfig(getCustomApiConfig());
       setTestOutput('');
     }
-  }, [isOpen]);
+  }
 
   if (!isOpen) return null;
 

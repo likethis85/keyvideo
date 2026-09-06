@@ -30,8 +30,9 @@ export interface SidebarDrawerProps {
   setIsEditingProjName: (value: boolean) => void;
   editingProjNameValue: string;
   setEditingProjNameValue: (value: string) => void;
-  isProjectsModalOpen: boolean;
-  setIsProjectsModalOpen: (value: boolean) => void;
+  isProjectsModalOpen?: boolean;
+  setIsProjectsModalOpen?: (value: boolean) => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  onOpenInCanvas?: (options?: { type?: 'outfit' | 'storyboard' | 'image' | 'project'; src?: string; title?: string; prompt?: string }) => void;
 }
