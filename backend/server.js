@@ -33,8 +33,6 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_EXTERNAL_
 };
 
 const requiredEnv = [
-  'AIGATEWAY_URL',
-  'AIGATEWAY_TOKEN',
   'OSS_ACCESS_KEY_ID',
   'OSS_ACCESS_KEY_SECRET',
   'OSS_BUCKET'
@@ -44,6 +42,52 @@ if (missingEnv.length > 0) {
   console.error(`Missing required environment variables: ${missingEnv.join(', ')}`);
   process.exit(1);
 }
+
+if (!process.env.TEXT_LLM_API_KEY && !process.env.SANDBASE_API_KEY && (!process.env.AIGATEWAY_URL || !process.env.AIGATEWAY_TOKEN)) {
+  console.error('Missing required AI credentials: Please configure TEXT_LLM_API_KEY, SANDBASE_API_KEY, or AIGATEWAY credentials');
+  process.exit(1);
+}
+
+// Helper: Resolve Chat Completion API endpoint, key and model (Default to TelecomJS DeepSeek, then Sandbase)
+const getChatCompletionConfig = () => {
+  if (process.env.TEXT_LLM_API_KEY && process.env.TEXT_LLM_URL) {
+    return {
+      provider: 'TelecomJS OpenAICompatible',
+      url: process.env.TEXT_LLM_URL,
+      apiKey: process.env.TEXT_LLM_API_KEY,
+      defaultModel: process.env.TEXT_LLM_MODEL || 'deepseek-v4-flash-0731-tem',
+      isTextOnly: true
+    };
+  }
+  if (process.env.SANDBASE_API_KEY) {
+    return {
+      provider: 'Sandbase AI',
+      url: process.env.SANDBASE_CHAT_URL || 'https://api.sandbase.ai/v1/chat/completions',
+      apiKey: process.env.SANDBASE_API_KEY,
+      defaultModel: process.env.SANDBASE_CHAT_MODEL || 'google/gemini-2.5-flash',
+      isTextOnly: false
+    };
+  }
+  if (process.env.AIGATEWAY_URL) {
+    const base = process.env.AIGATEWAY_URL.endsWith('/')
+      ? `${process.env.AIGATEWAY_URL}chat/completions`
+      : `${process.env.AIGATEWAY_URL}/chat/completions`;
+    return {
+      provider: 'Edgecloud AIGateway',
+      url: base,
+      apiKey: process.env.AIGATEWAY_TOKEN || '',
+      defaultModel: process.env.AIGATEWAY_MODEL || 'gemini-3.1-flash-image',
+      isTextOnly: false
+    };
+  }
+  return {
+    provider: 'TelecomJS OpenAICompatible (Default)',
+    url: 'https://aigw.telecomjs.com/v1/chat/completions',
+    apiKey: 'sk-Q0adcaMPcDp47BPa943xyMp5Osm4PdTB',
+    defaultModel: 'deepseek-v4-flash-0731-tem',
+    isTextOnly: true
+  };
+};
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
   .split(',')
@@ -903,23 +947,42 @@ Output ONLY the JSON object, no markdown wrappers, no other text.`
       contentArray.push({ type: 'image_url', image_url: { url: base64Bottom } });
     }
 
+    const chatConfig = getChatCompletionConfig();
+    const isTextOnly = chatConfig.isTextOnly || chatConfig.defaultModel.toLowerCase().includes('deepseek');
+
+    let messages;
+    if (isTextOnly) {
+      const textOnlyPrompt = `You are a professional fashion stylist. Generate matching outfit recommendations for a fashion catalog photoshoot model.
+Provide a recommendation for matching clothing item (matchingItem), footwear (shoes), and accessories/bags (accessories).
+Output your recommendations strictly in the following JSON format:
+{
+  "matchingItem": "款式与配色描述 (例如：搭配高腰深蓝色直筒牛仔裤)",
+  "shoes": "鞋履建议描述 (例如：搭配白色简约平底运动鞋)",
+  "accessories": "配饰与包包建议描述 (例如：搭配银色简约细耳环，手持黑色复古皮质小包)"
+}
+Output ONLY the JSON object, no markdown wrappers, no other text.`;
+      messages = [{ role: 'user', content: textOnlyPrompt }];
+    } else {
+      messages = [{ role: 'user', content: contentArray }];
+    }
+
     const requestBody = {
-      model: 'gemini-3.1-flash-image',
-      messages: [{ role: 'user', content: contentArray }],
-      response_format: { type: 'json_object' },
+      model: chatConfig.defaultModel,
+      messages: messages,
       max_tokens: 1024,
       stream: false
     };
+    if (!isTextOnly) {
+      requestBody.response_format = { type: 'json_object' };
+    }
 
-    const gatewayUrl = process.env.AIGATEWAY_URL;
-    const gatewayToken = process.env.AIGATEWAY_TOKEN;
-    const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}chat/completions` : `${gatewayUrl}/chat/completions`;
+    console.log(`[AI Stylist] Calling chat completions via ${chatConfig.provider} (model: ${chatConfig.defaultModel})`);
 
-    const response = await fetchWithTimeout(requestUrl, {
+    const response = await fetchWithTimeout(chatConfig.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${gatewayToken}`
+        'Authorization': `Bearer ${chatConfig.apiKey}`
       },
       body: JSON.stringify(requestBody)
     }, LONG_EXTERNAL_TIMEOUT_MS);
@@ -945,9 +1008,9 @@ Output ONLY the JSON object, no markdown wrappers, no other text.`
 
     const parsed = JSON.parse(sanitizedJsonStr);
     res.status(200).json({
-      matchingItem: parsed.matchingItem || '',
-      shoes: parsed.shoes || '',
-      accessories: parsed.accessories || ''
+      matchingItem: Array.isArray(parsed.matchingItem) ? parsed.matchingItem.join('、') : (parsed.matchingItem || ''),
+      shoes: Array.isArray(parsed.shoes) ? parsed.shoes.join('、') : (parsed.shoes || ''),
+      accessories: Array.isArray(parsed.accessories) ? parsed.accessories.join('、') : (parsed.accessories || '')
     });
   } catch (err) {
     console.error('Stylist suggestion failed:', err);
@@ -1153,22 +1216,25 @@ ${is15s ? `最终生成的提示词应该类似：
       messagesContent.push({ type: 'image_url', image_url: { url: base64Background } });
     }
 
+    const chatConfig = getChatCompletionConfig();
+    const isTextOnly = chatConfig.isTextOnly || chatConfig.defaultModel.toLowerCase().includes('deepseek');
+
     const requestBody = {
-      model: 'gemini-3.1-flash-image',
-      messages: [{ role: 'user', content: messagesContent }],
+      model: chatConfig.defaultModel,
+      messages: isTextOnly
+        ? [{ role: 'user', content: promptText }]
+        : [{ role: 'user', content: messagesContent }],
       max_tokens: 1536,
       stream: false
     };
 
-    const gatewayUrl = process.env.AIGATEWAY_URL;
-    const gatewayToken = process.env.AIGATEWAY_TOKEN;
-    const requestUrl = gatewayUrl.endsWith('/') ? `${gatewayUrl}chat/completions` : `${gatewayUrl}/chat/completions`;
+    console.log(`[AI Prompts Skill] Calling chat completions via ${chatConfig.provider} (model: ${chatConfig.defaultModel})`);
 
-    const response = await fetchWithTimeout(requestUrl, {
+    const response = await fetchWithTimeout(chatConfig.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${gatewayToken}`
+        'Authorization': `Bearer ${chatConfig.apiKey}`
       },
       body: JSON.stringify(requestBody)
     }, LONG_EXTERNAL_TIMEOUT_MS);
