@@ -1563,6 +1563,158 @@ body[data-theme="light"] {
   }
 }
 
+/* Medium desktop / browser zoom: keep the preview as the visual focus and
+   prevent user-saved wide side panels from crushing the workspace. */
+@media (max-width: 1280px) {
+  .sidebar-drawer:not(.collapsed) {
+    width: clamp(280px, 27vw, 320px) !important;
+    min-width: clamp(280px, 27vw, 320px) !important;
+  }
+
+  .property-inspector {
+    width: 260px;
+    min-width: 260px;
+  }
+
+  .drawer-header,
+  .inspector-header {
+    padding: 14px 16px;
+  }
+
+  .drawer-content,
+  .inspector-content {
+    padding: 14px 16px !important;
+  }
+
+  .preview-panel {
+    padding-inline: 10px;
+  }
+}
+
+/* The timeline header has three independent tool groups. On common laptop
+   widths they stay on one clean row, with secondary copy progressively hidden. */
+@media (max-width: 1700px) {
+  .timeline-header {
+    gap: 10px;
+    padding-inline: 12px;
+  }
+
+  .timeline-hint {
+    display: none;
+  }
+
+  .timeline-header-main {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .timeline-zoom-controller {
+    flex-shrink: 0;
+    margin: 0;
+  }
+}
+
+@media (max-width: 1280px) {
+  .timeline-title,
+  .timeline-tool-keyhint,
+  .timeline-height-presets > span {
+    display: none;
+  }
+
+  .timeline-history-controls,
+  .timeline-tools-cluster {
+    padding-left: 6px;
+  }
+
+  .timeline-history-button,
+  .timeline-tool-btn {
+    padding-inline: 6px;
+  }
+
+  .timeline-zoom-controller {
+    gap: 5px;
+    padding: 4px 8px;
+  }
+
+  .timeline-zoom-controller input {
+    width: 64px;
+  }
+
+  .timeline-height-presets {
+    margin-left: 2px;
+  }
+
+  .timeline-height-btn {
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-header {
+    gap: 8px;
+    padding-inline: 8px;
+  }
+
+  .logo-section {
+    flex-shrink: 0;
+  }
+
+  .logo-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .project-selector-trigger {
+    max-width: 132px;
+  }
+
+  .mode-switch-btn:not(.active) span,
+  .ratio-reflow span {
+    display: none;
+  }
+
+  .mode-switch-btn {
+    padding-inline: 8px;
+  }
+
+  .header-actions {
+    gap: 5px;
+  }
+
+  .header-action-divider {
+    margin-inline: 3px;
+  }
+
+  .editor-sidebar {
+    width: 64px;
+    min-width: 64px;
+  }
+
+  .nav-tab {
+    width: 50px;
+  }
+
+  .drawer-reopen-btn {
+    left: 64px;
+  }
+
+  .sidebar-drawer:not(.collapsed) {
+    width: 260px !important;
+    min-width: 260px !important;
+  }
+
+  .property-inspector {
+    width: 240px;
+    min-width: 240px;
+  }
+
+  .timeline-history-button span:not(.timeline-history-count),
+  .timeline-tool-btn > span:not(.snap-icon):not(.snap-indicator-dot),
+  .timeline-zoom-controller > span:first-child {
+    display: none;
+  }
+}
+
 /* Compact-height desktop windows: preserve useful room for the tool drawer. */
 @media (max-height: 720px) {
   .app-header {
