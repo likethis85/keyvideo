@@ -6,7 +6,7 @@ import type { CanvasNodeData, CanvasConnection } from '../types/canvas';
  */
 export function getNodeDimensions(node: CanvasNodeData): { width: number; height: number } {
   const width = Math.max(node.width || (node.type === 'prompt' ? 280 : 300), 260);
-  let height = 300;
+  let height: number;
 
   switch (node.type) {
     case 'video':

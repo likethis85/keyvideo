@@ -43,3 +43,28 @@ export function parseThreeShotPrompt(prompt: string) {
     'close-up': cleanPromptReferences(extractPart(prompt, '第三幕：', '原生音效：', '微距镜头缓慢拉近。极细致特写聚焦于衣服面料纹理、做工走线与接缝细节，轻微景深虚化与慢速推进，保留呼吸感运镜。'))
   };
 }
+
+export function reconstructFiveShotMasterPrompt(
+  parsedShots: Record<'shot-1' | 'shot-2' | 'shot-3' | 'shot-4' | 'shot-5', string>,
+  existingPrompt?: string
+): string {
+  const audioMarker = '原生音效：';
+  let audioPart = '高级环境底噪 + 衣服摩擦与高跟鞋脚步拟音 Foley + 舒缓音乐 BGM。';
+  if (existingPrompt && existingPrompt.includes(audioMarker)) {
+    const extracted = existingPrompt.substring(existingPrompt.indexOf(audioMarker) + audioMarker.length).trim();
+    if (extracted) audioPart = extracted;
+  }
+
+  return `15秒快节奏连贯 5 幕叙事，引用参考图作为服装和模特的严格一致性参考。第一幕：${parsedShots['shot-1']} 镜头切换（Cut to）第二幕：${parsedShots['shot-2']} 镜头切换（Cut to）第三幕：${parsedShots['shot-3']} 镜头切换（Cut to）第四幕：${parsedShots['shot-4']} 镜头切换（Cut to）第五幕：${parsedShots['shot-5']} 原生音效：${audioPart}`;
+}
+
+export function replaceSingleShotInMasterPrompt(
+  masterPrompt: string,
+  shotKey: 'shot-1' | 'shot-2' | 'shot-3' | 'shot-4' | 'shot-5',
+  newShotContent: string
+): string {
+  const parsed = parseFiveShotPrompt(masterPrompt);
+  parsed[shotKey] = cleanPromptReferences(newShotContent);
+  return reconstructFiveShotMasterPrompt(parsed, masterPrompt);
+}
+

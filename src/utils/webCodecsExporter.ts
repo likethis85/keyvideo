@@ -8,6 +8,26 @@ export interface AudioTrackInput {
   offset?: number;
 }
 
+export interface ExportProgressInfo {
+  currentFrame: number;
+  totalFrames: number;
+  percent: number;
+  fps: number;
+  estimatedSecondsRemaining: number;
+  estimatedSizeMb: string;
+}
+
+export interface ExportResultInfo {
+  blob: Blob;
+  duration: number;
+  totalFrames: number;
+  averageFps: number;
+  totalTimeSec: number;
+  sizeBytes: number;
+  width: number;
+  height: number;
+}
+
 export interface WebCodecsExportOptions {
   canvas: HTMLCanvasElement;
   width: number;
@@ -16,9 +36,11 @@ export interface WebCodecsExportOptions {
   fps?: number;
   bitrate?: number;
   audioTracks?: AudioTrackInput[];
+  signal?: AbortSignal;
   renderFrame: (time: number) => Promise<void> | void;
-  onProgress: (info: { currentFrame: number; totalFrames: number; percent: number; fps: number }) => void;
+  onProgress: (info: ExportProgressInfo) => void;
   onLog: (message: string) => void;
+  onFrameSnapshot?: (dataUrl: string) => void;
 }
 
 /**
@@ -87,7 +109,7 @@ async function renderOfflineAudioBuffer(
 /**
  * Export high-bitrate MP4 with hardware accelerated WebCodecs
  */
-export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions): Promise<Blob> {
+export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions): Promise<ExportResultInfo> {
   const {
     canvas,
     width,
@@ -96,32 +118,47 @@ export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions):
     fps = 30,
     bitrate = 8_500_000,
     audioTracks = [],
+    signal,
     renderFrame,
     onProgress,
-    onLog
+    onLog,
+    onFrameSnapshot
   } = options;
 
   if (!isWebCodecsSupported()) {
-    throw new Error('WebCodecs is not supported in this browser environment');
+    throw new Error('当前浏览器环境不支持 WebCodecs 硬件加速');
   }
 
-  onLog('⚡ 启动 WebCodecs 硬件加速编码引擎...');
+  if (signal?.aborted) {
+    throw new DOMException('导出已被用户取消', 'AbortError');
+  }
+
+  onLog('⚡ 启动 WebCodecs 硬件加速渲染引擎...');
 
   // 1. Prepare offline audio if present
   let renderedAudioBuffer: AudioBuffer | null = null;
   const hasAudio = audioTracks && audioTracks.length > 0;
   if (hasAudio) {
     onLog('🎵 离屏混音中：预混合背景音轨与音频音量曲线...');
-    renderedAudioBuffer = await renderOfflineAudioBuffer(audioTracks, duration, 44100);
-    if (!renderedAudioBuffer) {
-      throw new Error('音频素材无法读取或解码，已停止无声导出');
-    }
-    if (!('AudioEncoder' in window)) {
-      throw new Error('当前环境不支持 AAC 音频编码，将切换兼容导出');
+    try {
+      renderedAudioBuffer = await renderOfflineAudioBuffer(audioTracks, duration, 44100);
+      if (!renderedAudioBuffer) {
+        onLog('⚠️ 未检测到有效音频素材，将自适应转为纯画面 MP4 封装');
+      } else if (!('AudioEncoder' in window)) {
+        onLog('⚠️ 当前环境暂不支持 AAC 硬件编码，将转为纯画面 MP4 封装');
+        renderedAudioBuffer = null;
+      }
+    } catch {
+      onLog('⚠️ 音频解码异常，已平滑容错为纯画面 MP4 封装');
+      renderedAudioBuffer = null;
     }
   }
 
-  // 2. Initialize MP4 Muxer
+  if (signal?.aborted) {
+    throw new DOMException('导出已被用户取消', 'AbortError');
+  }
+
+  // 2. Initialize MP4 Muxer with FastStart for instant Web streaming
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
     video: {
@@ -188,11 +225,11 @@ export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions):
       if (audioSupported.supported) {
         audioEncoder.configure(audioConfig);
       } else {
-        throw new Error('当前环境不支持 AAC-LC 编码');
+        audioEncoder = null;
       }
     } catch (e) {
       console.warn('[WebCodecs] AudioEncoder setup failed:', e);
-      throw new Error('AAC 音频编码初始化失败，将切换兼容导出', { cause: e });
+      audioEncoder = null;
     }
   }
 
@@ -205,14 +242,17 @@ export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions):
       ? renderedAudioBuffer.getChannelData(1)
       : channel0;
 
-    const blockSize = 1024; // AAC typical frame size
+    const blockSize = 1024;
     const totalSamples = channel0.length;
 
     for (let offset = 0; offset < totalSamples; offset += blockSize) {
+      if (signal?.aborted) {
+        throw new DOMException('导出已被用户取消', 'AbortError');
+      }
+
       const currentBlock = Math.min(blockSize, totalSamples - offset);
       const planarBuffer = new Float32Array(currentBlock * 2);
 
-      // Copy planar: Left channel first, then Right channel
       planarBuffer.set(channel0.subarray(offset, offset + currentBlock), 0);
       planarBuffer.set(channel1.subarray(offset, offset + currentBlock), currentBlock);
 
@@ -243,6 +283,12 @@ export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions):
   onLog(`🚀 开始极速离屏渲染（总计 ${totalFrames} 帧 @ ${fps} FPS）...`);
 
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+    if (signal?.aborted) {
+      try { videoEncoder.close(); } catch (error) { console.warn('Unable to close video encoder:', error); }
+      if (audioEncoder) { try { audioEncoder.close(); } catch (error) { console.warn('Unable to close audio encoder:', error); } }
+      throw new DOMException('导出已被用户取消', 'AbortError');
+    }
+
     if (videoEncoderError) {
       throw videoEncoderError;
     }
@@ -251,6 +297,15 @@ export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions):
 
     // Render precise frame on canvas
     await renderFrame(currentTime);
+
+    // Snapshot thumbnail for real-time live preview (every 8 frames)
+    if (onFrameSnapshot && frameIndex % 8 === 0) {
+      try {
+        onFrameSnapshot(canvas.toDataURL('image/jpeg', 0.55));
+      } catch (error) {
+        console.warn('Unable to capture export preview frame:', error);
+      }
+    }
 
     // Create VideoFrame directly from canvas
     const timestampMicroseconds = Math.round(currentTime * 1_000_000);
@@ -268,11 +323,21 @@ export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions):
 
     // Calculate real-time FPS & progress
     const now = performance.now();
-    if (now - lastReportTime >= 250 || frameIndex === totalFrames - 1) {
+    if (now - lastReportTime >= 200 || frameIndex === totalFrames - 1) {
       const deltaSec = (now - lastReportTime) / 1000;
       const deltaFrames = frameIndex - lastReportFrames;
       const currentFps = deltaSec > 0 ? Math.round(deltaFrames / deltaSec) : fps;
       const percent = Math.min(99, Math.round(((frameIndex + 1) / totalFrames) * 100));
+
+      // Calculate ETA
+      const totalElapsedSec = (now - loopStartTime) / 1000;
+      const avgSpeed = (frameIndex + 1) / Math.max(0.01, totalElapsedSec);
+      const remainingFrames = totalFrames - (frameIndex + 1);
+      const estimatedSecondsRemaining = Math.max(0, Math.round(remainingFrames / Math.max(1, avgSpeed)));
+
+      // Estimate Size
+      const estimatedTotalBytes = (bitrate / 8) * duration;
+      const estimatedSizeMb = (estimatedTotalBytes / (1024 * 1024)).toFixed(1);
 
       lastReportTime = now;
       lastReportFrames = frameIndex;
@@ -281,22 +346,24 @@ export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions):
         currentFrame: frameIndex + 1,
         totalFrames,
         percent,
-        fps: currentFps
+        fps: currentFps,
+        estimatedSecondsRemaining,
+        estimatedSizeMb
       });
 
       if (frameIndex % (fps * 2) === 0 || frameIndex === totalFrames - 1) {
-        onLog(`⚡ 硬件渲染进度：帧 ${frameIndex + 1}/${totalFrames} (${percent}%) · 实时速度 ${currentFps} FPS`);
+        onLog(`⚡ 硬件渲染进度：帧 ${frameIndex + 1}/${totalFrames} (${percent}%) · 速率 ${currentFps} FPS · 预估剩余 ${estimatedSecondsRemaining}s`);
       }
     }
 
-    // Yield macro-task every 10 frames to keep UI responsive and allow VideoEncoder internal queue processing
-    if (frameIndex % 10 === 0) {
+    // Yield macro-task every 8 frames to keep UI responsive and allow VideoEncoder internal queue processing
+    if (frameIndex % 8 === 0) {
       await new Promise(r => setTimeout(r, 0));
     }
   }
 
   // 7. Finalize Encoding and Muxing
-  onLog('📦 正在等待编码器输出与组装标准 MP4 文件容器...');
+  onLog('📦 正在等待硬件编码器输出并封装 MP4 文件容器...');
   await videoEncoder.flush();
   videoEncoder.close();
 
@@ -306,10 +373,22 @@ export async function exportVideoWithWebCodecs(options: WebCodecsExportOptions):
 
   muxer.finalize();
 
-  const totalTimeTakenSec = ((performance.now() - loopStartTime) / 1000).toFixed(1);
-  const averageFps = Math.round(totalFrames / Math.max(0.1, (performance.now() - loopStartTime) / 1000));
-  onLog(`✨ 极速硬件导出完成！耗时 ${totalTimeTakenSec} 秒（平均 ${averageFps} FPS），超越物理播放时长！`);
-
+  const totalTimeTakenSec = Math.max(0.1, (performance.now() - loopStartTime) / 1000);
+  const averageFps = Math.round(totalFrames / totalTimeTakenSec);
   const { buffer } = muxer.target;
-  return new Blob([buffer], { type: 'video/mp4' });
+  const blob = new Blob([buffer], { type: 'video/mp4' });
+  const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
+
+  onLog(`✨ 极速硬件导出完成！耗时 ${totalTimeTakenSec.toFixed(1)} 秒（平均 ${averageFps} FPS，体积 ${sizeMb} MB）！`);
+
+  return {
+    blob,
+    duration,
+    totalFrames,
+    averageFps,
+    totalTimeSec: parseFloat(totalTimeTakenSec.toFixed(1)),
+    sizeBytes: blob.size,
+    width,
+    height
+  };
 }

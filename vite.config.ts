@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
+    base: mode === 'production' ? '/videos/' : '/',
     plugins: [
       react(),
       {
@@ -69,31 +70,24 @@ export default defineConfig(({ mode }) => {
     __BUNDLED_DEV__: false,
     __SERVER_FORWARD_CONSOLE__: false
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(moduleId) {
+          if (moduleId.includes('node_modules/react')) return 'react';
+          if (moduleId.includes('node_modules/@supabase')) return 'supabase';
+          return undefined;
+        }
+      }
+    }
+  },
   server: {
     cors: true,
     proxy: {
       '/api-gateway': {
         target: 'https://aigateway.edgecloudapp.com',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-gateway/, ''),
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq, req) => {
-            const targetUrl = req.headers['x-gateway-target'];
-            if (typeof targetUrl === 'string' && targetUrl) {
-              try {
-                const parsedTarget = new URL(targetUrl);
-                const targetPath = parsedTarget.pathname.replace(/\/+$/, '');
-                proxyReq.path = targetPath + proxyReq.path;
-              } catch (e) {
-                console.error('Proxy request path rewriting failed:', e);
-              }
-            }
-          });
-        },
-          router: (req: IncomingMessage) => {
-            const targetUrl = req.headers['x-gateway-target'];
-            return typeof targetUrl === 'string' ? targetUrl : undefined;
-          }
+        rewrite: (path) => path.replace(/^\/api-gateway/, '')
       }
     }
   }

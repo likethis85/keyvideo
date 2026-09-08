@@ -10,6 +10,10 @@ interface CanvasToolbarProps {
   onAddNode: (type: CanvasNodeType) => void;
   onImportFromAiProject?: () => void;
   onAutoLayout?: () => void;
+  onExecutePipeline?: () => void;
+  isExecutingPipeline?: boolean;
+  onBatchSyncTimeline?: () => void;
+  onSpawnMultiModel?: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetView: () => void;
@@ -28,6 +32,10 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   onAddNode,
   onImportFromAiProject,
   onAutoLayout,
+  onExecutePipeline,
+  isExecutingPipeline,
+  onBatchSyncTimeline,
+  onSpawnMultiModel,
   onZoomIn,
   onZoomOut,
   onResetView,
@@ -62,7 +70,6 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   return (
     <div
       className="canvas-floating-toolbar"
-      style={{ whiteSpace: 'nowrap', flexWrap: 'nowrap' }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -70,20 +77,18 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
       <div
         className="toolbar-dropdown-wrapper"
         ref={dropdownRef}
-        style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
       >
         <button
           type="button"
           className="toolbar-pill-btn primary"
-          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
           onClick={(e) => {
             e.stopPropagation();
             setIsAddMenuOpen(prev => !prev);
           }}
           title="点击选择要添加的节点类型（服装、提示词、生图、分镜视频等）"
         >
-          <span className="btn-icon" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>+</span>
-          <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>添加节点</span>
+          <span className="btn-icon">+</span>
+          <span className="toolbar-label">添加节点</span>
           <span style={{ fontSize: '9px', marginLeft: '4px', opacity: 0.85 }}>{isAddMenuOpen ? '▲' : '▼'}</span>
         </button>
 
@@ -119,27 +124,68 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
         )}
       </div>
 
-      {onImportFromAiProject && (
+      {/* Multi-Model Comparison Spawner */}
+      {onSpawnMultiModel && (
         <button
           className="toolbar-pill-btn secondary"
-          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-          onClick={onImportFromAiProject}
-          title="将当前项目向导中的试衣与5幕分镜导入为画布连线图"
+          onClick={onSpawnMultiModel}
+          title="一键衍生东亚、欧美、先锋冷灰等多模特横向对比分支"
         >
-          <span className="btn-icon" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>📥</span>
-          <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>从向导导入工程</span>
+          <span className="btn-icon">👥</span>
+          <span className="toolbar-label">多模特对比管线</span>
         </button>
       )}
 
+      {/* Execute Pipeline DAG */}
+      {onExecutePipeline && (
+        <button
+          className={`toolbar-pill-btn primary-run ${isExecutingPipeline ? 'running' : ''}`}
+          onClick={onExecutePipeline}
+          disabled={isExecutingPipeline}
+          title="按拓扑流自底向上执行全画布/选中节点的批量生图与视频渲染"
+        >
+          <span className="btn-icon">
+            {isExecutingPipeline ? '⏳' : '▶️'}
+          </span>
+          <span className="toolbar-label">
+            {isExecutingPipeline ? '管线执行中...' : '批量执行管线'}
+          </span>
+        </button>
+      )}
+
+      {/* Batch Sync to Timeline */}
+      {onBatchSyncTimeline && (
+        <button
+          className="toolbar-pill-btn secondary"
+          onClick={onBatchSyncTimeline}
+          title="将画布中所有已生成的图片/视频片段一键平铺注入底部剪辑时间轴"
+        >
+          <span className="btn-icon">📦</span>
+          <span className="toolbar-label">批量同步时间轴</span>
+        </button>
+      )}
+
+      {/* Import from AI Project */}
+      {onImportFromAiProject && (
+        <button
+          className="toolbar-pill-btn secondary"
+          onClick={onImportFromAiProject}
+          title="将当前项目向导中的试衣与5幕分镜导入为画布连线图"
+        >
+          <span className="btn-icon">📥</span>
+          <span className="toolbar-label">从向导导入工程</span>
+        </button>
+      )}
+
+      {/* Auto-Layout */}
       {onAutoLayout && (
         <button
           className="toolbar-pill-btn secondary"
-          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
           onClick={onAutoLayout}
           title="智能拓扑自动整理与对齐，彻底消除所有节点重叠"
         >
-          <span className="btn-icon" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>📐</span>
-          <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>自动整理</span>
+          <span className="btn-icon">📐</span>
+          <span className="toolbar-label">自动整理</span>
         </button>
       )}
 
@@ -169,7 +215,7 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
       <button className="toolbar-icon-btn" onClick={onZoomOut} title="缩小 (-)">
         －
       </button>
-      <span className="toolbar-zoom-text" style={{ whiteSpace: 'nowrap', flexShrink: 0 }} onClick={onResetView} title="点击重置缩放">
+      <span className="toolbar-zoom-text" onClick={onResetView} title="点击重置缩放">
         {Math.round(scale * 100)}%
       </span>
       <button className="toolbar-icon-btn" onClick={onZoomIn} title="放大 (+)">

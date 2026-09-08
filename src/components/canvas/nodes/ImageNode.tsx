@@ -14,6 +14,8 @@ interface ImageNodeProps {
   onOpenMaskEdit?: (node: CanvasNodeData) => void;
   onOpenCrop?: (node: CanvasNodeData) => void;
   onOpenUpscale?: (node: CanvasNodeData) => void;
+  onAdoptAsMaster?: (node: CanvasNodeData) => void;
+  onSpawnBatchViews?: (node: CanvasNodeData) => void;
 }
 
 export const ImageNode: React.FC<ImageNodeProps> = ({
@@ -26,15 +28,16 @@ export const ImageNode: React.FC<ImageNodeProps> = ({
   onAddToTimeline,
   onOpenMaskEdit,
   onOpenCrop,
-  onOpenUpscale
+  onOpenUpscale,
+  onAdoptAsMaster,
+  onSpawnBatchViews
 }) => {
-  const [imgError, setImgError] = React.useState(false);
-
-  React.useEffect(() => {
-    setImgError(false);
-  }, [node.metadata.imageSrc]);
+  const [failedImageSrc, setFailedImageSrc] = React.useState<string | null>(null);
+  const imgError = Boolean(node.metadata.imageSrc) && failedImageSrc === node.metadata.imageSrc;
 
   const hasValidImage = Boolean(node.metadata.imageSrc) && !imgError;
+  const isComparison = Boolean(node.metadata.isComparisonBranch);
+  const comparisonArchetype = (node.metadata.comparisonArchetype as string) || (isComparison ? '候选对比模' : undefined);
 
   return (
     <BaseNode
@@ -46,20 +49,34 @@ export const ImageNode: React.FC<ImageNodeProps> = ({
       onEndConnect={onEndConnect}
       headerIcon={<span style={{ fontSize: '14px' }}>🖼️</span>}
       extraHeaderActions={
-        hasValidImage ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, whiteSpace: 'nowrap' }}>
-            {onAddToTimeline && (
-              <button
-                className="node-action-pill-btn"
-                onClick={() => onAddToTimeline(node)}
-                title="将该图片直接作为图层加入时间线"
-                style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-              >
-                + 时间轴
-              </button>
-            )}
-          </div>
-        ) : null
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, whiteSpace: 'nowrap' }}>
+          {isComparison && onAdoptAsMaster && hasValidImage && (
+            <button
+              className="node-action-pill-btn"
+              onClick={() => onAdoptAsMaster(node)}
+              title="采纳该模特为项目穿搭主图，并联动分镜向导"
+              style={{
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                background: 'rgba(234, 179, 8, 0.2)',
+                color: '#facc15',
+                borderColor: 'rgba(234, 179, 8, 0.4)'
+              }}
+            >
+              ⭐ 采纳主模
+            </button>
+          )}
+          {hasValidImage && onAddToTimeline && (
+            <button
+              className="node-action-pill-btn"
+              onClick={() => onAddToTimeline(node)}
+              title="将该图片直接作为图层加入剪辑时间线"
+              style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              + 时间轴
+            </button>
+          )}
+        </div>
       }
     >
       <div className="image-node-content">
@@ -70,8 +87,16 @@ export const ImageNode: React.FC<ImageNodeProps> = ({
               alt={node.title}
               className="node-media-preview"
               style={{ maxHeight: '220px', objectFit: 'contain' }}
-              onError={() => setImgError(true)}
+              onError={() => setFailedImageSrc(node.metadata.imageSrc || null)}
             />
+
+            {node.status === 'loading' && (
+              <div className="node-generation-overlay" role="status" aria-live="polite">
+                <span className="node-generation-spinner" />
+                <strong>{node.metadata.generationOperation === 'upscale' ? 'Google AI 高清增强中' : 'Google AI 重绘生成中'}</strong>
+                <small>完成后将在此节点自动更新</small>
+              </div>
+            )}
 
             {/* Quick Action Toolbar on Image Node */}
             <div
@@ -164,7 +189,30 @@ export const ImageNode: React.FC<ImageNodeProps> = ({
           </div>
         )}
 
+        {/* Pipeline Expansion Buttons on ImageNode */}
+        {hasValidImage && onSpawnBatchViews && (
+          <div className="node-pipeline-action-bar">
+            <button
+              type="button"
+              className="node-pipeline-btn primary-cyan"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSpawnBatchViews(node);
+              }}
+              title="以该成图为主体，一键展开正面全身、45°半身、微距特写、背面剪裁 4 分镜管线"
+            >
+              <span>✨</span>
+              <span>展开4分镜管线</span>
+            </button>
+          </div>
+        )}
+
         <div className="node-meta-chips" style={{ marginTop: '8px' }}>
+          {comparisonArchetype && (
+            <span className="node-chip comparison-badge" title="对比模型风格画像">
+              👥 {comparisonArchetype}
+            </span>
+          )}
           {node.metadata.aspectRatio && (
             <span className="node-chip">{node.metadata.aspectRatio}</span>
           )}

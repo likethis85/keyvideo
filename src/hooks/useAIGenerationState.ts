@@ -39,6 +39,18 @@ export function useAIGenerationState() {
     if (saved === 'composite_slice' || saved === 'composite_no_slice' || saved === 'individual') return saved;
     return localStorage.getItem('ai_generate_on_single_image') === 'true' ? 'composite_slice' : 'individual';
   });
+  const [apparelStyle, setApparelStyle] = useState<'dress' | 'suit' | 'street' | 'neo_chinese' | 'overcoat' | 'knitwear' | 'general'>(() => {
+    const saved = localStorage.getItem('ai_apparel_style');
+    return saved === 'dress' || saved === 'suit' || saved === 'street' || saved === 'neo_chinese' || saved === 'overcoat' || saved === 'knitwear' ? saved : 'general';
+  });
+  const [cameraStyle, setCameraStyle] = useState<'cinematic_dolly' | 'orbit_360' | 'macro_rack' | 'low_angle' | 'default'>(() => {
+    const saved = localStorage.getItem('ai_camera_style');
+    return saved === 'orbit_360' || saved === 'macro_rack' || saved === 'low_angle' || saved === 'default' ? saved : 'cinematic_dolly';
+  });
+  const [lightingMood, setLightingMood] = useState<'editorial_soft' | 'golden_hour' | 'wabi_sabi' | 'cyber_night' | 'default'>(() => {
+    const saved = localStorage.getItem('ai_lighting_mood');
+    return saved === 'golden_hour' || saved === 'wabi_sabi' || saved === 'cyber_night' || saved === 'default' ? saved : 'editorial_soft';
+  });
   return {
     modelGender, setModelGender, modelRegion, setModelRegion, modelScene, setModelScene, swapModelUrl, setSwapModelUrl,
     isConfigLoaded, setIsConfigLoaded, batchClothingUrl, topClothingUrl, setTopClothingUrl, bottomClothingUrl, setBottomClothingUrl,
@@ -48,6 +60,7 @@ export function useAIGenerationState() {
     useSlowMotion, setUseSlowMotion, modelOutfitImgUrl, setModelOutfitImgUrl, modelOutfitImgUrls, setModelOutfitImgUrls,
     clothingFocus, setClothingFocus, isOutfitImgGenerating, setIsOutfitImgGenerating, outfitGenInterrupted, setOutfitGenInterrupted,
     clothingFocusModalOpen, setClothingFocusModalOpen, isI2vGenerating, setIsI2vGenerating, isRegeneratingShotId,
-    setIsRegeneratingShotId, isStoryboardGenerating, setIsStoryboardGenerating, storyboardMode, setStoryboardMode
+    setIsRegeneratingShotId, isStoryboardGenerating, setIsStoryboardGenerating, storyboardMode, setStoryboardMode,
+    apparelStyle, setApparelStyle, cameraStyle, setCameraStyle, lightingMood, setLightingMood
   };
 }

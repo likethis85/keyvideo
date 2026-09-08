@@ -39,7 +39,7 @@ import { useClothingInputs } from '../hooks/useClothingInputs';
 import { useAIModelGeneration } from '../hooks/useAIModelGeneration';
 import { useOutfitResults } from '../hooks/useOutfitResults';
 import { useTryOnGeneration } from '../hooks/useTryOnGeneration';
-import { parseFiveShotPrompt } from '../services/storyboardPromptParser';
+import { parseFiveShotPrompt, replaceSingleShotInMasterPrompt } from '../services/storyboardPromptParser';
 import { syncProjectToSupabase } from '../services/aiProjectSyncService';
 import { useTimelineActions } from '../hooks/useTimelineActions';
 import { useProjectActions } from '../hooks/useProjectActions';
@@ -50,6 +50,8 @@ import { useStoryboardVideoGeneration } from '../hooks/useStoryboardVideoGenerat
 import { useStoryboardImageGeneration } from '../hooks/useStoryboardImageGeneration';
 import { useGenerationTaskRecovery } from '../hooks/useGenerationTaskRecovery';
 import { useRecentStoryboardRecovery } from '../hooks/useRecentStoryboardRecovery';
+import { useBatchVideoQueue } from '../hooks/useBatchVideoQueue';
+import { VideoTaskBoardModal } from './sidebar/ai/VideoTaskBoardModal';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { useLocalMediaActions } from '../hooks/useLocalMediaActions';
 import { useAssetPanelActions } from '../hooks/useAssetPanelActions';
@@ -125,7 +127,8 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     useSlowMotion, setUseSlowMotion, modelOutfitImgUrl, setModelOutfitImgUrl, modelOutfitImgUrls, setModelOutfitImgUrls,
     clothingFocus, setClothingFocus, isOutfitImgGenerating, setIsOutfitImgGenerating, outfitGenInterrupted, setOutfitGenInterrupted,
     clothingFocusModalOpen, setClothingFocusModalOpen, isI2vGenerating, setIsI2vGenerating, isRegeneratingShotId,
-    setIsRegeneratingShotId, isStoryboardGenerating, setIsStoryboardGenerating, storyboardMode, setStoryboardMode
+    setIsRegeneratingShotId, isStoryboardGenerating, setIsStoryboardGenerating, storyboardMode, setStoryboardMode,
+    apparelStyle, setApparelStyle, cameraStyle, setCameraStyle, lightingMood, setLightingMood
   } = useAIGenerationState();
 
   const gatewayUrl = AI_GATEWAY_CONFIG.imageUrl;
@@ -357,12 +360,15 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
 
   const {
     isGeneratingPromptsFromSkill,
-    generateStoryboardPrompts: handleGeneratePromptsFromSkill
+    polishingShotIndex,
+    generateStoryboardPrompts: handleGeneratePromptsFromSkill,
+    polishSingleShot: handlePolishSingleShot
   } = useStoryboardPromptGeneration({
     activeProjectId, modelOutfitImgUrl, modelOutfitImgUrls, storyboards, swapModelUrl,
     videoDuration, gatewayUrl, gatewayToken, matchingItemDesc, shoesDesc, accessoriesDesc,
     modelScene, customScenes, activeBackgroundUrl, videoModel, storyboardMode, useSlowMotion,
-    clothingFocus, setProjectI2vMasterPrompt15s, setProjectI2vPrompts
+    clothingFocus, apparelStyle, cameraStyle, lightingMood, i2vMasterPrompt15s,
+    setProjectI2vMasterPrompt15s, setProjectI2vPrompts
   });
 
   const { handleRegenerateStoryboard, executeGenerateStoryboards, handleGenerateStoryboards } = useStoryboardImageGeneration({
@@ -403,6 +409,23 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     activeBackgroundUrl, ratio, modelOutfitImgUrl, swapModelUrl, cancelledProjectsRef, setPreviewVideo
   });
 
+  const {
+    queueTasks: batchVideoTasks,
+    isBoardOpen: isVideoTaskBoardOpen,
+    setIsBoardOpen: setIsVideoTaskBoardOpen,
+    isBatchGenerating,
+    activeCount: batchActiveCount,
+    completedCount: batchCompletedCount,
+    startBatchGeneration: triggerBatchVideoGeneration,
+    retrySingleShot: handleRetryBatchShot,
+    applyAllCompletedToTimeline: handleApplyBatchToTimeline
+  } = useBatchVideoQueue({
+    activeProjectId,
+    storyboards,
+    setProjectStoryboards,
+    layers,
+    setLayers
+  });
 
   useImperativeHandle(ref, () => ({
     switchProject,
@@ -434,16 +457,28 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     videoDuration, setVideoDuration, storyboardMode, setStoryboardMode,
     includeI2VSubtitles, setIncludeI2VSubtitles, includeI2VStickers, setIncludeI2VStickers,
     useSlowMotion, setUseSlowMotion, clothingFocus, setClothingFocus,
+    apparelStyle, setApparelStyle, cameraStyle, setCameraStyle, lightingMood, setLightingMood,
+    polishingShotIndex, onPolishSingleShot: handlePolishSingleShot,
     handleGenerateStoryboards, isStoryboardGenerating, handleFetchRecentTasks, isFetchingRecent,
     storyboards, draggedStoryboardIndex, setDraggedStoryboardIndex, handleReorderStoryboards,
     isRegeneratingShotId, setPreviewModel, modelOutfitImgUrl, handleGeneratePromptsFromSkill,
     isGeneratingPromptsFromSkill, i2vMasterPrompt15s, setI2vMasterPrompt15s,
     parse15sMasterPrompt: parseFiveShotPrompt, activeProjectId, setProjectI2vMasterPrompt15s,
-    i2vPrompts, setI2vPrompts, setAiWizardStep: changeAiWizardStep
+    i2vPrompts, setI2vPrompts, setAiWizardStep: changeAiWizardStep,
+    modelGender, modelRegion, modelScene,
+    onNavigateToPromptTab: () => setActiveTab('prompt')
   };
   const videoStepProps: VideoStepProps = {
     storyboards, setPreviewVideo, videoModel, setVideoModel, handleGenerateI2V,
-    isI2vGenerating, i2vStep, handleApplyI2VToTimeline, setAiWizardStep: changeAiWizardStep
+    isI2vGenerating, i2vStep, handleApplyI2VToTimeline, setAiWizardStep: changeAiWizardStep,
+    onStartBatchGeneration: () => triggerBatchVideoGeneration(storyboards, i2vMasterPrompt15s, {
+      model: videoModel,
+      duration: videoDuration,
+      activeBackgroundUrl
+    }),
+    onOpenTaskBoard: () => setIsVideoTaskBoardOpen(true),
+    batchActiveCount,
+    batchCompletedCount
   };
   const DEFAULT_DRAWER_WIDTH = 340;
   const MIN_DRAWER_WIDTH = 280;
@@ -557,10 +592,53 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
       {/* 2.5 PROMPTS & INSPIRATION */}
       {activeTab === 'prompt' && (
         <PromptLibraryTab
+          variableContext={{
+            modelGender,
+            modelRegion,
+            modelScene,
+            apparelStyle,
+            cameraStyle,
+            lightingMood,
+            useSlowMotion,
+            clothingFocus
+          }}
+          currentMasterPrompt={i2vMasterPrompt15s}
           onApplyPrompt={(text) => {
             setStoryboardEditPrompt(prev => prev ? `${prev}, ${text}` : text);
             setOutfitEditPrompt(prev => prev ? `${prev}, ${text}` : text);
             toast.success('已应用提示词至分镜与试衣设定');
+          }}
+          onInjectToStoryboard={({ target, mode, text, navigateToStoryboard }) => {
+            if (target === 'text_layer') {
+              addTextLayer(text);
+              toast.success('已成功在时间轴新建文案图层');
+            } else if (target === 'master') {
+              let updated = text;
+              if (mode === 'append') updated = i2vMasterPrompt15s ? `${i2vMasterPrompt15s}，${text}` : text;
+              else if (mode === 'prepend') updated = i2vMasterPrompt15s ? `${text}，${i2vMasterPrompt15s}` : text;
+              setI2vMasterPrompt15s(updated);
+              if (activeProjectId) setProjectI2vMasterPrompt15s(activeProjectId, updated);
+              toast.success('已将提示词注入至 15s 全局脚本');
+            } else {
+              const currentParsed = parseFiveShotPrompt(i2vMasterPrompt15s);
+              const curShot = currentParsed[target] || '';
+              let newShot = text;
+              if (mode === 'append') newShot = curShot ? `${curShot.replace(/[，,、\s]+$/, '')}，${text}` : text;
+              else if (mode === 'prepend') newShot = curShot ? `${text}，${curShot}` : text;
+              const newMaster = replaceSingleShotInMasterPrompt(i2vMasterPrompt15s, target, newShot);
+              setI2vMasterPrompt15s(newMaster);
+              if (activeProjectId) setProjectI2vMasterPrompt15s(activeProjectId, newMaster);
+              toast.success(`已精准注入至${target.replace('shot-', '分镜')}`);
+            }
+
+            if (navigateToStoryboard) {
+              setActiveTab('ai');
+              changeAiWizardStep(2);
+            }
+          }}
+          onNavigateToStoryboard={() => {
+            setActiveTab('ai');
+            changeAiWizardStep(2);
           }}
           onAddTextLayer={(text) => addTextLayer(text)}
           setLayers={setLayers}
@@ -729,6 +807,15 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
       />
 
       <ConfirmDialog dialog={confirmDialog} onClose={closeConfirm} />
+
+      <VideoTaskBoardModal
+        isOpen={isVideoTaskBoardOpen}
+        onClose={() => setIsVideoTaskBoardOpen(false)}
+        tasks={batchVideoTasks}
+        onRetryShot={(shotId) => handleRetryBatchShot(shotId, videoModel)}
+        onApplyAllToTimeline={handleApplyBatchToTimeline}
+        isBatchGenerating={isBatchGenerating}
+      />
     </div>
   );
 });

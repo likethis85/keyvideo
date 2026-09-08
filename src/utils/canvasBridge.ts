@@ -1,4 +1,4 @@
-import type { AIProject } from '../types/aiProject';
+import type { AIProject, StoryboardItem } from '../types/aiProject';
 import type { CanvasNodeData, CanvasConnection } from '../types/canvas';
 import type { Layer } from '../components/VideoCanvas';
 import { localDB } from './db';
@@ -85,7 +85,7 @@ export function convertAiProjectToCanvas(project: AIProject): {
     width: 260,
     height: 340,
     metadata: {
-      imageSrc: (project as any).sceneImgUrl || undefined,
+      imageSrc: project.sceneImgUrl || undefined,
       text: project.modelScene || project.i2vMasterPrompt15s || '高端极简电商影棚，自然柔光，专业摄影级质感',
       tags: ['场景图', '环境锚点']
     }
@@ -145,12 +145,12 @@ export function convertAiProjectToCanvas(project: AIProject): {
   });
 
   // 4. 全要素五幕分镜：解耦展开 (Col 3: 提示词 -> Col 4: 分镜静态图 -> Col 5: 分镜视频成片)
-  const defaultShots = [
-    { id: 'shot_1', name: '全景走秀出场 (0-3s)', shotType: 'full-body' as const, imageSrc: '', videoSrc: null },
-    { id: 'shot_2', name: '下半身与面料聚焦 (3-6s)', shotType: 'close-up' as const, imageSrc: '', videoSrc: null },
-    { id: 'shot_3', name: '手部与版型细节 (6-9s)', shotType: 'medium' as const, imageSrc: '', videoSrc: null },
-    { id: 'shot_4', name: '侧面回眸微动 (9-12s)', shotType: 'medium' as const, imageSrc: '', videoSrc: null },
-    { id: 'shot_5', name: '正面定格谢幕 (12-15s)', shotType: 'full-body' as const, imageSrc: '', videoSrc: null }
+  const defaultShots: StoryboardItem[] = [
+    { id: 'shot_1', name: '全景走秀出场 (0-3s)', shotType: 'full-body', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 },
+    { id: 'shot_2', name: '下半身与面料聚焦 (3-6s)', shotType: 'close-up', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 },
+    { id: 'shot_3', name: '手部与版型细节 (6-9s)', shotType: 'medium', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 },
+    { id: 'shot_4', name: '侧面回眸微动 (9-12s)', shotType: 'medium', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 },
+    { id: 'shot_5', name: '正面定格谢幕 (12-15s)', shotType: 'full-body', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 }
   ];
   const storyboards = (project.storyboards && project.storyboards.length > 0) ? project.storyboards : defaultShots;
   const sbNodeHeight = 340;
@@ -191,7 +191,7 @@ export function convertAiProjectToCanvas(project: AIProject): {
       position: { x: 1050, y: posY },
       width: 290,
       height: sbNodeHeight,
-      status: (sb as any).isGeneratingImage ? 'loading' : sb.imageSrc ? 'success' : 'idle',
+      status: sb.isGeneratingImage ? 'loading' : sb.imageSrc ? 'success' : 'idle',
       metadata: {
         shotType: sb.shotType,
         imageSrc: sb.imageSrc,
@@ -209,12 +209,12 @@ export function convertAiProjectToCanvas(project: AIProject): {
       position: { x: 1400, y: posY },
       width: 300,
       height: sbNodeHeight,
-      status: (sb as any).isGeneratingVideo ? 'loading' : sb.videoSrc ? 'success' : 'idle',
+      status: sb.isGeneratingVideo ? 'loading' : sb.videoSrc ? 'success' : 'idle',
       metadata: {
         shotType: sb.shotType,
         imageSrc: sb.imageSrc,
         videoSrc: sb.videoSrc || null,
-        videoTaskId: (sb as any).videoTaskId,
+        videoTaskId: sb.videoTaskId,
         duration: project.videoDuration || '3s',
         tags: ['3s 成片', sb.shotType]
       }
@@ -460,4 +460,3 @@ export async function saveCanvasTopologyToLocalDB(
     viewport: viewport || { x: 40, y: 30, scale: 0.75 }
   });
 }
-

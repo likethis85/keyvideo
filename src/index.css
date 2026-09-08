@@ -802,13 +802,113 @@ body[data-theme="light"] {
 
 /* Timeline Layout */
 .timeline-panel {
-  height: clamp(150px, 23vh, 200px);
-  min-height: 150px;
+  height: var(--timeline-height, clamp(160px, 25vh, 260px));
+  min-height: 120px;
+  max-height: 80vh;
   background: var(--bg-surface-solid);
   border-top: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  z-index: 5;
+  z-index: 10;
+  position: relative;
+}
+
+/* Dynamic Height Resizer Handle */
+.timeline-resizer {
+  position: absolute;
+  top: -5px;
+  left: 0;
+  right: 0;
+  height: 9px;
+  cursor: ns-resize;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: none;
+  transition: background 0.15s ease;
+}
+
+.timeline-resizer::after {
+  content: '';
+  width: 48px;
+  height: 3px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.timeline-resizer:hover,
+.timeline-resizer.is-dragging {
+  background: rgba(0, 242, 254, 0.12);
+}
+
+.timeline-resizer:hover::after,
+.timeline-resizer.is-dragging::after {
+  width: 80px;
+  height: 4px;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+
+/* Dragging Tooltip Badge */
+.timeline-height-badge {
+  position: absolute;
+  top: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13, 14, 20, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 60;
+  letter-spacing: 0.5px;
+}
+
+/* Height Preset Selector */
+.timeline-height-presets {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+  margin-left: 6px;
+}
+
+.timeline-height-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.timeline-height-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.timeline-height-btn.active {
+  color: var(--accent-cyan);
+  background: rgba(0, 242, 254, 0.15);
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.2);
 }
 
 .timeline-header {
@@ -1446,9 +1546,18 @@ body[data-theme="light"] {
 
 /* 4. At 950px, hide logo text completely, showing only logo icon for super compact layout */
 @media (max-width: 950px) {
+  .app-header {
+    padding: 0 6px;
+  }
+
   .logo-text {
     display: none !important;
   }
+
+  .header-actions {
+    gap: 6px;
+  }
+
   .header-project-selector {
     margin-left: 6px !important;
   }

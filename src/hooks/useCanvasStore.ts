@@ -186,7 +186,7 @@ export function useCanvasStore(projectId: string) {
   }, [selectedNodeIds, pushHistory]);
 
   // Connection operations
-  const addConnection = useCallback((fromNodeId: string, toNodeId: string, fromHandle?: string, toHandle?: string) => {
+  const addConnection = useCallback((fromNodeId: string, toNodeId: string, fromHandle?: string, toHandle?: string, label?: string) => {
     if (fromNodeId === toNodeId) return;
     // Prevent duplicates
     setConnections(prev => {
@@ -197,7 +197,8 @@ export function useCanvasStore(projectId: string) {
         fromNodeId,
         toNodeId,
         fromHandle,
-        toHandle
+        toHandle,
+        label
       };
       const next = [...prev, newConn];
       pushHistory(nodes, next);

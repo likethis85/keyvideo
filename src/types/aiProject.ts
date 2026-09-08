@@ -24,6 +24,7 @@ export interface AIProject {
   modelGender: 'female' | 'male';
   modelRegion: 'east-asian' | 'western';
   modelScene: string;
+  sceneImgUrl?: string;
   i2vMasterPrompt15s: string;
   i2vPrompts: {
     'full-body': string;

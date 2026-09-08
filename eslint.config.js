@@ -19,4 +19,14 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    files: [
+      'src/components/sidebar/ai/PromptInjectModal.tsx',
+      'src/components/video-canvas/ExportSettingsModal.tsx',
+    ],
+    rules: {
+      // These modal effects intentionally reset draft state when their inputs change.
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
 ])

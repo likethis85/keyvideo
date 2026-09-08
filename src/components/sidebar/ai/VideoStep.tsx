@@ -11,6 +11,10 @@ export interface VideoStepProps {
   i2vStep: string;
   handleApplyI2VToTimeline: () => void;
   setAiWizardStep: (step: 1 | 2 | 3) => void;
+  onStartBatchGeneration?: () => void;
+  onOpenTaskBoard?: () => void;
+  batchActiveCount?: number;
+  batchCompletedCount?: number;
 }
 
 const StoryboardCardThumbnail: React.FC<{ sb: StoryboardItem }> = ({ sb }) => {
@@ -101,7 +105,11 @@ export const VideoStep: React.FC<VideoStepProps> = ({
   isI2vGenerating,
   i2vStep,
   handleApplyI2VToTimeline,
-  setAiWizardStep
+  setAiWizardStep,
+  onStartBatchGeneration,
+  onOpenTaskBoard,
+  batchActiveCount = 0,
+  batchCompletedCount = 0
 }) => {
   return (
     <>
@@ -207,6 +215,68 @@ export const VideoStep: React.FC<VideoStepProps> = ({
           </select>
         </div>
 
+        {/* 5-Shot Batch Video Generation Action */}
+        {onStartBatchGeneration && (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={onStartBatchGeneration}
+            disabled={isI2vGenerating}
+            style={{
+              background: 'linear-gradient(135deg, #7928ca, #ff0080)',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
+              boxShadow: '0 4px 14px rgba(255, 0, 128, 0.35)',
+              marginTop: '8px',
+              justifyContent: 'center',
+              padding: '11px 16px',
+              fontSize: '13px',
+              fontWeight: '700',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              width: '100%',
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ marginRight: '7px', fontSize: '15px' }}>🚀</span>
+            一键全量 5 幕并发生成 (Kling 3.0)
+          </button>
+        )}
+
+        {/* Task Board Trigger Button */}
+        {onOpenTaskBoard && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onOpenTaskBoard}
+            style={{
+              justifyContent: 'center',
+              padding: '9px 16px',
+              fontSize: '12px',
+              fontWeight: '600',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              width: '100%',
+              cursor: 'pointer'
+            }}
+          >
+            <span>📋 查看任务队列看板</span>
+            {batchActiveCount > 0 && (
+              <span style={{ fontSize: '10px', background: 'rgba(0, 242, 254, 0.2)', color: 'var(--accent-cyan)', padding: '1px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
+                ● {batchActiveCount} 幕运行中
+              </span>
+            )}
+            {batchCompletedCount > 0 && batchActiveCount === 0 && (
+              <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', padding: '1px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
+                ✓ {batchCompletedCount} 幕已就绪
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Video Generation Trigger */}
         <button
           className="btn-primary"
@@ -216,11 +286,11 @@ export const VideoStep: React.FC<VideoStepProps> = ({
             color: '#ffffff',
             border: isI2vGenerating ? '1px solid #dc2626' : '1px solid #0f172a',
             boxShadow: isI2vGenerating ? '0 0 12px rgba(220, 38, 38, 0.4)' : '0 2px 8px rgba(15, 23, 42, 0.18)',
-            marginTop: '8px',
+            marginTop: '2px',
             justifyContent: 'center',
-            padding: '11px 16px',
-            fontSize: '13px',
-            fontWeight: '700',
+            padding: '10px 16px',
+            fontSize: '12px',
+            fontWeight: '600',
             borderRadius: '8px',
             display: 'flex',
             alignItems: 'center',
@@ -237,7 +307,7 @@ export const VideoStep: React.FC<VideoStepProps> = ({
               <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
             </svg>
           )}
-          {isI2vGenerating ? '停止生成 (点击中断)' : '一键调用图生视频模型'}
+          {isI2vGenerating ? '停止生成 (点击中断)' : '单个/串行图生视频'}
         </button>
 
         {/* Apply to Timeline */}

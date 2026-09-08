@@ -58,12 +58,12 @@ export function useProjectActions({
 
   const createNewProject = useCallback(() => {
     const defaultName = `项目_${projects.length + 1}`;
-    const input = prompt('请输入新项目名称：', defaultName);
-    if (input === null) return;
-    const project = createAIProject({ id: generateProjectId(), name: input.trim() || defaultName });
+    const project = createAIProject({ id: generateProjectId(), name: defaultName });
     setProjects(previous => [...previous, project]);
     applyProjectToEditor(project, { restoreGenerationState: false });
-  }, [applyProjectToEditor, projects.length, setProjects]);
+    setEditingProjectName(defaultName);
+    setIsEditingProjectName(true);
+  }, [applyProjectToEditor, projects.length, setEditingProjectName, setIsEditingProjectName, setProjects]);
 
   const deleteProject = useCallback((projectId: string) => {
     if (projects.length <= 1) return;

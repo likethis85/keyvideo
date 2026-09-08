@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import {
   getCustomApiConfig,
   saveCustomApiConfig,
-  DEFAULT_CUSTOM_API_CONFIG
+  DEFAULT_CUSTOM_API_CONFIG,
+  buildCustomApiPayload,
+  extractCustomApiResult
 } from '../../utils/customApiRunner';
 import type { CustomApiConfig } from '../../utils/customApiRunner';
 import { toast } from '../toastStore';
@@ -46,15 +48,13 @@ export const CustomApiScriptModal: React.FC<CustomApiScriptModalProps> = ({ isOp
         model: 'dall-e-3',
         count: 1
       };
-      const reqFn = new Function('params', config.requestScript);
-      const generatedPayload = reqFn(mockParams);
+      const generatedPayload = buildCustomApiPayload(config.requestScript, mockParams);
 
       const mockResponse = {
         created: Date.now(),
         data: [{ url: 'https://example.com/mock_generated_image.png' }]
       };
-      const resFn = new Function('data', config.responseScript);
-      const extractedUrl = resFn(mockResponse);
+      const extractedUrl = extractCustomApiResult(mockResponse, config.responseScript);
 
       setTestOutput(
         `✅ 脚本测试通过！\n【入参转换结果】:\n${JSON.stringify(generatedPayload, null, 2)}\n\n【回包提取 URL】:\n${extractedUrl}`
@@ -139,7 +139,7 @@ export const CustomApiScriptModal: React.FC<CustomApiScriptModalProps> = ({ isOp
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', color: '#d1d5db' }}>Authorization Header (授权密钥)</label>
+            <label style={{ fontSize: '12px', color: '#d1d5db' }}>Authorization Header（仅本次会话保存）</label>
             <input
               type="text"
               value={config.authHeader}
@@ -153,8 +153,8 @@ export const CustomApiScriptModal: React.FC<CustomApiScriptModalProps> = ({ isOp
         {/* Request Mapper Script */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label style={{ fontSize: '12px', color: '#d1d5db' }}>① 请求入参组装脚本 (Request Mapper Script)</label>
-            <span style={{ fontSize: '11px', color: '#8b5cf6' }}>参数: params (prompt, ratio, model...)</span>
+            <label style={{ fontSize: '12px', color: '#d1d5db' }}>① 请求 JSON 模板</label>
+            <span style={{ fontSize: '11px', color: '#8b5cf6' }}>变量格式: {'{{prompt}}'}、{'{{model}}'}、{'{{size}}'}</span>
           </div>
           <textarea
             value={config.requestScript}
@@ -178,8 +178,8 @@ export const CustomApiScriptModal: React.FC<CustomApiScriptModalProps> = ({ isOp
         {/* Response Extractor Script */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label style={{ fontSize: '12px', color: '#d1d5db' }}>② 响应结果解析脚本 (Response Extractor Script)</label>
-            <span style={{ fontSize: '11px', color: '#8b5cf6' }}>参数: data (目标接口返回的完整 JSON)</span>
+            <label style={{ fontSize: '12px', color: '#d1d5db' }}>② 响应 URL 路径（逗号分隔回退项）</label>
+            <span style={{ fontSize: '11px', color: '#8b5cf6' }}>示例: data.0.url,url,image</span>
           </div>
           <textarea
             value={config.responseScript}

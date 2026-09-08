@@ -13,6 +13,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+const host = process.env.HOST || '127.0.0.1';
 const DEFAULT_EXTERNAL_TIMEOUT_MS = Math.max(5, Number(process.env.EXTERNAL_REQUEST_TIMEOUT_SECONDS) || 30) * 1000;
 const LONG_EXTERNAL_TIMEOUT_MS = Math.max(30, Number(process.env.LONG_AI_REQUEST_TIMEOUT_SECONDS) || 180) * 1000;
 
@@ -81,10 +82,10 @@ const getChatCompletionConfig = () => {
     };
   }
   return {
-    provider: 'TelecomJS OpenAICompatible (Default)',
-    url: 'https://aigw.telecomjs.com/v1/chat/completions',
-    apiKey: 'sk-Q0adcaMPcDp47BPa943xyMp5Osm4PdTB',
-    defaultModel: 'deepseek-v4-flash-0731-tem',
+    provider: 'Unconfigured',
+    url: '',
+    apiKey: '',
+    defaultModel: '',
     isTextOnly: true
   };
 };
@@ -98,7 +99,7 @@ app.disable('x-powered-by');
 app.use(cors({
   origin(origin, callback) {
     // Native Tauri and server-to-server requests generally have no Origin header.
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Origin is not allowed by CORS'));
   },
   methods: ['GET', 'POST'],
@@ -112,6 +113,8 @@ const idempotencyStore = new Map();
 const idempotencyTtlMs = Math.max(5, Number(process.env.IDEMPOTENCY_TTL_SECONDS) || 30) * 1000;
 const idempotentGenerationPaths = [
   '/api/ai/mannequin',
+  '/api/ai/inpaint',
+  '/api/ai/upscale',
   '/api/ai/tryon',
   '/api/ai/background',
   '/api/ai/stylist',
@@ -1034,7 +1037,13 @@ app.post('/api/ai/prompts-skill', async (req, res) => {
       model = '',
       storyboardMode = 'individual',
       useSlowMotion = false,
-      focus = 'both'
+      focus = 'both',
+      // 新增强化参数
+      apparelStyle = 'general',
+      cameraStyle = 'cinematic_dolly',
+      lightingMood = 'editorial_soft',
+      singleShotIndex = null,
+      currentPrompt = ''
     } = req.body;
 
     const base64Outfit = await fetchImageAsBase64(modelOutfitImgUrl);
@@ -1064,6 +1073,39 @@ app.post('/api/ai/prompts-skill', async (req, res) => {
       ? `自定义参考场景：${customSceneObj.name}` 
       : (ENRICHED_SCENE_DESCRIPTIONS[modelScene] || '高端商业大片时尚摄影背景（包含高级微水泥墙面、几何光影与空间物理材质细节）');
 
+    // 六大服装品类专属物理力学法则
+    const APPAREL_PHYSICS_RULES = {
+      dress: '【长裙/礼服专有物理力学】：重点展现裙摆的流线垂坠力学 (Fluid drape) 与波浪状起伏摆动 (Wave ripple)。微风轻抚裙裾，转身时面料顺势飘逸延展展开，呈现优雅灵动的悬垂与自然波褶。',
+      suit: '【西服/正装专有物理力学】：强调挺阔肩线结构 (Structured shoulder line) 与平整垂顺的驳头剪裁。面料呈现高档羊毛/精纺微观哑光质感，走动时保持挺拔身形，动作利落沉稳，凸显高级商政大片气场。',
+      street: '【潮酷高街/运动机能专有物理力学】：突出立体机能剪裁、抽绳拉链与辅料反光质感。行走步态轻快松弛且富有节奏弹性，面料随动作呈现轻微自然拉伸与抗皱张力。',
+      neo_chinese: '【新中式/国风汉服专有物理力学】：重点突出广袖流云 (Flowing sleeves) 与马面裙/旗袍的织金暗纹光泽 (Silk & brocade luster)。步履徐缓间衣袂飘飘，展现东方含蓄空灵与丝绸垂坠美学。',
+      overcoat: '【风衣/大衣外套专有物理力学】：着重刻画衣摆随步伐自然前后开合 (Dynamic coat flare) 与重力摆动。大衣系带与排扣金属光泽微动，展现走路带风的超模出街气场。',
+      knitwear: '【软糯针织/静奢羊绒专有物理力学】：微距聚焦细密羊绒的微观蓬松纤维与天然绒毛感。衣物呈现温润柔和的贴合悬垂 (Organic soft drape)，随呼吸轻微起伏。',
+      general: '【高端服装自然物理力学】：展现面料真实的重力垂坠与微观物理折叠褶皱，随模特自然呼吸和微幅动态产生流线型垂坠美感。'
+    };
+
+    // 镜头运镜微操调性
+    const CAMERA_STYLE_RULES = {
+      cinematic_dolly: '【电影级平推与微移动】：采用电影感极慢平推镜头 (Ultra-slow Dolly In) 与微平移 (Subtle Pan)，焦点极其稳定，画面富有呼吸感。',
+      orbit_360: '【秀场360°环绕追踪】：运镜注重弧形或环绕轨迹 (Smooth Orbit & Track)，围绕模特优雅微转，全方位展现服装正面、侧身与背面版型。',
+      macro_rack: '【微距变焦质感特写】：运镜以微距浅景深变焦 (Macro Rack Focus) 为亮点，焦外背景如奶油般柔化虚化，极致突出面料肌理、缝线与扣件五金。',
+      low_angle: '【低视角气场跟拍】：采用低角度跟拍镜头 (Low-angle heroic tracking)，拉长模特修长身材比例，营造大秀领闭出场的霸气气场。',
+      default: '【高端时尚商业运镜】：缓推、微移与微动结合，镜头转动舒缓高档，保持大片从容感。'
+    };
+
+    // 光影与影调美学
+    const LIGHTING_MOOD_RULES = {
+      editorial_soft: '【大牌杂志柔光箱】：采用高端商业影棚大柔光箱漫射，配合柔和轮廓光勾勒服饰剪裁边缘，光影通透干净无杂质。',
+      golden_hour: '【黄金时刻温暖逆光】：清晨或傍晚温暖斜阳侧逆光，发丝泛起金色光芒，镜头伴随柔和的自然丁达尔光晕。',
+      wabi_sabi: '【侘寂极简几何硬影】：极简清水混凝土环境，大窗斜射入干净清晰的几何光斑与深浅阴影，极具现代建筑艺术冷淡感。',
+      cyber_night: '【夜色街头潮酷霓虹】：都市湿润沥青路面折射出绚烂的街灯与霓虹倒影，主体带有冷暖对比的高级环境边缘光。',
+      default: '【自然通透商业大片光影】：自然光线流转，高光温和，阴影细腻，材质层次分明。'
+    };
+
+    const apparelRule = APPAREL_PHYSICS_RULES[apparelStyle] || APPAREL_PHYSICS_RULES.general;
+    const cameraRule = CAMERA_STYLE_RULES[cameraStyle] || CAMERA_STYLE_RULES.default;
+    const lightingRule = LIGHTING_MOOD_RULES[lightingMood] || LIGHTING_MOOD_RULES.default;
+
     const base64Storyboards = await Promise.all(
       storyboardImgUrls.map(async (url) => {
         try {
@@ -1087,12 +1129,48 @@ app.post('/api/ai/prompts-skill', async (req, res) => {
 - 注重镜头运镜：运镜描述必须非常具体且有强烈的镜头动感。必须在每一幕显式描述摄像机的轨迹，例如“极其缓慢地向前平推 (Ultra-slow Dolly In)”、“视差缓慢横移 (Parallax slow panning)”、“极其平滑的轨道环绕镜头 (Slow 360-degree camera orbit)”、“极慢变焦拉近 (Slow focal zoom in)”，突出镜头与主体人物之间的运动轨迹和距离变化，营造出强烈的高端时装电影运镜质感。
 ` : '';
 
-    if (isNoSlice) {
+    // ==========================================
+    // 分支 A：单镜头独立智能润色 (Single-Shot Polish)
+    // ==========================================
+    if (singleShotIndex && singleShotIndex >= 1 && singleShotIndex <= 5) {
+      const shotNames = ['第一幕：出场与氛围 (0-3s)', '第二幕：质感与特写 (3-6s)', '第三幕：张力与版型律动 (6-9s)', '第四幕：微动与细节 (9-12s)', '第五幕：定格与全貌展示 (12-15s)'];
+      const shotTitle = shotNames[singleShotIndex - 1];
+
+      promptText = `你是一个专业的电商时尚视频编导大师。请根据用户提供的模特穿搭图（图1）、场景和服装品类力学规约，专门对【第 ${singleShotIndex} 幕（${shotTitle}）】分镜提示词进行深度重构与高级润色。
+
+【输入参数与规约】：
+- 当前分镜原有草稿或需求：${currentPrompt || '无草稿，请全新根据该幕特征精心设计'}
+- 服装品类物理力学规约：${apparelRule}
+- 运镜调性指令：${cameraRule}
+- 光影影调美学：${lightingRule}
+- 场景空间与物理材质：${sceneDetail}
+- 重点推广展示部位：${focus === 'top' ? '重点突出上装剪裁、衣领、袖口和上身材质' : focus === 'bottom' ? '重点突出下装垂坠力学、裤腿/裙摆摆动细节与腰线设计' : '整套搭配协调，兼顾全身或中景平衡'}
+${slowMotionInstruction}
+
+【针对第 ${singleShotIndex} 幕的特别创作指引】：
+${singleShotIndex === 1 ? '- 第一幕核心为出场入画。首帧模特位于画外侧边边缘，随后从容慢速迈步走入画面中央站定，路径与背景实体完全分离，展现超模出街/进场气场。' : ''}
+${singleShotIndex === 2 ? '- 第二幕核心为特写/微距推镜。极慢镜头推进，聚焦服饰细节（领口/纽扣/拉链/面料微观纹理），凸显面料在真实光照下的高级奢品感。' : ''}
+${singleShotIndex === 3 ? '- 第三幕核心为律动与版型。模特优雅微侧身或步态舒展，服装呈现符合品类力学的流线型垂坠感与动态张力。' : ''}
+${singleShotIndex === 4 ? '- 第四幕核心为微动态慢动作。平缓推移镜头，模特高冷微倾肩部或眼神微转，展示自然面料物理力学微小褶皱。' : ''}
+${singleShotIndex === 5 ? '- 第五幕核心为定格与全身比例。镜头缓缓拉远，模特高冷定格，在富有纵深感的艺术场景背景下360度展现完美身材与服装搭配全貌。' : ''}
+
+【输出要求】：
+1. 请直接输出润色后的该幕完整描述段落，字数在 80-150 字之间。
+2. 严禁输出“第${singleShotIndex}幕：”等序号前缀，严禁输出任何 Markdown 标记、代码块、换行符或多余的客套话。
+3. 请确保语言充满电影质感与 Vogue 级别时尚感，详细融合镜头运镜、服装面料力学与背景光影层次。`;
+    }
+    // ==========================================
+    // 分支 B：整段 15s/3s 5 幕脚本生成
+    // ==========================================
+    else if (isNoSlice) {
       promptText = `你是一个专业的电商时尚视频编导。请根据上传的[模特穿搭主图]（作为输入的第一张图像，即图1）和提供的场景及搭配参数，结合我们生成并作为图2传入给你的[16:9 五格分镜合集参考图]（即图2，这是一张完整的16:9图片，里面按顺序水平排列了5个分镜的小画面），${base64Background ? `以及作为图3传入给你的[背景场景模板图]（即图3，干净没有任何人物的场景空图），` : ''}调用以下视频提示词智能编排规约，生成一整段用于图生视频的15秒/12秒视频提示词。
  
 【输入参数】：
 - 穿搭图配饰/鞋子搭配建议：${matchingItemDesc} ${shoesDesc} ${accessoriesDesc}
 - 目标环境场景空间与材质细节：${sceneDetail}
+- 服装品类物理力学规约：${apparelRule}
+- 镜头运镜调性指令：${cameraRule}
+- 光影影调美学：${lightingRule}
 - 重点推广与展示部位：${focus === 'top' ? '重点推广上装 (Topwear)。每一幕分镜描述（尤其是第二幕、第四幕和第五幕）必须主要关注和描绘上衣/外套的设计细节、肩线与胸口裁剪、衣领、袖口和上身材质，把上装作为视觉焦点。' : focus === 'bottom' ? '重点推广下装 (Bottomwear)。每一幕分镜描述（尤其是第二幕、第四幕和第五幕）必须主要关注和描绘下装/裤子/裙子的垂坠物理特性、裤腿/裙摆摆动细节、腰线设计与下身材质，把下装作为视觉焦点。' : '重点推广整体搭配与服饰协调度 (Overall)。保持全身或中景构图，合理兼顾展示整套衣服的搭配协调度。'}
 ${slowMotionInstruction}
  
@@ -1105,10 +1183,10 @@ ${base64Background ? `- 场景背景锚点（引用 图3）：整个生成过程
 - 场景空间深度与背景细节：绝对不允许描述成单调的‘在影棚’或‘在街头’。你必须结合给定的“- 目标环境场景空间与材质细节”，在每一幕中详细拓展和描绘“多层空间透视、精细的墙面地面物理材质（如微水泥质感、湿沥青地面反射、镜面大理石纹理）、独特的氛围光线（如几何丁达尔斜射光、温暖的橱窗折射、柔焦焦外光斑）以及极简的高档软装摆件（如弧形门廊、洞石器皿、花瓶干树枝、设计师单椅）”，使得生成的视频背景层次极具纵深空间感与高端画册感，解决背景单一单薄的问题。
  
 模块二：动态微操注入与高端运镜 (Micro-Dynamics & Premium Camera Motion)
-- 摄像机运镜：电影感高端慢速运镜，展现时尚大片电影质感。包含：极其缓慢推近镜头 (Ultra-slow Dolly In)、平滑移近、视差缓慢横移 (Parallax slow panning)、极其平滑的轨道环绕镜头 (Slow 360-degree camera orbit) 或微调焦距变焦，镜头转动必须舒缓、高档且富有呼吸感。
-- 人物与动作幅度控制：模特采取「高端时尚大片微动态 (High-fashion micro-movements)」姿态，人物动作幅度必须微小且极其缓慢优雅（例如轻微侧身、头部微倾、视线微转、眼部微阖、自然呼吸），避免任何过快或大范围肢体摆动，以求极高的画面清晰度和大片高冷质感。
-- 环境与光影美学：微风徐徐轻吹发丝与衣角、精细的侧逆光和环境光影随镜头微动产生高级变化、自然细腻的光感流转，雕琢Vogue杂志大片般的明暗质感。
-- 人物与面料力学：自然的呼吸胸口微动、身体微转时呈现流线型高级垂坠感 (Fluid drape)、面料随微小动作产生真实的微观物理褶皱与动态张力。
+- 摄像机运镜：遵循给定的【镜头运镜调性指令】。镜头转动舒缓、高档且富有呼吸感。
+- 人物与动作幅度控制：模特采取「高端时尚大片微动态 (High-fashion micro-movements)」姿态，人物动作幅度微小且极其缓慢优雅，避免任何过快或大范围肢体摆动，以求极高的画面清晰度和大片高冷质感。
+- 环境与光影美学：遵循给定的【光影影调美学】。自然细腻的光感流转，雕琢Vogue杂志大片般的明暗质感。
+- 人物与面料力学：严格遵循给定的【服装品类物理力学规约】。面料随微小动作产生真实的微观物理褶皱与动态张力。
  
 你的任务是：输出中文的一整段视频提示词描述。
 请严格按照以下格式生成一整段话，不要换行，不要输出 JSON，不要包含任何 Markdown 标记，并且必须显式引用图的序号：
@@ -1124,7 +1202,10 @@ ${is15s ? `15秒快节奏连贯 5 幕叙事，引用 图1 作为服装和模特�
 【输入参数】：
 - 穿搭图配饰/鞋子搭配建议：${matchingItemDesc} ${shoesDesc} ${accessoriesDesc}
 - 目标环境场景空间与材质细节：${sceneDetail}
-- 重点推广与展示部位：${focus === 'top' ? '重点推广上装 (Topwear)。每一幕分镜描述（尤其是第二幕、第四幕和第五幕）必须主要关注和描绘上衣/外套的设计细节、肩线与胸口裁剪、衣领、袖口和上身材质，把上装作为视觉焦点。' : focus === 'bottom' ? '重点推广下装 (Bottomwear)。每一幕分镜描述（尤其是第二幕、第四幕和第五幕）必须主要关注 and 描绘下装/裤子/裙子的垂坠物理特性、裤腿/裙摆摆动细节、腰线设计与下身材质，把下装作为视觉焦点。' : '重点推广整体搭配与服饰协调度 (Overall)。保持全身或中景构图，合理兼顾展示整套衣服的搭配协调度。'}
+- 服装品类物理力学规约：${apparelRule}
+- 镜头运镜调性指令：${cameraRule}
+- 光影影调美学：${lightingRule}
+- 重点推广与展示部位：${focus === 'top' ? '重点推广上装 (Topwear)。每一幕分镜描述（尤其是第二幕、第四幕和第五幕）必须主要关注和描绘上衣/外套的设计细节、肩线与胸口裁剪、衣领、袖口和上身材质，把上装作为视觉焦点。' : focus === 'bottom' ? '重点推广下装 (Bottomwear)。每一幕分镜描述（尤其是第二幕、第四幕和第五幕）必须主要关注和描绘下装/裤子/裙子的垂坠物理特性、裤腿/裙摆摆动细节、腰线设计与下身材质，把下装作为视觉焦点。' : '重点推广整体搭配与服饰协调度 (Overall)。保持全身或中景构图，合理兼顾展示整套衣服的搭配协调度。'}
 ${slowMotionInstruction}
  
 【技能规约核心框架】：
@@ -1132,60 +1213,49 @@ ${slowMotionInstruction}
 - 主体锚点（引用 图1）：锁定主体细节。整个视频生成过程中，必须严格锁定图1中的人物五官、身材比例、服装款式、色彩及面料细节，确保 100% 一致性。
 - 时空锚点（依次对应引用 图2、图3、图4、图5、图6）：用作分镜中五幕视频生成的初始姿态与背景参考。
 ${base64Background ? `- 场景背景锚点（引用 图7）：整个生成过程中，每一幕视频生成的背景必须以图7（目标场景模板图）为核心基准，结合每幕分镜图的具体构图，详细描绘图7中的背景质感、布局细节、光影分布，锁定生成视频的背景场景。` : ''}
-- 场景空间深度与背景细节：绝对不允许描述成单调的‘在影棚’或‘在街头’。你必须结合给定的“- 目标环境场景空间与材质细节”，在每一幕中详细拓展和描绘“多层空间透视、精细的墙面地面物理材质（如微水泥质感、湿沥青地面反射、镜面大理石纹理）、独特的氛围光线（如几何丁达尔斜射光、温暖的橱窗折射、柔焦焦外光斑）以及极简的高档软装摆件（如弧形门廊、洞石器皿、花瓶干树枝、设计师单椅）”，使得生成的视频背景层次极具纵深空间感与高端画册感，解决背景单一单薄的问题。
+- 场景空间深度与背景细节：绝对不允许描述成单调的‘在影棚’或‘在街头’。在每一幕中详细拓展多层空间透视、微水泥/大理石地面物理材质、独特光线与极简软装陈设，赋予画面纵深空间感与高端画册感。
  
 模块二：动态微操注入与高端运镜 (Micro-Dynamics & Premium Camera Motion)
-- 摄像机运镜：电影感高端慢速运镜，展现高端时尚商业大片电影质感。包含：极其缓慢推近镜头 (Ultra-slow Dolly In)、缓缓拉远 (Slow Dolly Out)、视差缓慢横移 (Parallax slow panning)、极平滑轨道环绕镜头 (Slow 360-degree camera orbit)、微小变焦 (Subtle camera zoom)，镜头转动必须舒缓、平滑且富有呼吸感。
-- 人物与动作幅度控制：模特采取「高端时尚大片微动态 (High-fashion micro-movements)」姿态，动作幅度要小且极其徐缓优雅（例如轻微侧身、头部微倾、视线转动、肩膀微调、自然徐缓的呼吸），绝对避免任何动作幅度大、速度快的肢体动作以确保画面稳定和大片的高冷质感。
-- 环境与光影美学：微风徐徐轻拂发梢与裙角、精致的侧逆光光影随镜头极缓变化、自然细腻的光折射与质感流转，呈现Vogue杂志版的光影雕刻感。
-- 人物与面料力学：自然的呼吸感、身体极缓微动时呈现流线型高级垂坠感 (Fluid drape)、面料随微动产生真实而富有张力的微小物理褶皱。
+- 摄像机运镜：遵循【镜头运镜调性指令】。包含：极其缓慢推近镜头 (Ultra-slow Dolly In)、缓缓拉远 (Slow Dolly Out)、视差缓慢横移 (Parallax slow panning)、极平滑轨道环绕镜头 (Slow 360-degree camera orbit) 或微小变焦，运镜舒缓、平滑且富有呼吸感。
+- 人物动作控制：模特采取「高端时尚大片微动态 (High-fashion micro-movements)」姿态，动作幅度小且极其徐缓优雅，保持大片高冷质感。
+- 环境与光影：遵循【光影影调美学】。微风轻拂、侧逆光流转，呈现Vogue大片质感。
+- 服装力学：严格遵循【服装品类物理力学规约】。产生符合该服装面料特性的自然悬垂与褶皱。
  
 模块三：五幕时间轴激活 (Timeline Activation)
-- 配合传入的 图2 ~ 图6 分镜图，推演连贯动作。特别约束指令：第一幕中，首帧画面（参考图2）中模特即处于画面最外侧的画外边缘位置，动作必须是从屏幕外最侧边（通过侧边空旷地面或侧边道路画外）优雅向前慢速迈步走入镜头中央并站定，动作要缓慢且稳重，绝对不要使用“起初为空镜头”等与首帧画面相冲突的描述。严禁让模特从背景中的墙面、石柱、柱体、门缝、家具或树木等实体结构中“凭空浮现”或“穿透穿墙而出”。人物的行走路径必须完全位于空旷地带，确保行走过程与背景物体在空间上完全剥离、互不重合。其他各幕的动作均设计为极其高雅的微动态慢镜头，如缓缓转身、视线微倾、肩部微沉，保持大片的高冷与质感，绝对不要描述具体的肢体操作性动作，如调整衣服、整理袖口等，以防视频生成出现严重的形变和穿模。
+- 配合传入的 图2 ~ 图6 分镜图，推演连贯动作。第一幕：首帧模特处于画面最外侧画外边缘位置，动作必须是从屏幕外空旷侧边从容迈步走入镜头中央并站定，行走路径与背景实体完全分离。其他各幕均设计为极优雅的微动态慢镜头（缓缓转身、视线微倾、肩部微沉）。
  
 模块四：原生音画同构 (Audio-Visual Syncing)
 - 音频 Tag 组合公式：原生音效：[环境底音] + [动作/材质拟音 Foley] + [情绪 BGM]
  
 你的任务是：输出中文的一整段视频提示词描述。
 请严格按照以下格式生成一整段话，不要换行，不要输出 JSON，不要包含任何 Markdown 标记，并且必须显式引用图的序号：
-最终生成的提示词应该严格类似以下格式和语气（用具体的细节替换括号中的内容）：
-15秒快节奏连贯 5 幕叙事，引用 图1 作为服装和模特的严格一致性参考。第一幕：引用 图2，极其缓慢向前推进的特写与中景，首帧模特处于画外最外侧边缘，随后模特顺着侧边空旷的道路（极其从容慢速走入镜头中央站定，行走路径与石柱实体背景完全分离开），背景场景为 [这里详细写入具有纵深感的背景，包含多层空间、微水泥墙面、反射地面、落地玻璃与精致几何光影]，在风吹衣角的微动态下站定展示高级气场。镜头切换（Cut to）第二幕：引用 图3 做为特写，极慢变焦镜头，镜头聚焦在 [第二幕特写细节如拉链头/配饰/面料卖点描述]，背景展示出 [光线在物理墙面和面料材质上投射出的精细质感与明暗交错]，清晰展现 [面料在逆光下高端微观材质与质感]。镜头切换（Cut to）第三幕：引用 图4 中景，轨道慢移环绕运镜，模特以极其缓慢优美的微侧身动作展示 [第三幕微幅动作描写]，背景中的 [详细描绘微水泥弧形柱体、几何造型构筑与自然斜射光影] 伴随镜头平滑运转，展现流线型高端垂坠感。镜头切换（Cut to）第四幕：引用 图5 侧面中景，极其平缓推移的镜头，模特极其徐缓地微微倾身或转动眼神，背景的 [这里详细描绘温暖的光影明暗对比与极简高级软装摆件] 展示出优美的层次感，展示自然面料物理力学微小褶皱。镜头切换（Cut to）第五幕：引用 图6 全景，镜头缓缓拉远，模特眼神微抬高冷定格，在 [这里详细描述带有大片空间感的极简侘寂艺术画廊内景，几何留白空间与温暖柔焦光斑] 背景下展现整体穿搭的商业时尚大片完美比例，画面在精致光影中定格。原生音效：[音效同构音频 Tag 组合中文描述]
+15秒快节奏连贯 5 幕叙事，引用 图1 作为服装和模特的严格一致性参考。第一幕：引用 图2，极其缓慢向前推进的特写与中景，首帧模特处于画外最外侧边缘，随后模特顺着侧边空旷的道路极其从容慢速走入镜头中央站定（行走路径与背景实体完全分离），背景场景为 [具有纵深感的背景，包含多层空间、微水泥墙面、反射地面、落地玻璃与精致几何光影]，风吹衣角微动展现超模气场。镜头切换（Cut to）第二幕：引用 图3 做为特写，极慢变焦镜头，镜头聚焦在 [第二幕特写细节如拉链头/配饰/面料卖点]，清晰展现 [面料在逆光下高端微观材质与质感]。镜头切换（Cut to）第三幕：引用 图4 中景，轨道慢移环绕运镜，模特以极其缓慢优美的微侧身动作展示 [第三幕微幅动作]，伴随平稳镜头运转，展现流线型高端垂坠感。镜头切换（Cut to）第四幕：引用 图5 侧面中景，极其平缓推移的镜头，模特极其徐缓地微倾身姿，展示优美层次感与自然面料物理力学微小褶皱。镜头切换（Cut to）第五幕：引用 图6 全景，镜头缓缓拉远，模特眼神微抬高冷定格，在 [带有大片空间感的极简侘寂艺术画廊内景，几何留白与柔焦光斑] 背景下展现整体穿搭的商业时尚大片完美比例，画面在精致光影中定格。原生音效：[音效同构音频 Tag 组合中文描述]
  
 注意：
-1. 必须包含对“图1”到“图6”的硬编码文字引用（例如“引用 图1”、“引用 图2”等）。
-2. 将括号里的 [模块/解析结果描述] 替换为具体的中文场景 and 材质属性描述词，不要保留中括号。
-3. 输出的结果必须是连续的一整段文字，段落之间不要换行，不要输出换行符。不要输出任何其他前缀（如“这里是为您生成的提示词：”）或后缀。` : `你是一个专业的电商时尚视频编导。请根据上传的[模特穿搭主图]（包含模特穿着特定款式的服装）和提供的场景及搭配参数，结合我们生成并传入给大模型作为输入的每一幕分镜参考图，${base64Background ? `以及最后传入给大模型作为输入的[背景场景模板图]（即图${bgIndex}，干净的场景空图），` : ''}调用以下视频提示词智能编排规约，生成分镜视频生成提示词。
+1. 必须包含对“图1”到“图6”的硬编码文字引用。
+2. 将中括号里的描述替换为具体的中文场景与材质属性描述词，不要保留中括号。
+3. 输出的结果必须是连续的一整段文字，段落之间不要换行，不要输出换行符。不要输出任何其他前缀或后缀。` : `你是一个专业的电商时尚视频编导。请根据上传的[模特穿搭主图]（包含模特穿着特定款式的服装）和提供的场景及搭配参数，结合我们生成并传入给大模型作为输入的每一幕分镜参考图，${base64Background ? `以及最后传入给大模型作为输入的[背景场景模板图]（即图${bgIndex}，干净的场景空图），` : ''}调用以下视频提示词智能编排规约，生成分镜视频生成提示词。
  
 【输入参数】：
 - 穿搭图配饰/鞋子搭配建议：${matchingItemDesc} ${shoesDesc} ${accessoriesDesc}
 - 目标环境场景空间与材质细节：${sceneDetail}
-- 重点推广与展示部位：${focus === 'top' ? '重点推广上装 (Topwear)。每一幕分镜描述（尤其是第二幕、第四幕和第五幕）必须主要关注和描绘上衣/外套的设计细节、肩线与胸口裁剪、衣领、袖口和上身材质，把上装作为视觉焦点。' : focus === 'bottom' ? '重点推广下装 (Bottomwear)。每一幕分镜描述（尤其是第二幕、第四幕和第五幕）必须主要关注和描绘下装/裤子/裙子的垂坠物理特性、裤腿/裙摆摆动细节、腰线设计与下身材质，把下装作为视觉焦点。' : '重点推广整体搭配与服饰协调度 (Overall)。保持全身或中景构图，合理兼顾展示整套衣服的搭配协调度。'}
+- 服装品类物理力学规约：${apparelRule}
+- 镜头运镜调性指令：${cameraRule}
+- 光影影调美学：${lightingRule}
+- 重点推广与展示部位：${focus === 'top' ? '重点推广上装 (Topwear)。每一幕分镜描述必须主要关注和描绘上衣/外套的设计细节、肩线与胸口裁剪、衣领、袖口和上身材质。' : focus === 'bottom' ? '重点推广下装 (Bottomwear)。每一幕分镜描述必须主要关注和描绘下装/裤子/裙子的垂坠物理特性、裤腿/裙摆摆动细节与腰线设计。' : '重点推广整体搭配与服饰协调度 (Overall)。保持全身或中景构图，合理兼顾展示整套衣服的搭配协调度。'}
 ${slowMotionInstruction}
  
 【技能规约核心框架】：
-- 严格图像序号命名规约：生成内容中引用的任何图像，必须且只能命名为「图1」、「图2」、「图3」、「图4」、「图5」、「图6」或「图7」格式。严禁在输出的提示词中出现任何诸如「@image_0.png」、「@image_1.png」、「image_0.png」、「@input_file_0.png」等临时变量名或具体图像文件名，必须将其映射为中文序号。
-模块一：视觉资产解耦与锚定 (Asset Decoupling & Anchoring)
-- 主体锚点（[@模特穿搭主图]）：解耦服装款式面料与特定模特的脸部发型，强制 AI 在整个 ${is15s ? '15' : '12'} 秒内，严格锁定该图中的人物五官、身材比例、服装款式、色彩及面料细节，确保 100% 一致性。
-- 时空锚点（[@分镜图_幕1] ~ [@分镜图_幕${validBase64Storyboards.length}]）：用作各幕视频生成的首帧画面参考。强制 AI 读取每一幕对应的构图比例（特写/中景/全景）、环境背景、光影分布以及模特的初始姿态。
-${base64Background ? `- 场景背景锚点（[@背景场景模板图] / 图${bgIndex}）：强力约束视频中生成的所有背景，必须严格匹配图${bgIndex}中的物理格局、道具陈设、色彩风格和光照特点。` : ''}
-- 场景空间深度与背景细节：绝对不允许描述成单调的‘在影棚’或‘在街头’。你必须结合给定的“- 目标环境场景空间与材质细节”，在每一幕中详细拓展和描绘“多层空间透视、精细的墙面地面物理材质（如微水泥质感、湿沥青地面反射、镜面大理石纹理）、独特的氛围光线（如几何丁达尔斜射光、温暖的橱窗折射、柔焦焦外光斑）以及极简的高档软装摆件（如弧形门廊、洞石器皿、花瓶干树枝、设计师单椅）”，使得生成的视频背景层次极具纵深空间感与高端画册感，解决背景单一单薄的问题。
- 
-模块二：动态微操注入与高端运镜 (Micro-Dynamics & Premium Camera Motion)
-- 摄像机运镜：电影感高端慢速运镜，展现高端时尚商业大片电影质感。包含：极其缓慢推近镜头 (Ultra-slow Dolly In)、缓缓拉远 (Slow Dolly Out)、视差缓慢横移 (Parallax slow panning)、极平滑轨道环绕镜头 (Slow 360-degree camera orbit)、微小变焦 (Subtle camera zoom)，镜头转动必须舒缓、平滑且富有呼吸感。
-- 人物与动作幅度控制：模特采取「高端时尚大片微动态 (High-fashion micro-movements)」姿态，动作幅度要小且极其徐缓优雅（例如轻微侧身、头部微倾、视线转动、肩膀微调、自然徐缓的呼吸），绝对避免任何动作幅度大、速度快的肢体动作以确保画面稳定和大片的高冷质感。
-- 环境与光影美学：微风徐徐轻拂发梢与裙角、精致的侧逆光光影随镜头极缓变化、自然细腻的光折射与质感流转，呈现Vogue杂志版的光影雕刻感。
-- 人物与面料力学：自然的呼吸感、身体极缓微动时呈现流线型高级垂坠感 (Fluid drape)、面料随微动产生真实而富有张力的微小物理褶皱。
- 
-模块三：${is15s ? '五幕' : '三幕'}时间轴激活 (Timeline Activation)
-- 配合传入的 ${validBase64Storyboards.length} 张分镜图，推演连贯动作。特别约束指令：第一幕中，首帧画面（分镜图_幕1）中模特即处于画面最外侧的画外边缘位置，动作必须是从屏幕外最侧边（通过侧边空旷地面或侧边道路画外）优雅向前慢速迈步走入镜头中央并站定，动作要缓慢且稳重，绝对不要使用“起初为空镜头”等与首帧画面相冲突的描述。严禁让模特从背景中的墙面、石柱、柱体、门缝、家具或树木等实体背景中“凭空浮现”或“穿墙而出”。人物的行走路径必须完全位于空旷地带，确保行走过程与背景物体在空间上完全剥离、互不重合。其他各幕的动作均设计为极其高雅的微动态慢镜头，如缓缓转身、视线微倾、肩部微沉，保持大片的高冷与质感，绝对不要描述具体的肢体操作性动作，如调整衣服、整理袖口等，以防视频生成出现严重的形变和穿模。
- 
-模块四：原生音画同构 (Audio-Visual Syncing)
-- 音频 Tag 组合公式：原生音效：[环境底音] + [动作/材质拟音 Foley] + [情绪 BGM]
+- 严格图像序号命名规约：生成内容中引用的任何图像，必须且只能命名为「图1」、「图2」、「图3」、「图4」、「图5」、「图6」或「图7」格式。严禁在输出的提示词中出现任何临时变量名。
+模块一：视觉资产解耦与锚定：主体锚点（[@模特穿搭主图]）严格锁定五官、身材、款式与面料；时空锚点（[@分镜图_幕1] ~ [@分镜图_幕${validBase64Storyboards.length}]）控制构图、景别与初始姿态。
+模块二：服装品类力学与运镜：严格执行【服装品类物理力学规约】与【镜头运镜调性指令】。
+模块三：${is15s ? '五幕' : '三幕'}时间轴激活：连贯推演各幕微动态与走位。
+模块四：原生音画同构：包含环境底音 + 拟音 Foley + 情绪 BGM。
  
 你的任务是：输出中文的一整段视频提示词描述。
 请严格按照以下格式生成一整段话，不要换行，不要输出 JSON，不要包含任何 Markdown 标记：
 ${is15s ? `最终生成的提示词应该类似：
-15秒快节奏连贯 5 幕叙事，引用参考图作为服装 and 模特的严格一致性参考。
+15秒快节奏连贯 5 幕叙事，引用参考图作为服装和模特的严格一致性参考。
 场景设定： [详细描绘的高端大片场景背景物理格局与材质，包含多层空间深度的微水泥/反射地面/大理石板材，以及大落地窗斜射光影和侘寂风洞石器皿摆设]
 第一幕： 极其缓慢推进的镜头，首帧模特处于画外最外侧边缘，随后从画外地面优雅慢速向镜头中央迈步（确保行走路径与背景实体结构物理分离，不产生空间重叠），背景展现出 [这里详细描写包含多层空间透视与光影的精美背景场景]，自然呼吸且确立大片气场。
 镜头切换（Cut to）第二幕： 特写微距极慢移动镜头，聚焦在 [第二幕设计锚点]，背景是 [细节的微水泥墙体与高档光影投影]，清晰展现 [第二幕高端面料质感与光影反射]。
@@ -1194,13 +1264,13 @@ ${is15s ? `最终生成的提示词应该类似：
 镜头切换（Cut to）第五幕： 全景镜头极慢拉远，模特眼神微抬高冷定格，在 [这里详细描绘带有极致纵深与柔和焦外光斑的极简侘寂艺术画廊空旷内景] 背景下展现整体穿搭的商业时尚大片完美比例，画面在精致光影中定格。
 原生音效： [音效同构音频 Tag 组合描述]` : `最终生成的提示词应该类似：
 12秒快节奏连贯 3 幕叙事，引用参考图作为服装和模特的严格一致性参考。
-场景设定： [详细描绘的高端大片场景背景物理格局与材质，包含多层空间深度的微水泥/反射地面/大理石板材，以及大落地窗斜射光影和侘寂风洞石器皿摆设]
-第一幕： 全景镜头极慢推移，模特在画面中央从容微调姿态，背景为 [这里详细描述包含空间透视、材质与光影的丰富场景背景]，展现全身版型与高端大片光影，[高端环境风力及面料垂坠力学]。
-镜头切换（Cut to）第二幕： 半身中景极慢轨道横移，模特侧身极缓摆动，背景为 [具有细节纹理的微水泥墙面与几何长投影光影]，聚焦上衣细节与高端贴合感。
-镜头切换（Cut to） third幕： 细节特写微距极慢推进，对焦服装微观纹理、接缝与高级扣子，后景 [带有柔焦光斑与高质感空间几何留白]，光感流转细腻。
+场景设定： [详细描绘的高端大片场景背景物理格局与材质]
+第一幕： 全景镜头极慢推移，模特在画面中央从容微调姿态，背景为 [包含空间透视、材质与光影的丰富场景背景]，展现全身版型与高端大片光影。
+镜头切换（Cut to）第二幕： 半身中景极慢轨道横移，模特侧身极缓摆动，聚焦上衣细节与高端贴合感。
+镜头切换（Cut to）第三幕： 细节特写微距极慢推进，对焦服装微观纹理与做工，光感流转细腻。
 原生音效： [音效同构音频 Tag 组合描述]`}
  
-注意：请将括号里的 [模块/解析结果] 替换为具体的中文描述词，输出的结果必须是连续的一整段文字，段落之间不要换行。不要输出任何其他前缀或后缀。`;
+注意：请将括号里的说明替换为具体的中文描述词，输出的结果必须是连续的一整段文字，段落之间不要换行。不要输出任何其他前缀或后缀。`;
     }
 
     const messagesContent = [
@@ -1224,11 +1294,11 @@ ${is15s ? `最终生成的提示词应该类似：
       messages: isTextOnly
         ? [{ role: 'user', content: promptText }]
         : [{ role: 'user', content: messagesContent }],
-      max_tokens: 1536,
+      max_tokens: singleShotIndex ? 512 : 1536,
       stream: false
     };
 
-    console.log(`[AI Prompts Skill] Calling chat completions via ${chatConfig.provider} (model: ${chatConfig.defaultModel})`);
+    console.log(`[AI Prompts Skill] Calling chat completions via ${chatConfig.provider} (model: ${chatConfig.defaultModel})${singleShotIndex ? ` [Single Shot ${singleShotIndex} Polish]` : ''}`);
 
     const response = await fetchWithTimeout(chatConfig.url, {
       method: 'POST',
@@ -1251,7 +1321,7 @@ ${is15s ? `最终生成的提示词应该类似：
       return `图${idx + 1}`;
     });
 
-    res.status(200).json({ prompts: cleanContent });
+    res.status(200).json({ prompts: cleanContent, singleShotIndex });
   } catch (err) {
     console.error('Skill prompts generation failed:', err);
     res.status(500).json({ error: err.message || 'Generation failed' });
@@ -1336,6 +1406,126 @@ app.get('/api/video/poll/:taskId', async (req, res) => {
     res.status(500).json({ error: err.message || 'Polling failed' });
   }
 });
+
+// 8.1 Batch Video Generation for 5-Shot Storyboards
+app.post('/api/video/task/batch', async (req, res) => {
+  try {
+    const { projectId, shots = [], model, seconds = 3 } = req.body;
+    if (!Array.isArray(shots) || shots.length === 0) {
+      return res.status(400).json({ error: 'No shots provided for batch generation' });
+    }
+
+    const sandbaseVideoModel = model || "kwaivgi/kling-video/3.0/omni/pro/image-to-video";
+    console.log(`\n[Sandbase API] >>> Submitting Batch Video Tasks (${shots.length} shots) for Project: ${projectId || 'default'}`);
+
+    const submitPromises = shots.map(async (shot, idx) => {
+      const duration = Math.round(shot.seconds || seconds) || 3;
+      const sandbasePayload = {
+        model: sandbaseVideoModel,
+        image: shot.imageSrc,
+        prompt: shot.prompt,
+        duration
+      };
+
+      try {
+        console.log(`[Sandbase API] Submitting Shot [${idx + 1}/${shots.length}]: "${shot.name || shot.id}"`);
+        const taskId = await submitSandbaseTask(sandbasePayload);
+        const taskMeta = {
+          type: 'video',
+          model: sandbaseVideoModel,
+          duration,
+          projectId,
+          shotId: shot.id,
+          shotIndex: idx + 1,
+          shotName: shot.name || `分镜 ${idx + 1}`,
+          prompt: shot.prompt,
+          imageSrc: shot.imageSrc,
+          status: 'processing'
+        };
+        registerTask(taskId, taskMeta);
+        return {
+          shotId: shot.id,
+          shotIndex: idx + 1,
+          shotName: shot.name || `分镜 ${idx + 1}`,
+          taskId,
+          status: 'processing',
+          duration
+        };
+      } catch (subErr) {
+        console.error(`[Sandbase API] Failed shot ${shot.id}:`, subErr.message);
+        return {
+          shotId: shot.id,
+          shotIndex: idx + 1,
+          shotName: shot.name || `分镜 ${idx + 1}`,
+          taskId: null,
+          status: 'failed',
+          error: subErr.message || 'Submission failed'
+        };
+      }
+    });
+
+    const results = await Promise.all(submitPromises);
+    res.status(200).json({ tasks: results });
+  } catch (err) {
+    console.error('Batch video task submission failed:', err);
+    res.status(500).json({ error: err.message || 'Batch video task submission failed' });
+  }
+});
+
+// 8.2 Query All Video Tasks for a Specific Project
+app.get('/api/video/tasks/project/:projectId', (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const projectTasks = Object.values(taskStore)
+      .filter(t => t.type === 'video' && t.projectId === projectId)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    res.status(200).json({ tasks: projectTasks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Background Auto-Poller Daemon: Periodically syncs active video tasks even when client is disconnected
+let isVideoPollerActive = false;
+setInterval(async () => {
+  if (isVideoPollerActive) return;
+  isVideoPollerActive = true;
+  try {
+    const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+    if (!apiKey) return;
+
+    const pendingVideoTasks = Object.values(taskStore).filter(
+      t => t.type === 'video' && (t.status === 'processing' || t.status === 'pending') && t.taskId
+    );
+
+    if (pendingVideoTasks.length === 0) return;
+
+    for (const task of pendingVideoTasks.slice(0, 6)) {
+      try {
+        const response = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${task.taskId}`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        }, 8000);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status && data.status !== task.status) {
+            const resultUrl = data.status === 'completed' ? extractTaskOutputUrl(data) : '';
+            updateTaskStatus(task.taskId, {
+              status: data.status,
+              error: data.error || null,
+              ...(resultUrl ? { resultUrl } : {})
+            });
+            console.log(`[AutoPoller] Synced video task ${task.taskId} -> ${data.status}`);
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+  finally {
+    isVideoPollerActive = false;
+  }
+}, 4500);
 
 // 9. Video Content Relayer
 app.get('/api/video/content/:taskId', async (req, res) => {
@@ -1435,6 +1625,126 @@ app.post('/api/canvas/state/:projectId', (req, res) => {
   res.json({ success: true, canvas: store[projectId] });
 });
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`KeyVideo backend microservice running on http://127.0.0.1:${port}`);
+// 2.1 Google image inpainting with an explicit black/white mask.
+app.post('/api/ai/inpaint', async (req, res) => {
+  try {
+    const { imageUrl, maskUrl, prompt, strength = 0.75, aspectRatio = '1:1' } = req.body;
+    if (!imageUrl || !maskUrl || !String(prompt || '').trim()) {
+      return res.status(400).json({ error: 'imageUrl, maskUrl and prompt are required' });
+    }
+
+    const images = [
+      await resolveLocalAssetToBase64(imageUrl),
+      await resolveLocalAssetToBase64(maskUrl)
+    ];
+    const normalizedStrength = Math.max(0.1, Math.min(1, Number(strength) || 0.75));
+    const apiAspectRatio = String(aspectRatio || '1:1').replace('-', ':');
+    const textPrompt = `Image editing task. 图1 is the original image. 图2 is a strict black-and-white edit mask: white pixels are the only area allowed to change, and black pixels must remain identical to 图1. Modify only the white masked region according to this instruction: ${String(prompt).trim()}. Preserve the person's identity, face, pose, body proportions, clothing outside the mask, lighting, background, framing, and all unmasked pixels. Blend the edited area naturally with realistic texture, edges, shadows, and lighting. Edit strength: ${Math.round(normalizedStrength * 100)}%. Do not add text, logos, watermarks, borders, or captions.`;
+    const sandbasePayload = {
+      model: 'google/nano-banana-2/edit',
+      images,
+      prompt: textPrompt,
+      resolution: '1K',
+      aspect_ratio: apiAspectRatio,
+      output_format: 'png',
+      enable_web_search: false,
+      enable_image_search: false
+    };
+
+    const taskId = await submitSandbaseTask(sandbasePayload);
+    registerTask(taskId, { type: 'inpaint', prompt: textPrompt, status: 'processing' });
+    const poller = async () => {
+      try {
+        const resultImageUrl = await pollSandbaseTask(taskId);
+        const canvasSafeResult = await fetchImageAsBase64(resultImageUrl);
+        updateTaskStatus(taskId, { status: 'completed', resultUrl: canvasSafeResult });
+        return canvasSafeResult;
+      } catch (pollErr) {
+        updateTaskStatus(taskId, { status: 'failed', error: pollErr.message });
+        throw pollErr;
+      }
+    };
+
+    if (req.query.async === 'true' || req.body.async === true) {
+      poller().catch(error => console.warn(`[Inpaint Task ${taskId}] Background polling error:`, error.message));
+      return res.status(200).json({ taskId, status: 'processing' });
+    }
+    return res.status(200).json({ taskId, url: await poller() });
+  } catch (err) {
+    console.error('Google image inpainting failed:', err);
+    return res.status(500).json({ error: err.message || 'Google image inpainting failed' });
+  }
+});
+
+app.post('/api/ai/upscale', async (req, res) => {
+  try {
+    const { imageUrl, scaleFactor = '2x', mode = 'fashion', denoise = 30, sharpen = 50, aspectRatio = '1:1' } = req.body;
+    if (!imageUrl) return res.status(400).json({ error: 'imageUrl is required' });
+
+    const sourceImage = await resolveLocalAssetToBase64(imageUrl);
+    const resolution = scaleFactor === '4x' ? '4K' : '2K';
+    const apiAspectRatio = String(aspectRatio || '1:1').replace('-', ':');
+    const modeInstructions = {
+      fashion: 'Prioritize authentic garment weave, seams, stitching, fabric grain, folds, drape, and small fashion details.',
+      portrait: 'Prioritize natural facial detail, eyes, hair strands, skin texture, and identity preservation without beauty-filter artifacts.',
+      general: 'Balance fine detail recovery across the entire image, including subject, clothing, and background.'
+    };
+    const textPrompt = `Professional AI image upscaling and detail restoration. Reconstruct this exact image at ${resolution} quality. ${modeInstructions[mode] || modeInstructions.general} Preserve the exact person identity, pose, body proportions, composition, colors, clothing design, logos, background, lighting, and crop. Do not redesign, add, remove, or move any object. Denoise level: ${Math.max(0, Math.min(100, Number(denoise) || 0))}%. Detail sharpening: ${Math.max(0, Math.min(100, Number(sharpen) || 0))}%. Produce photorealistic natural micro-detail without halos, oversharpening, text, captions, or watermarks.`;
+    const sandbasePayload = {
+      model: 'google/nano-banana-2/edit',
+      images: [sourceImage],
+      prompt: textPrompt,
+      resolution,
+      aspect_ratio: apiAspectRatio,
+      output_format: 'png',
+      enable_web_search: false,
+      enable_image_search: false
+    };
+
+    const taskId = await submitSandbaseTask(sandbasePayload);
+    registerTask(taskId, { type: 'upscale', prompt: textPrompt, status: 'processing' });
+    const poller = async () => {
+      try {
+        const resultImageUrl = await pollSandbaseTask(taskId);
+        const canvasSafeResult = await fetchImageAsBase64(resultImageUrl);
+        updateTaskStatus(taskId, { status: 'completed', resultUrl: canvasSafeResult });
+        return canvasSafeResult;
+      } catch (pollErr) {
+        updateTaskStatus(taskId, { status: 'failed', error: pollErr.message });
+        throw pollErr;
+      }
+    };
+
+    if (req.query.async === 'true' || req.body.async === true) {
+      poller().catch(error => console.warn(`[Upscale Task ${taskId}] Background polling error:`, error.message));
+      return res.status(200).json({ taskId, status: 'processing' });
+    }
+    return res.status(200).json({ taskId, url: await poller() });
+  } catch (err) {
+    console.error('Google image upscale failed:', err);
+    return res.status(500).json({ error: err.message || 'Google image upscale failed' });
+  }
+});
+
+app.get('/api/ai/image-proxy', async (req, res) => {
+  try {
+    const sourceUrl = new URL(String(req.query.url || ''));
+    if (sourceUrl.protocol !== 'https:' || sourceUrl.hostname !== 'media.sandbase.ai') {
+      return res.status(400).json({ error: 'Only Sandbase generated-image URLs can be proxied' });
+    }
+    const response = await fetchWithTimeout(sourceUrl.toString(), {}, 60_000);
+    if (!response.ok) return res.status(502).json({ error: `Image provider returned ${response.status}` });
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.startsWith('image/')) return res.status(502).json({ error: 'Upstream response is not an image' });
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'private, max-age=3600');
+    return res.send(buffer);
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Invalid image URL' });
+  }
+});
+
+app.listen(port, host, () => {
+  console.log(`KeyVideo backend microservice running on http://${host}:${port}`);
 });

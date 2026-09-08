@@ -10,6 +10,8 @@ interface ClothingNodeProps {
   onUpdate: (patch: Partial<CanvasNodeData>) => void;
   onStartConnect: (fromHandle: string) => void;
   onEndConnect: (toHandle: string) => void;
+  onSpawnMultiModel?: (node: CanvasNodeData) => void;
+  onSpawnBatchViews?: (node: CanvasNodeData) => void;
 }
 
 export const ClothingNode: React.FC<ClothingNodeProps> = ({
@@ -19,7 +21,9 @@ export const ClothingNode: React.FC<ClothingNodeProps> = ({
   onDelete,
   onUpdate,
   onStartConnect,
-  onEndConnect
+  onEndConnect,
+  onSpawnMultiModel,
+  onSpawnBatchViews
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -95,6 +99,39 @@ export const ClothingNode: React.FC<ClothingNodeProps> = ({
             <option value="bottom">下装 (Bottom)</option>
             <option value="reference">连身/套装 (Full)</option>
           </select>
+        </div>
+
+        {/* Quick Pipeline Actions */}
+        <div className="node-pipeline-action-bar">
+          {onSpawnMultiModel && (
+            <button
+              type="button"
+              className="node-pipeline-btn primary-purple"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSpawnMultiModel(node);
+              }}
+              title="一键衍生东亚、欧美、极简先锋等多模特横向对比管线"
+            >
+              <span>👥</span>
+              <span>多模特对比</span>
+            </button>
+          )}
+
+          {onSpawnBatchViews && (
+            <button
+              type="button"
+              className="node-pipeline-btn primary-cyan"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSpawnBatchViews(node);
+              }}
+              title="一键展开正面全身、45°半身、微距特写、背面剪裁 4 面图管线"
+            >
+              <span>✨</span>
+              <span>4面图生成</span>
+            </button>
+          )}
         </div>
       </div>
     </BaseNode>

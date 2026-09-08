@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { Layer } from './components/VideoCanvas';
 import { BackendSettingsModal } from './components/app/BackendSettingsModal';
@@ -35,6 +35,7 @@ import { ViewModeSwitch } from './components/app/ViewModeSwitch';
 import type { WorkspaceViewMode } from './components/app/ViewModeSwitch';
 import type { CanvasNodeData, CanvasConnection, CanvasViewport } from './types/canvas';
 import { generateCanvasPipeline, saveCanvasTopologyToLocalDB, convertAiProjectToCanvas } from './utils/canvasBridge';
+import { splitLayerInList } from './services/timelineSplitService';
 import './App.css';
 
 const SidebarDrawer = lazy(() => import('./components/SidebarDrawer').then((module) => ({
@@ -68,6 +69,7 @@ function App() {
   }, [historyState]);
 
   const selectedLayerIdRef = useRef<string | null>(null);
+  const currentTimeRef = useRef<number>(0);
 
   const [session, setSession] = useState<Session | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
@@ -126,6 +128,10 @@ function App() {
   // 2. Playback state
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
 
   // 3. Tab navigation state
   const [activeTab, setActiveTab] = useState<EditorToolTab>('template');
@@ -305,6 +311,21 @@ function App() {
         } else if (e.key.toLowerCase() === 'y') {
           e.preventDefault();
           redo();
+        } else if (e.key.toLowerCase() === 'b') {
+          e.preventDefault();
+          if (selectedLayerIdRef.current) {
+            const res = splitLayerInList(layersRef.current, selectedLayerIdRef.current, currentTimeRef.current);
+            if (res) {
+              setLayers(res.newLayers);
+              setSelectedLayerId(res.newLayerId);
+              commitInstantHistory(res.newLayers, `分割图层「${res.splitLayer.name}」`);
+              toast.success(`✂️ 已在 ${currentTimeRef.current.toFixed(2)}s 处分割图层！可按 Ctrl+Z 撤销`);
+            } else {
+              toast.warning('当前播放头位置无法分割选中的图层（播放头需在图层中间）');
+            }
+          } else {
+            toast.info('💡 请先选定要分割的图层 (快捷键: Ctrl+B)');
+          }
         }
       } else if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
@@ -398,14 +419,14 @@ function App() {
     toast.success('已添加文案图层');
   };
 
-  const handleSwitchProject = useCallback((projectId: string) => {
+  const handleSwitchProject = (projectId: string) => {
     setActiveProjectId(projectId);
     if (sidebarRef.current) {
       sidebarRef.current.switchProject(projectId);
     }
-  }, []);
+  };
 
-  const handleCreateNewProject = useCallback(() => {
+  const handleCreateNewProject = () => {
     if (sidebarRef.current) {
       sidebarRef.current.createNewProject();
     } else {
@@ -418,9 +439,9 @@ function App() {
       setActiveProjectId(project.id);
       toast.success(`已创建并切换至新项目「${project.name}」！`);
     }
-  }, [projects.length]);
+  };
 
-  const handleStartRenameProject = useCallback(() => {
+  const handleStartRenameProject = () => {
     if (sidebarRef.current) {
       sidebarRef.current.startRenameProject();
     } else {
@@ -430,9 +451,9 @@ function App() {
         setIsEditingProjName(true);
       }
     }
-  }, [activeProjectId, projects]);
+  };
 
-  const handleSaveProjectName = useCallback(() => {
+  const handleSaveProjectName = () => {
     if (sidebarRef.current) {
       sidebarRef.current.saveProjectName();
     } else {
@@ -445,9 +466,9 @@ function App() {
       setIsEditingProjName(false);
       toast.success('项目名称已更新！');
     }
-  }, [activeProjectId, editingProjNameValue]);
+  };
 
-  const handleDeleteProject = useCallback((projectId: string) => {
+  const handleDeleteProject = (projectId: string) => {
     if (projects.length <= 1) {
       toast.warning('至少需要保留一个项目！');
       return;
@@ -466,7 +487,7 @@ function App() {
         return undefined;
       }).catch(error => console.warn('Failed to delete project from Supabase:', error));
     }
-  }, [projects]);
+  };
 
   if (loadingSession) {
     return <AppLoadingScreen />;
@@ -659,6 +680,7 @@ function App() {
           canRedo={historyState.index < historyState.stack.length - 1}
           undoCount={historyState.index}
           redoCount={historyState.stack.length - 1 - historyState.index}
+          commitInstantHistory={commitInstantHistory}
         />
       )}
 

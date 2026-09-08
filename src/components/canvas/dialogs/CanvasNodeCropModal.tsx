@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { CanvasNodeData } from '../../../types/canvas';
 import { toast } from '../../toastStore';
+import { getCanvasSafeImageUrl } from '../../../utils/aiGateway';
 
 interface CanvasNodeCropModalProps {
   isOpen: boolean;
@@ -31,6 +32,8 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
   const dragStartRef = useRef<{ x: number; y: number; startOffX: number; startOffY: number }>({ x: 0, y: 0, startOffX: 0, startOffY: 0 });
 
   const imageSrc = node?.metadata.imageSrc || '';
+  const editableImageSrc = getCanvasSafeImageUrl(imageSrc);
+  const effectiveZoom = Math.max(1, zoom);
 
   if (node && node.id !== activeNodeId) {
     setActiveNodeId(node.id);
@@ -124,7 +127,7 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
       ctx.fillRect(0, 0, targetW, targetH);
 
       // Calculate how image coordinates map to target canvas
-      const scale = zoom * Math.max(targetW / naturalW, targetH / naturalH);
+      const scale = effectiveZoom * Math.max(targetW / naturalW, targetH / naturalH);
       const drawW = naturalW * scale;
       const drawH = naturalH * scale;
 
@@ -175,6 +178,7 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
           width: '900px',
           maxWidth: '96vw',
           maxHeight: '90vh',
+          boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -278,17 +282,18 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
               {imageSrc && (
                 <img
                   ref={imageRef}
-                  src={imageSrc}
+                  src={editableImageSrc}
                   alt="Source"
                   crossOrigin="anonymous"
                   style={{
                     position: 'absolute',
                     top: '50%',
                     left: '50%',
-                    transform: `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px) scale(${zoom})`,
+                    transform: `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px) scale(${effectiveZoom})`,
                     transformOrigin: 'center center',
-                    maxHeight: 'none',
-                    maxWidth: 'none',
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
                     pointerEvents: 'none'
                   }}
                 />
@@ -300,6 +305,8 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
           <div
             style={{
               width: '320px',
+              boxSizing: 'border-box',
+              flexShrink: 0,
               borderLeft: '1px solid var(--border-color, rgba(255, 255, 255, 0.08))',
               background: 'rgba(255, 255, 255, 0.02)',
               padding: '18px',
@@ -314,7 +321,7 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
               <label style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px', display: 'block' }}>
                 📐 画幅比例预设
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
                 <button
                   className={`btn-secondary ${selectedRatio === '3:4' ? 'primary' : ''}`}
                   onClick={() => setSelectedRatio('3:4')}
@@ -326,11 +333,14 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
                     border: '1px solid var(--border-color, rgba(255,255,255,0.15))',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    textAlign: 'left'
+                    textAlign: 'left',
+                    display: 'block',
+                    minWidth: 0,
+                    overflow: 'hidden'
                   }}
                 >
-                  <div style={{ fontWeight: '600' }}>3:4 主图</div>
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>小红书 / 电商</div>
+                  <div style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>3:4 主图</div>
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>小红书 / 电商</div>
                 </button>
 
                 <button
@@ -344,11 +354,14 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
                     border: '1px solid var(--border-color, rgba(255,255,255,0.15))',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    textAlign: 'left'
+                    textAlign: 'left',
+                    display: 'block',
+                    minWidth: 0,
+                    overflow: 'hidden'
                   }}
                 >
-                  <div style={{ fontWeight: '600' }}>9:16 竖屏</div>
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>抖音 / TikTok</div>
+                  <div style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>9:16 竖屏</div>
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>抖音 / TikTok</div>
                 </button>
 
                 <button
@@ -362,11 +375,14 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
                     border: '1px solid var(--border-color, rgba(255,255,255,0.15))',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    textAlign: 'left'
+                    textAlign: 'left',
+                    display: 'block',
+                    minWidth: 0,
+                    overflow: 'hidden'
                   }}
                 >
-                  <div style={{ fontWeight: '600' }}>1:1 方形</div>
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>商品橱窗 / Instagram</div>
+                  <div style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>1:1 方形</div>
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>商品橱窗 / Instagram</div>
                 </button>
 
                 <button
@@ -380,11 +396,14 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
                     border: '1px solid var(--border-color, rgba(255,255,255,0.15))',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    textAlign: 'left'
+                    textAlign: 'left',
+                    display: 'block',
+                    minWidth: 0,
+                    overflow: 'hidden'
                   }}
                 >
-                  <div style={{ fontWeight: '600' }}>16:9 横屏</div>
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>影视 / 宽屏广告</div>
+                  <div style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>16:9 横屏</div>
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>影视 / 宽屏广告</div>
                 </button>
               </div>
             </div>
@@ -395,14 +414,14 @@ export const CanvasNodeCropModal: React.FC<CanvasNodeCropModalProps> = ({
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-secondary, #9ca3af)' }}>缩放构图 (Zoom)</span>
-                <span style={{ fontSize: '12px', fontWeight: '600' }}>{Math.round(zoom * 100)}%</span>
+                <span style={{ fontSize: '12px', fontWeight: '600' }}>{Math.round(effectiveZoom * 100)}%</span>
               </div>
               <input
                 type="range"
-                min="0.5"
+                min="1"
                 max="3.0"
                 step="0.05"
-                value={zoom}
+                value={effectiveZoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
                 style={{ width: '100%', cursor: 'pointer' }}
               />

@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { ExportProgressOverlay } from './video-canvas/ExportProgressOverlay';
+import { ExportSettingsModal } from './video-canvas/ExportSettingsModal';
 import { PlaybackControls } from './video-canvas/PlaybackControls';
 import { FullscreenTheater } from './video-canvas/FullscreenTheater';
 import { CanvasStage } from './video-canvas/CanvasStage';
@@ -59,7 +60,7 @@ interface VideoCanvasProps {
   exporting: boolean;
   setExporting: (exporting: boolean) => void;
   exportProgress: number;
-  setExportProgress: (progress: number) => void;
+  setExportProgress: React.Dispatch<React.SetStateAction<number>> | ((progress: number) => void);
   exportLogs: string[];
   setExportLogs: React.Dispatch<React.SetStateAction<string[]>>;
   isFullscreen?: boolean;
@@ -96,6 +97,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
 
   const [exportFps, setExportFps] = useState<number | null>(null);
   const [exportEngine, setExportEngine] = useState<'webcodecs' | 'mediarecorder'>('webcodecs');
+  const [isExportSettingsOpen, setIsExportSettingsOpen] = useState(false);
 
   const [canvasBgMode, setCanvasBgMode] = useState<'showroom' | 'dark' | 'checkerboard'>('showroom');
   const [isLooping, setIsLooping] = useState(true);
@@ -425,10 +427,21 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   const { canvasCursor, handleMouseDown, handleMouseMoveCanvas } = useCanvasLayerInteraction({
     canvasRef, layers, setLayers, selectedLayerId, setSelectedLayerId, width, height, currentTime, getMediaLayerSize
   });
-  const { handleExport } = useVideoExport({
+  const {
+    handleExport,
+    handleCancel,
+    handleSaveCloud,
+    currentFrame,
+    totalFrames,
+    estimatedSecondsRemaining,
+    estimatedSizeMb,
+    previewSnapshotUrl,
+    exportResult
+  } = useVideoExport({
     canvasRef, audioCtxRef, audioDestinationRef, videosCacheRef, isOfflineExportingRef, layers, ratio,
     width, height, exporting, drawFrame, setCurrentTime, setIsPlaying, setExporting,
-    setExportProgress, setExportLogs, setExportFps, setExportEngine
+    setExportProgress: (p: number) => setExportProgress(p),
+    setExportLogs, setExportFps, setExportEngine
   });
 
   return (
@@ -480,10 +493,28 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         engine={exportEngine}
         progress={exportProgress}
         logs={exportLogs}
+        currentFrame={currentFrame}
+        totalFrames={totalFrames}
+        estimatedSecondsRemaining={estimatedSecondsRemaining}
+        estimatedSizeMb={estimatedSizeMb}
+        previewSnapshotUrl={previewSnapshotUrl}
+        exportResult={exportResult}
+        onCancel={handleCancel}
         onClose={() => setExporting(false)}
+        onSaveCloud={handleSaveCloud}
       />
 
-      <ExportTrigger onExport={handleExport} />
+      <ExportSettingsModal
+        isOpen={isExportSettingsOpen}
+        onClose={() => setIsExportSettingsOpen(false)}
+        onConfirmExport={(cfg) => handleExport(cfg)}
+        ratio={ratio}
+        totalDuration={totalDuration}
+        nativeWidth={width}
+        nativeHeight={height}
+      />
+
+      <ExportTrigger onExport={() => setIsExportSettingsOpen(true)} />
     </div>
   );
 };

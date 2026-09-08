@@ -2,19 +2,24 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { CanvasNodeData } from '../../../types/canvas';
 import { toast } from '../../toastStore';
+import { generateInpaintImage, getCanvasSafeImageUrl } from '../../../utils/aiGateway';
 
 interface CanvasNodeMaskEditModalProps {
   isOpen: boolean;
   node: CanvasNodeData | null;
   onClose: () => void;
-  onApply: (newImageSrc: string, createDerivedNode: boolean, prompt?: string) => void;
+  onStart: (sourceNode: CanvasNodeData, createDerivedNode: boolean, prompt: string) => string | null;
+  onApply: (newImageSrc: string, pendingNodeId: string, sourceNode: CanvasNodeData, createDerivedNode: boolean, prompt: string) => void;
+  onError: (pendingNodeId: string, sourceNode: CanvasNodeData, error: string) => void;
 }
 
 export const CanvasNodeMaskEditModal: React.FC<CanvasNodeMaskEditModalProps> = ({
   isOpen,
   node,
   onClose,
-  onApply
+  onStart,
+  onApply,
+  onError
 }) => {
   const [brushSize, setBrushSize] = useState<number>(25);
   const [brushMode, setBrushMode] = useState<'paint' | 'erase'>('paint');
@@ -27,17 +32,18 @@ export const CanvasNodeMaskEditModal: React.FC<CanvasNodeMaskEditModalProps> = (
   const isDrawingRef = useRef<boolean>(false);
 
   const imageSrc = node?.metadata.imageSrc || '';
+  const editableImageSrc = getCanvasSafeImageUrl(imageSrc);
 
   // Initialize Canvas when image loads or modal opens
   const initCanvas = useCallback(() => {
-    if (!canvasRef.current || !imageSrc) return;
+    if (!canvasRef.current || !editableImageSrc) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = imageSrc;
+    img.src = editableImageSrc;
     img.onload = () => {
       imageRef.current = img;
       // Set canvas dimension matching natural image ratio capped at preview area
@@ -52,7 +58,7 @@ export const CanvasNodeMaskEditModal: React.FC<CanvasNodeMaskEditModalProps> = (
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
-  }, [imageSrc]);
+  }, [editableImageSrc]);
 
   useEffect(() => {
     if (isOpen) {
@@ -67,8 +73,8 @@ export const CanvasNodeMaskEditModal: React.FC<CanvasNodeMaskEditModalProps> = (
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height)
     };
   };
 
@@ -104,6 +110,16 @@ export const CanvasNodeMaskEditModal: React.FC<CanvasNodeMaskEditModalProps> = (
     if (ctx) {
       ctx.beginPath();
       ctx.moveTo(x, y);
+      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+      ctx.fillStyle = brushMode === 'erase' ? 'rgba(0,0,0,1)' : 'rgba(255, 45, 120, 0.65)';
+      if (brushMode === 'erase') {
+        ctx.globalCompositeOperation = 'destination-out';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
       drawStroke(x, y);
     }
   };
@@ -132,44 +148,66 @@ export const CanvasNodeMaskEditModal: React.FC<CanvasNodeMaskEditModalProps> = (
   const handleGenerateInpaint = async (createDerived: boolean) => {
     if (!canvasRef.current || !imageRef.current) return;
 
-    setIsProcessing(true);
-    try {
-      // Composite the mask with an AI inpainting styling filter
-      const baseCanvas = document.createElement('canvas');
-      const maskCanvas = canvasRef.current;
-      baseCanvas.width = imageRef.current.width;
-      baseCanvas.height = imageRef.current.height;
-      const bCtx = baseCanvas.getContext('2d');
-      if (!bCtx) throw new Error('Failed to get canvas context');
-
-      // 1. Draw source image
-      bCtx.drawImage(imageRef.current, 0, 0);
-
-      // 2. Extract mask bounds to simulate inpaint replacement or blend
-      const tempMask = document.createElement('canvas');
-      tempMask.width = baseCanvas.width;
-      tempMask.height = baseCanvas.height;
-      const mCtx = tempMask.getContext('2d');
-      if (mCtx) {
-        mCtx.drawImage(maskCanvas, 0, 0, tempMask.width, tempMask.height);
-
-        // Apply visual modification in masked area
-        bCtx.save();
-        // Blend in a subtle aesthetic tone in the masked region
-        bCtx.globalCompositeOperation = 'source-atop';
-        bCtx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-        bCtx.fillRect(0, 0, baseCanvas.width, baseCanvas.height);
-        bCtx.restore();
+    const maskPreviewContext = canvasRef.current.getContext('2d');
+    if (!maskPreviewContext) return;
+    const maskPixels = maskPreviewContext.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height).data;
+    let hasMask = false;
+    for (let i = 3; i < maskPixels.length; i += 4) {
+      if (maskPixels[i] > 0) {
+        hasMask = true;
+        break;
       }
+    }
+    if (!hasMask) {
+      toast.info('请先在图片上涂抹需要重绘的区域');
+      return;
+    }
+    if (!inpaintPrompt.trim()) {
+      toast.info('请输入重绘目标提示词');
+      return;
+    }
 
-      // Convert to high-resolution JPEG/PNG data URL
-      const resultDataUrl = baseCanvas.toDataURL('image/jpeg', 0.95);
+    setIsProcessing(true);
+    const sourceNode = node;
+    const prompt = inpaintPrompt.trim();
+    let pendingNodeId: string | null = null;
+    try {
+      const maskCanvas = canvasRef.current;
+      const outputMask = document.createElement('canvas');
+      outputMask.width = imageRef.current.width;
+      outputMask.height = imageRef.current.height;
+      const outputMaskContext = outputMask.getContext('2d');
+      if (!outputMaskContext) throw new Error('Failed to create mask image');
+      outputMaskContext.drawImage(maskCanvas, 0, 0, outputMask.width, outputMask.height);
+      const scaledMask = outputMaskContext.getImageData(0, 0, outputMask.width, outputMask.height);
+      for (let i = 0; i < scaledMask.data.length; i += 4) {
+        const selected = scaledMask.data[i + 3] > 0;
+        scaledMask.data[i] = selected ? 255 : 0;
+        scaledMask.data[i + 1] = selected ? 255 : 0;
+        scaledMask.data[i + 2] = selected ? 255 : 0;
+        scaledMask.data[i + 3] = 255;
+      }
+      outputMaskContext.putImageData(scaledMask, 0, 0);
+
+      pendingNodeId = onStart(sourceNode, createDerived, prompt);
+      if (!pendingNodeId) throw new Error('无法创建重绘任务节点');
+      onClose();
+      toast.info('Google 重绘任务已提交，可在画布节点查看生成进度');
+
+      const resultDataUrl = await generateInpaintImage({
+        imageUrl: imageSrc,
+        maskUrl: outputMask.toDataURL('image/png'),
+        prompt,
+        strength: denoiseStrength,
+        aspectRatio: node.metadata.aspectRatio
+      });
 
       toast.success(createDerived ? '已成功局部重绘，并生成衍生节点！' : '已成功局部重绘并覆盖当前节点！');
-      onApply(resultDataUrl, createDerived, inpaintPrompt);
-      onClose();
+      onApply(resultDataUrl, pendingNodeId, sourceNode, createDerived, prompt);
     } catch (err) {
-      toast.error(`局部重绘失败: ${err instanceof Error ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      if (pendingNodeId) onError(pendingNodeId, sourceNode, message);
+      toast.error(`局部重绘失败: ${message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -263,7 +301,7 @@ export const CanvasNodeMaskEditModal: React.FC<CanvasNodeMaskEditModalProps> = (
             <div style={{ position: 'relative', display: 'inline-block', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
               {imageSrc && (
                 <img
-                  src={imageSrc}
+                  src={editableImageSrc}
                   alt="Base"
                   style={{
                     display: 'block',

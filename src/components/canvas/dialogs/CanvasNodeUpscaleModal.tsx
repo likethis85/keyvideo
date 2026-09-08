@@ -2,19 +2,24 @@ import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { CanvasNodeData } from '../../../types/canvas';
 import { toast } from '../../toastStore';
+import { generateUpscaleImage, getCanvasSafeImageUrl } from '../../../utils/aiGateway';
 
 interface CanvasNodeUpscaleModalProps {
   isOpen: boolean;
   node: CanvasNodeData | null;
   onClose: () => void;
-  onApply: (newImageSrc: string, createDerivedNode: boolean, upscaleFactor: '2x' | '4x') => void;
+  onStart: (sourceNode: CanvasNodeData, createDerivedNode: boolean, upscaleFactor: '2x' | '4x') => string | null;
+  onApply: (newImageSrc: string, pendingNodeId: string, sourceNode: CanvasNodeData, createDerivedNode: boolean, upscaleFactor: '2x' | '4x') => void;
+  onError: (pendingNodeId: string, sourceNode: CanvasNodeData, error: string) => void;
 }
 
 export const CanvasNodeUpscaleModal: React.FC<CanvasNodeUpscaleModalProps> = ({
   isOpen,
   node,
   onClose,
-  onApply
+  onStart,
+  onApply,
+  onError
 }) => {
   const [scaleFactor, setScaleFactor] = useState<'2x' | '4x'>('2x');
   const [mode, setMode] = useState<'fashion' | 'portrait' | 'general'>('fashion');
@@ -24,59 +29,36 @@ export const CanvasNodeUpscaleModal: React.FC<CanvasNodeUpscaleModalProps> = ({
 
   const imageRef = useRef<HTMLImageElement | null>(null);
   const imageSrc = node?.metadata.imageSrc || '';
+  const editableImageSrc = getCanvasSafeImageUrl(imageSrc);
 
   if (!isOpen || !node) return null;
 
   const handleExecuteUpscale = async (createDerived: boolean) => {
     if (!imageRef.current) return;
     setIsProcessing(true);
+    const sourceNode = node;
+    let pendingNodeId: string | null = null;
 
     try {
-      const img = imageRef.current;
-      const naturalW = img.naturalWidth || 800;
-      const naturalH = img.naturalHeight || 800;
-
-      const multiplier = scaleFactor === '4x' ? 4 : 2;
-      const targetW = naturalW * multiplier;
-      const targetH = naturalH * multiplier;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = targetW;
-      canvas.height = targetH;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Cannot get canvas context');
-
-      // Enable high-quality smoothing
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-
-      // Draw scaled image
-      ctx.drawImage(img, 0, 0, targetW, targetH);
-
-      // Apply sharpening convolution filter if sharpen > 0
-      if (sharpen > 0) {
-        const imgData = ctx.getImageData(0, 0, targetW, targetH);
-        const data = imgData.data;
-        const factor = (sharpen / 100) * 0.4;
-
-        // Mild high-frequency boost
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          data[i] = Math.min(255, Math.max(0, r + (r - 128) * factor));
-          data[i + 1] = Math.min(255, Math.max(0, g + (g - 128) * factor));
-          data[i + 2] = Math.min(255, Math.max(0, b + (b - 128) * factor));
-        }
-        ctx.putImageData(imgData, 0, 0);
-      }
-
-      const upscaledDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      toast.success(createDerived ? `已成功生成 ${scaleFactor} 超分辨率增强节点！` : `已完成 ${scaleFactor} 增强并覆盖当前节点！`);
-      onApply(upscaledDataUrl, createDerived, scaleFactor);
+      pendingNodeId = onStart(sourceNode, createDerived, scaleFactor);
+      if (!pendingNodeId) throw new Error('无法创建高清增强任务节点');
       onClose();
+      toast.info(`Google ${scaleFactor === '4x' ? '4K' : '2K'} 高清增强任务已提交，可在画布节点查看进度`);
+
+      const upscaledDataUrl = await generateUpscaleImage({
+        imageUrl: imageSrc,
+        scaleFactor,
+        mode,
+        denoise,
+        sharpen,
+        aspectRatio: node.metadata.aspectRatio
+      });
+      toast.success(createDerived ? `已成功生成 ${scaleFactor} 超分辨率增强节点！` : `已完成 ${scaleFactor} 增强并覆盖当前节点！`);
+      onApply(upscaledDataUrl, pendingNodeId, sourceNode, createDerived, scaleFactor);
     } catch (err) {
-      toast.error(`画质增强失败: ${err instanceof Error ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      if (pendingNodeId) onError(pendingNodeId, sourceNode, message);
+      toast.error(`画质增强失败: ${message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -171,7 +153,7 @@ export const CanvasNodeUpscaleModal: React.FC<CanvasNodeUpscaleModalProps> = ({
               <div style={{ position: 'relative', maxHeight: '460px', maxWidth: '460px', boxShadow: '0 8px 30px rgba(0,0,0,0.6)' }}>
                 <img
                   ref={imageRef}
-                  src={imageSrc}
+                  src={editableImageSrc}
                   alt="Original"
                   crossOrigin="anonymous"
                   style={{

@@ -3,11 +3,38 @@ import { getCustomApiConfig, executeCustomApi } from './customApiRunner';
 
 export const getBackendUrl = (): string => {
   const localUrl = localStorage.getItem('KEYVIDEO_BACKEND_URL');
+  const isWebDeployment = typeof window !== 'undefined'
+    && window.location
+    && (window.location.pathname.startsWith('/videos') || window.location.hostname === 'www.marius.com.cn' || window.location.hostname === 'marius.com.cn');
+
   if (localUrl) {
+    if (isWebDeployment && (localUrl.includes('localhost') || localUrl.includes('127.0.0.1'))) {
+      return `${window.location.origin}/videos`;
+    }
     return localUrl.replace('http://localhost:', 'http://127.0.0.1:');
   }
+
+  if (isWebDeployment) {
+    return `${window.location.origin}/videos`;
+  }
+
   const envUrl = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:3001';
   return envUrl.replace('http://localhost:', 'http://127.0.0.1:');
+};
+
+export const getCanvasSafeImageUrl = (imageUrl: string): string => {
+  if (!imageUrl || imageUrl.startsWith('data:') || imageUrl.startsWith('blob:') || imageUrl.startsWith('/')) {
+    return imageUrl;
+  }
+  try {
+    const parsed = new URL(imageUrl);
+    if (parsed.hostname === 'media.sandbase.ai') {
+      return `${getBackendUrl()}/api/ai/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+    }
+  } catch {
+    return imageUrl;
+  }
+  return imageUrl;
 };
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -174,6 +201,51 @@ export const generateMannequinImage = async (params: {
   });
 };
 
+export const generateInpaintImage = async (params: {
+  imageUrl: string;
+  maskUrl: string;
+  prompt: string;
+  strength: number;
+  aspectRatio?: string;
+}): Promise<string> => {
+  return dedupeGenerationRequest('inpaint', params, async (requestKey) => {
+    const data = await requestJson<{ url?: string; taskId?: string }>(`${getBackendUrl()}/api/ai/inpaint?async=true`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    }, {
+      fallbackError: 'Google image inpainting failed',
+      idempotencyKey: requestKey
+    });
+    if (data.url) return data.url;
+    if (data.taskId) return pollBackendTask(data.taskId);
+    throw new Error('Unexpected response from inpainting generation');
+  });
+};
+
+export const generateUpscaleImage = async (params: {
+  imageUrl: string;
+  scaleFactor: '2x' | '4x';
+  mode: 'fashion' | 'portrait' | 'general';
+  denoise: number;
+  sharpen: number;
+  aspectRatio?: string;
+}): Promise<string> => {
+  return dedupeGenerationRequest('upscale', params, async (requestKey) => {
+    const data = await requestJson<{ url?: string; taskId?: string }>(`${getBackendUrl()}/api/ai/upscale?async=true`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    }, {
+      fallbackError: 'Google image upscale failed',
+      idempotencyKey: requestKey
+    });
+    if (data.url) return data.url;
+    if (data.taskId) return pollBackendTask(data.taskId);
+    throw new Error('Unexpected response from upscale generation');
+  });
+};
+
 export const generateTryOnImage = async (params: {
   clothingUrl: string | string[];
   clothingBottomUrl?: string;
@@ -265,11 +337,16 @@ export const generatePromptsFromSkill = async (params: {
   storyboardMode?: string;
   useSlowMotion?: boolean;
   focus?: string;
+  apparelStyle?: string;
+  cameraStyle?: string;
+  lightingMood?: string;
+  singleShotIndex?: number;
+  currentPrompt?: string;
   gatewayUrl?: string;
   gatewayToken?: string;
 }): Promise<string> => {
   return dedupeGenerationRequest('prompts-skill', params, async (requestKey) => {
-    const data = await requestJson<{ prompts: string }>(`${getBackendUrl()}/api/ai/prompts-skill`, {
+    const data = await requestJson<{ prompts: string; singleShotIndex?: number }>(`${getBackendUrl()}/api/ai/prompts-skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -279,6 +356,25 @@ export const generatePromptsFromSkill = async (params: {
       idempotencyKey: requestKey
     });
     return data.prompts;
+  });
+};
+
+export const polishSingleShotPrompt = async (params: {
+  modelOutfitImgUrl: string;
+  singleShotIndex: number;
+  currentPrompt: string;
+  apparelStyle?: string;
+  cameraStyle?: string;
+  lightingMood?: string;
+  modelScene?: string;
+  focus?: string;
+  useSlowMotion?: boolean;
+}): Promise<string> => {
+  return generatePromptsFromSkill({
+    ...params,
+    videoDuration: '15s',
+    singleShotIndex: params.singleShotIndex,
+    currentPrompt: params.currentPrompt
   });
 };
 
@@ -313,7 +409,7 @@ export const pollVideoTask = async (
   _gatewayUrl: string,
   _gatewayToken: string,
   taskId: string
-): Promise<{ status: string; error?: string }> => {
+): Promise<{ status: string; error?: string; resultUrl?: string }> => {
   return requestJson(`${getBackendUrl()}/api/video/poll/${encodeURIComponent(taskId)}`, {
     method: 'GET'
   }, {

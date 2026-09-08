@@ -17,6 +17,13 @@ import { CanvasNodeUpscaleModal } from './dialogs/CanvasNodeUpscaleModal';
 import { CanvasSpawnNodeMenu } from './dialogs/CanvasSpawnNodeMenu';
 import { convertAiProjectToCanvas, injectCanvasAssetToTimeline } from '../../utils/canvasBridge';
 import { executeCustomApi, getCustomApiConfig } from '../../utils/customApiRunner';
+import {
+  createMultiModelComparisonPipeline,
+  createBatchFourViewPipeline,
+  executePipelineDAG,
+  batchSyncCanvasToTimeline
+} from '../../utils/canvasPipelineFactory';
+import { localDB } from '../../utils/db';
 import { toast } from '../toastStore';
 import './canvas.css';
 
@@ -88,6 +95,12 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   } | null>(null);
 
   const [showMinimap, setShowMinimap] = useState(true);
+
+  // Selected Connection State
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+
+  // Batch Pipeline Execution State
+  const [isExecutingPipeline, setIsExecutingPipeline] = useState(false);
 
   // Wire Release Contextual Spawn Menu State
   const [spawnMenuState, setSpawnMenuState] = useState<{
@@ -263,6 +276,7 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         return;
       }
       setSelectedNodeIds([]);
+      setSelectedConnectionId(null);
       const worldPos = screenToWorld(e.clientX, e.clientY);
       setSelectionBox({
         startX: worldPos.x,
@@ -562,8 +576,103 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
     );
     if (newNode) {
       addConnection(sourceNode.id, newNode.id);
+      setSelectedNodeIds([newNode.id]);
+      setViewport(prev => ({
+        ...prev,
+        x: containerDimensions.width / 2 - (newNode.position.x + 150) * prev.scale,
+        y: containerDimensions.height / 2 - (newNode.position.y + 220) * prev.scale
+      }));
     }
     return newNode;
+  };
+
+  // Multi-Model Comparison Pipeline
+  const handleSpawnMultiModel = (sourceNode?: CanvasNodeData) => {
+    const target = sourceNode ||
+      nodes.find(n => selectedNodeIds.includes(n.id) && (n.type === 'clothing' || n.type === 'image')) ||
+      nodes.find(n => n.type === 'clothing') ||
+      nodes.find(n => n.type === 'image');
+
+    if (!target) {
+      toast.warning('请先在画布中添加或选中一个服装或图片节点');
+      return;
+    }
+
+    const { nodes: newNodes, connections: newConns } = createMultiModelComparisonPipeline(target);
+    newNodes.forEach(n => addNode(n.type, n.position, { title: n.title, metadata: n.metadata }));
+    newConns.forEach(c => addConnection(c.fromNodeId, c.toNodeId, c.fromHandle, c.toHandle, c.label));
+    setTimeout(() => {
+      autoLayout();
+    }, 50);
+    toast.success(`👥 已为「${target.title}」展开 3 组不同风格的模特对比管线！`);
+  };
+
+  // Batch 4-View Generation Pipeline
+  const handleSpawnBatchViews = (sourceNode: CanvasNodeData) => {
+    const { nodes: newNodes, connections: newConns } = createBatchFourViewPipeline(sourceNode);
+    newNodes.forEach(n => addNode(n.type, n.position, { title: n.title, metadata: n.metadata }));
+    newConns.forEach(c => addConnection(c.fromNodeId, c.toNodeId, c.fromHandle, c.toHandle, c.label));
+    setTimeout(() => {
+      autoLayout();
+    }, 50);
+    toast.success(`✨ 已为「${sourceNode.title}」生成正面、侧身、特写、背面 4 面图管线！`);
+  };
+
+  // Batch Pipeline DAG Execution
+  const handleExecutePipeline = async () => {
+    if (isExecutingPipeline) return;
+    setIsExecutingPipeline(true);
+    toast.info('🚀 正在启动画布全管线 DAG 拓扑流水线执行...');
+    try {
+      const result = await executePipelineDAG(nodes, connections, updateNode);
+      toast.success(`🎉 管线执行完成！已批量渲染 ${result.executedCount} 个生成节点`);
+    } catch (err) {
+      toast.error(`管线执行异常: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsExecutingPipeline(false);
+    }
+  };
+
+  // Batch Sync Canvas to Timeline
+  const handleBatchSyncTimeline = () => {
+    const count = batchSyncCanvasToTimeline({
+      nodes,
+      currentTime,
+      layers,
+      setLayers,
+      commitHistory
+    });
+    if (count > 0) {
+      toast.success(`🎬 成功将 ${count} 个生成镜头批量导入剪辑时间轴！`);
+    } else {
+      toast.info('画布中暂无可导入的成图或视频节点（需先生成或上传成图）');
+    }
+  };
+
+  // Adopt winning model as master model
+  const handleAdoptAsMaster = (node: CanvasNodeData) => {
+    if (!node.metadata.imageSrc) {
+      toast.warning('该节点暂无有效成图，无法设为主模特');
+      return;
+    }
+    if (activeProject) {
+      const updatedProject = {
+        ...activeProject,
+        modelOutfitImgUrl: node.metadata.imageSrc,
+        ...(node.metadata.modelGender ? { modelGender: node.metadata.modelGender as 'female' | 'male' } : {}),
+        ...(node.metadata.modelRegion ? { modelRegion: node.metadata.modelRegion as 'east-asian' | 'western' } : {})
+      };
+      localDB.set('ai_current_project', updatedProject);
+    }
+    updateNode(node.id, {
+      title: `👑 胜出主模 · ${node.title.replace('🖼️ 候选模特', '').trim()}`,
+      metadata: {
+        ...node.metadata,
+        isComparisonBranch: false,
+        tags: ['👑 主体锚点', ...(node.metadata.tags || []).filter(t => t !== '待评选')]
+      }
+    });
+    toast.success(`👑 已采纳该模特为项目穿搭主模特，并已联动向导与全局工程！`);
   };
 
   // Spawn next connected node chosen from wire release context menu
@@ -617,7 +726,12 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedNodeIds.length > 0) {
+        if (selectedConnectionId) {
+          e.preventDefault();
+          removeConnection(selectedConnectionId);
+          setSelectedConnectionId(null);
+          toast.info('已断开选中连线');
+        } else if (selectedNodeIds.length > 0) {
           e.preventDefault();
           deleteSelectedNodes();
           toast.info('已删除所选节点');
@@ -649,6 +763,7 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         setViewport({ x: 120, y: 80, scale: 1 });
       } else if (e.key === 'Escape') {
         setSelectedNodeIds([]);
+        setSelectedConnectionId(null);
         setConnectingState(null);
         setSpawnMenuState(null);
       }
@@ -666,7 +781,7 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [selectedNodeIds, deleteSelectedNodes, undo, redo, setSelectedNodeIds, setViewport, zoomAtPoint]);
+  }, [selectedConnectionId, selectedNodeIds, deleteSelectedNodes, removeConnection, undo, redo, setSelectedNodeIds, setViewport, zoomAtPoint]);
 
   return (
     <div
@@ -707,6 +822,8 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
                 }
               : null)
           }
+          selectedConnectionId={selectedConnectionId}
+          onSelectConnection={setSelectedConnectionId}
           onRemoveConnection={removeConnection}
         />
 
@@ -754,7 +871,6 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         {nodes.map(node => {
           const isSelected = selectedNodeIds.includes(node.id);
           const nodeCommonProps = {
-            key: node.id,
             node,
             isSelected,
             onSelect: (e: React.MouseEvent) => {
@@ -781,7 +897,13 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
               className="canvas-node-wrapper"
               onMouseDown={(e) => handleNodeDragStart(e, node.id)}
             >
-              {node.type === 'clothing' && <ClothingNode {...nodeCommonProps} />}
+              {node.type === 'clothing' && (
+                <ClothingNode
+                  {...nodeCommonProps}
+                  onSpawnMultiModel={() => handleSpawnMultiModel(node)}
+                  onSpawnBatchViews={() => handleSpawnBatchViews(node)}
+                />
+              )}
               {node.type === 'prompt' && <PromptNode {...nodeCommonProps} />}
               {node.type === 'image' && (
                 <ImageNode
@@ -789,6 +911,8 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
                   onOpenMaskEdit={(n) => setMaskModalNode(n)}
                   onOpenCrop={(n) => setCropModalNode(n)}
                   onOpenUpscale={(n) => setUpscaleModalNode(n)}
+                  onAdoptAsMaster={handleAdoptAsMaster}
+                  onSpawnBatchViews={handleSpawnBatchViews}
                 />
               )}
               {node.type === 'video' && <VideoNode {...nodeCommonProps} />}
@@ -829,6 +953,10 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
             toast.success(`已在画布中添加「${newNode.title}」节点`);
           }
         }}
+        onSpawnMultiModel={() => handleSpawnMultiModel()}
+        onExecutePipeline={handleExecutePipeline}
+        isExecutingPipeline={isExecutingPipeline}
+        onBatchSyncTimeline={handleBatchSyncTimeline}
         onImportFromAiProject={activeProject ? handleImportFromAiProject : undefined}
         onAutoLayout={handleAutoLayout}
         onZoomIn={() => {
@@ -870,15 +998,36 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         isOpen={!!maskModalNode}
         node={maskModalNode}
         onClose={() => setMaskModalNode(null)}
-        onApply={(newImageSrc, createDerived, prompt) => {
-          if (!maskModalNode) return;
+        onStart={(sourceNode, createDerived, prompt) => {
           if (createDerived) {
-            handleCreateDerivedNode(maskModalNode, newImageSrc, '局部重绘', { inpaintPrompt: prompt });
-          } else {
-            updateNode(maskModalNode.id, {
-              metadata: { ...maskModalNode.metadata, imageSrc: newImageSrc, inpaintPrompt: prompt }
-            });
+            const pendingNode = handleCreateDerivedNode(
+              sourceNode,
+              sourceNode.metadata.imageSrc || '',
+              '局部重绘 · 生成中',
+              { inpaintPrompt: prompt }
+            );
+            if (!pendingNode) return null;
+            updateNode(pendingNode.id, { status: 'loading', errorMessage: undefined });
+            return pendingNode.id;
           }
+          updateNode(sourceNode.id, { status: 'loading', errorMessage: undefined });
+          setSelectedNodeIds([sourceNode.id]);
+          return sourceNode.id;
+        }}
+        onApply={(newImageSrc, pendingNodeId, sourceNode, createDerived, prompt) => {
+          updateNode(pendingNodeId, {
+            title: createDerived ? `${sourceNode.title} (局部重绘)` : sourceNode.title,
+            status: 'success',
+            errorMessage: undefined,
+            metadata: { ...sourceNode.metadata, imageSrc: newImageSrc, inpaintPrompt: prompt }
+          });
+        }}
+        onError={(pendingNodeId, sourceNode, error) => {
+          updateNode(pendingNodeId, {
+            status: 'error',
+            errorMessage: error,
+            metadata: { ...sourceNode.metadata, inpaintPrompt: sourceNode.metadata.inpaintPrompt }
+          });
         }}
       />
 
@@ -902,15 +1051,40 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         isOpen={!!upscaleModalNode}
         node={upscaleModalNode}
         onClose={() => setUpscaleModalNode(null)}
-        onApply={(newImageSrc, createDerived, factor) => {
-          if (!upscaleModalNode) return;
+        onStart={(sourceNode, createDerived, factor) => {
           if (createDerived) {
-            handleCreateDerivedNode(upscaleModalNode, newImageSrc, `超清 ${factor}`, { upscale: factor });
-          } else {
-            updateNode(upscaleModalNode.id, {
-              metadata: { ...upscaleModalNode.metadata, imageSrc: newImageSrc, upscale: factor }
-            });
+            const pendingNode = handleCreateDerivedNode(
+              sourceNode,
+              sourceNode.metadata.imageSrc || '',
+              `超清 ${factor} · 生成中`,
+              { upscale: factor, generationOperation: 'upscale' }
+            );
+            if (!pendingNode) return null;
+            updateNode(pendingNode.id, { status: 'loading', errorMessage: undefined });
+            return pendingNode.id;
           }
+          updateNode(sourceNode.id, {
+            status: 'loading',
+            errorMessage: undefined,
+            metadata: { ...sourceNode.metadata, generationOperation: 'upscale' }
+          });
+          setSelectedNodeIds([sourceNode.id]);
+          return sourceNode.id;
+        }}
+        onApply={(newImageSrc, pendingNodeId, sourceNode, createDerived, factor) => {
+          updateNode(pendingNodeId, {
+            title: createDerived ? `${sourceNode.title} (超清 ${factor})` : sourceNode.title,
+            status: 'success',
+            errorMessage: undefined,
+            metadata: { ...sourceNode.metadata, imageSrc: newImageSrc, upscale: factor, generationOperation: undefined }
+          });
+        }}
+        onError={(pendingNodeId, sourceNode, error) => {
+          updateNode(pendingNodeId, {
+            status: 'error',
+            errorMessage: error,
+            metadata: { ...sourceNode.metadata, generationOperation: undefined }
+          });
         }}
       />
 
