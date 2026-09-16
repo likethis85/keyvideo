@@ -44,8 +44,8 @@ if (missingEnv.length > 0) {
   process.exit(1);
 }
 
-if (!process.env.TEXT_LLM_API_KEY && !process.env.SANDBASE_API_KEY && (!process.env.AIGATEWAY_URL || !process.env.AIGATEWAY_TOKEN)) {
-  console.error('Missing required AI credentials: Please configure TEXT_LLM_API_KEY, SANDBASE_API_KEY, or AIGATEWAY credentials');
+if (!process.env.TEXT_LLM_API_KEY && !process.env.SANDBASE_API_KEY) {
+  console.error('Missing required AI credentials: Please configure TEXT_LLM_API_KEY or SANDBASE_API_KEY');
   process.exit(1);
 }
 
@@ -66,18 +66,6 @@ const getChatCompletionConfig = () => {
       url: process.env.SANDBASE_CHAT_URL || 'https://api.sandbase.ai/v1/chat/completions',
       apiKey: process.env.SANDBASE_API_KEY,
       defaultModel: process.env.SANDBASE_CHAT_MODEL || 'google/gemini-2.5-flash',
-      isTextOnly: false
-    };
-  }
-  if (process.env.AIGATEWAY_URL) {
-    const base = process.env.AIGATEWAY_URL.endsWith('/')
-      ? `${process.env.AIGATEWAY_URL}chat/completions`
-      : `${process.env.AIGATEWAY_URL}/chat/completions`;
-    return {
-      provider: 'Edgecloud AIGateway',
-      url: base,
-      apiKey: process.env.AIGATEWAY_TOKEN || '',
-      defaultModel: process.env.AIGATEWAY_MODEL || 'gemini-3.1-flash-image',
       isTextOnly: false
     };
   }
@@ -330,7 +318,7 @@ const findImageUrlInObject = (obj) => {
 
 // Helper: Submit task to sandbase.ai (with automatic retries on 5xx / Bad Gateway)
 const submitSandbaseTask = async (payload) => {
-  const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+  const apiKey = process.env.SANDBASE_API_KEY;
   const maxRetries = 4;
   let delay = 1500;
 
@@ -387,7 +375,7 @@ const submitSandbaseTask = async (payload) => {
 
 // Helper: Poll sandbase.ai task until completed (with retry on transient errors)
 const pollSandbaseTask = async (taskId, timeoutSeconds = 360) => {
-  const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+  const apiKey = process.env.SANDBASE_API_KEY;
   const pollInterval = 3000; // 3 seconds
   const maxRetries = Math.ceil((timeoutSeconds * 1000) / pollInterval);
 
@@ -1372,7 +1360,7 @@ app.post('/api/video/task', async (req, res) => {
 app.get('/api/video/poll/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+    const apiKey = process.env.SANDBASE_API_KEY;
 
     const response = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${taskId}`, {
       method: 'GET',
@@ -1491,7 +1479,7 @@ setInterval(async () => {
   if (isVideoPollerActive) return;
   isVideoPollerActive = true;
   try {
-    const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+    const apiKey = process.env.SANDBASE_API_KEY;
     if (!apiKey) return;
 
     const pendingVideoTasks = Object.values(taskStore).filter(
@@ -1531,7 +1519,7 @@ setInterval(async () => {
 app.get('/api/video/content/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+    const apiKey = process.env.SANDBASE_API_KEY;
 
     // 1. Get task status to find the output URL
     const statusResponse = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${taskId}`, {

@@ -82,14 +82,7 @@ export default defineConfig(({ mode }) => {
     }
   },
   server: {
-    cors: true,
-    proxy: {
-      '/api-gateway': {
-        target: 'https://aigateway.edgecloudapp.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-gateway/, '')
-      }
-    }
+    cors: true
   }
 };
 })
