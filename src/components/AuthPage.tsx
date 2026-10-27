@@ -147,7 +147,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialError }) => {
           </div>
           <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#ffffff', marginTop: '8px' }}>KeyVideo 智能剪辑</span>
           <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)' }}>
-            使用企业统一登录，或邮箱密码进入工作台
+            {isSupabaseConfigured ? '使用企业统一登录，或邮箱密码进入工作台' : '使用企业统一登录进入工作台'}
           </span>
         </div>
 
@@ -237,7 +237,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialError }) => {
           </div>
         )}
 
-        {isSupabaseConfigured ? (
+        {isSupabaseConfigured && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 0' }}>
               <span style={{ flex: 1, height: '1px', background: 'rgba(255, 255, 255, 0.08)' }} />
@@ -316,19 +316,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialError }) => {
           </button>
             </form>
           </>
-        ) : (
-          <div style={{
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '8px',
-            padding: '12px 14px',
-            color: 'var(--text-muted, #9ca3af)',
-            fontSize: '12px',
-            lineHeight: 1.6,
-            textAlign: 'center'
-          }}>
-            邮箱密码登录尚未配置，请使用上方的企业统一登录。
-          </div>
         )}
       </div>
     </div>

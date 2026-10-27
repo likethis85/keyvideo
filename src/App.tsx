@@ -22,7 +22,7 @@ import { AuthPage } from './components/AuthPage';
 import {
   clearSsoParams,
   describeSsoError,
-  exchangeSsoTicket,
+  exchangeSsoTicketOnce,
   loadSsoSession,
   logoutSso,
   readSsoError,
@@ -102,7 +102,7 @@ function App() {
       const ticket = readSsoTicket();
       if (ticket) {
         try {
-          const session = await exchangeSsoTicket(ticket);
+          const session = await exchangeSsoTicketOnce(ticket);
           if (active) {
             setSsoUser(session.user);
             setAuthError(null);

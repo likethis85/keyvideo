@@ -129,6 +129,24 @@ export async function exchangeSsoTicket(ticket: string): Promise<StoredSsoSessio
   return session;
 }
 
+// React StrictMode mounts effects twice in development. Both runs would otherwise
+// POST the same one-time ticket; the first consumes it and the second reports an
+// invalid ticket. Reuse one in-flight/settled exchange per ticket instead.
+const ticketExchanges = new Map<string, Promise<StoredSsoSession>>();
+
+export function exchangeSsoTicketOnce(ticket: string): Promise<StoredSsoSession> {
+  const existing = ticketExchanges.get(ticket);
+  if (existing) return existing;
+
+  const promise = exchangeSsoTicket(ticket);
+  ticketExchanges.set(ticket, promise);
+  const forget = () => {
+    if (ticketExchanges.get(ticket) === promise) ticketExchanges.delete(ticket);
+  };
+  window.setTimeout(forget, 60_000);
+  return promise;
+}
+
 /**
  * Verify the local SSO session with the backend.
  * Returns null only when the backend explicitly rejects the token. Network failures
