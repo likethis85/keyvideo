@@ -19,6 +19,17 @@ import type { SidebarDrawerRef } from './components/sidebar/sidebarTypes';
 import { localDB } from './utils/db';
 import { supabase } from './utils/supabaseClient';
 import { AuthPage } from './components/AuthPage';
+import {
+  clearSsoParams,
+  describeSsoError,
+  exchangeSsoTicket,
+  loadSsoSession,
+  logoutSso,
+  readSsoError,
+  readSsoTicket,
+  refreshSsoUser
+} from './services/ssoAuth';
+import type { AppUser } from './services/ssoAuth';
 import { ToastContainer } from './components/Toast';
 import { toast } from './components/toastStore';
 import { reflowLayersForRatio, RATIO_CONFIGS } from './utils/smartReflow';
@@ -71,23 +82,79 @@ function App() {
   const selectedLayerIdRef = useRef<string | null>(null);
   const currentTimeRef = useRef<number>(0);
 
-  const [session, setSession] = useState<Session | null>(null);
+  const [supabaseSession, setSupabaseSession] = useState<Session | null>(null);
+  const [ssoUser, setSsoUser] = useState<AppUser | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  // Check active session on mount
+  // Restore either an SSO session or the legacy Supabase session. The SSO ticket
+  // (if present) is consumed exactly once through our backend.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoadingSession(false);
-    });
+    let active = true;
+
+    const bootstrap = async () => {
+      const ssoError = readSsoError();
+      if (ssoError) {
+        setAuthError(describeSsoError(ssoError));
+        clearSsoParams();
+      }
+
+      const ticket = readSsoTicket();
+      if (ticket) {
+        try {
+          const session = await exchangeSsoTicket(ticket);
+          if (active) {
+            setSsoUser(session.user);
+            setAuthError(null);
+          }
+        } catch (error) {
+          if (active) {
+            setAuthError(error instanceof Error ? error.message : '统一登录失败，请重试');
+          }
+        } finally {
+          clearSsoParams();
+        }
+      } else {
+        const stored = loadSsoSession();
+        if (stored) {
+          const user = await refreshSsoUser(stored);
+          if (active && user) setSsoUser(user);
+        }
+      }
+
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (active) setSupabaseSession(data.session);
+      } catch (error) {
+        console.warn('Failed to read the Supabase session:', error);
+      } finally {
+        if (active) setLoadingSession(false);
+      }
+    };
+
+    void bootstrap();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setLoadingSession(false);
+      setSupabaseSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  const authUser: AppUser | null = ssoUser ?? (supabaseSession?.user
+    ? {
+        id: supabaseSession.user.id,
+        email: supabaseSession.user.email ?? null,
+        displayName: (supabaseSession.user.user_metadata?.display_name as string | undefined)
+          || (supabaseSession.user.user_metadata?.full_name as string | undefined)
+          || null,
+        provider: 'supabase',
+        avatarUrl: null
+      }
+    : null);
 
   // Bridge window.alert to modern toast system
   useEffect(() => {
@@ -493,8 +560,8 @@ function App() {
     return <AppLoadingScreen />;
   }
 
-  if (!session) {
-    return <AuthPage />;
+  if (!authUser) {
+    return <AuthPage initialError={authError} />;
   }
 
   return (
@@ -534,7 +601,7 @@ function App() {
 
         <AppHeaderActions
           theme={theme}
-          userEmail={session.user.email}
+          userEmail={authUser.email || authUser.displayName || authUser.id}
           onAddLayer={addDefaultTextLayer}
           onExport={triggerExport}
           onToggleCopilot={() => setIsCopilotOpen(prev => !prev)}
@@ -575,7 +642,16 @@ function App() {
             setTheme(newTheme);
             toast.info(`已切换至 ${newTheme === 'dark' ? '🌙 暗黑主题' : '☀️ 浅色主题'}`);
           }}
-          onSignOut={async () => { await supabase.auth.signOut(); }}
+          onSignOut={async () => {
+            setSsoUser(null);
+            setSupabaseSession(null);
+            await logoutSso();
+            try {
+              await supabase.auth.signOut();
+            } catch (error) {
+              console.warn('Failed to sign out of Supabase:', error);
+            }
+          }}
         />
      </header>
 
@@ -615,7 +691,7 @@ function App() {
               setSelectedLayerId={setSelectedLayerId}
               setModelSwapRunning={setModelSwapRunning}
               ratio={ratio}
-              session={session}
+              session={authUser.id}
               projects={projects}
               setProjects={setProjects}
               activeProjectId={activeProjectId}

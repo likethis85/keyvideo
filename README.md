@@ -1,5 +1,26 @@
 # React + TypeScript + Vite
 
+## KeyVideo 统一登录（SSO）
+
+本项目已接入 marius-sso 统一登录。回调地址、后端环境变量和完整流程见
+[`docs/SSO.md`](./docs/SSO.md)。
+
+生产回调地址（当前开发环境已登记的是本地回调，见文档）：
+
+```text
+https://www.marius.com.cn/videos/api/auth/sso/callback
+```
+
+本地开发回调：
+
+```text
+http://127.0.0.1:3001/api/auth/sso/callback
+```
+
+`client_secret` 只放在 `backend/.env`，不要写进任何 `VITE_` 变量。
+
+---
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

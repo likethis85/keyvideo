@@ -5,6 +5,7 @@ import OSS from 'ali-oss';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createSsoRouter } from './sso.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -90,7 +91,7 @@ const getChatCompletionConfig = () => {
   };
 };
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,https://www.marius.com.cn,https://marius.com.cn')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -182,6 +183,12 @@ app.use((err, _req, res, next) => {
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'keyvideo-backend', timestamp: Date.now() });
 });
+
+// Unified SSO (marius-sso). The client secret and code exchange stay on the server.
+const ssoRouter = createSsoRouter();
+app.use('/api/auth/sso', ssoRouter);
+// Production may proxy /videos/api/* without stripping the /videos prefix.
+app.use('/videos/api/auth/sso', ssoRouter);
 
 const TRYON_SCENE_PROMPT_DESCRIPTIONS = {
   street: 'posing in a modern urban street with city lights and soft outdoor background',
