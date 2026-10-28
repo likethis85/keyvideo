@@ -98,12 +98,39 @@ export function useAssetPanelActions(options: AssetPanelActionsOptions) {
       const { data: { session } } = await supabase.auth.getSession();
       const src = await uploadAudioToOSS(file);
       const name = file.name.replace(/\.[^/.]+$/, '');
+      const userId = session?.user?.id;
+
+      // SSO users have no Supabase session. Keep the uploaded track in the local
+      // library instead of attempting an insert that RLS will reject.
+      if (!userId) {
+        const item = {
+          id: `custom_bgm_${Date.now()}`,
+          name,
+          src,
+          desc: `${(file.size / 1024 / 1024).toFixed(2)}MB • 本地存储`
+        };
+        options.setBgmLibrary(previous => options.saveBgmLibrarySafely([...previous, item]));
+        toast.success(`音频「${name}」已保存至本地音乐库`);
+        return;
+      }
+
       const desc = `${(file.size / 1024 / 1024).toFixed(2)}MB • 云端存储`;
-      const { data, error } = await supabase.from('audio_assets').insert({ name, src, desc, user_id: session?.user?.id || null }).select();
-      if (error) throw error;
+      const { data, error } = await supabase.from('audio_assets').insert({ name, src, desc, user_id: userId }).select();
+      if (error) {
+        console.warn('BGM cloud insert failed, keeping a local record:', error);
+        const localItem = {
+          id: `custom_bgm_${Date.now()}`,
+          name,
+          src,
+          desc: `${(file.size / 1024 / 1024).toFixed(2)}MB • 本地存储`
+        };
+        options.setBgmLibrary(previous => options.saveBgmLibrarySafely([...previous, localItem]));
+        toast.success(`音频「${name}」已保存至本地音乐库`);
+        return;
+      }
       const item = { id: data?.[0]?.id || `custom_bgm_${Date.now()}`, name, src, desc };
       options.setBgmLibrary(previous => options.saveBgmLibrarySafely([...previous, item]));
-      alert(`音频「${name}」已成功上传至 OSS 并保存至云数据库！`);
+      toast.success(`音频「${name}」已成功上传并保存至音乐库！`);
     } catch (error) {
       console.error('BGM upload failed:', error);
       alert(`音频上传失败: ${error instanceof Error ? error.message : String(error)}`);
