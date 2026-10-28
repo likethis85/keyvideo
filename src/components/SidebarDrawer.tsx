@@ -343,10 +343,34 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     }
   });
 
+  const handleNavigateToVideoStep = (targetProjId?: string) => {
+    if (targetProjId && targetProjId !== activeProjectId) {
+      switchProject(targetProjId);
+    }
+    setActiveTab('ai');
+    changeAiWizardStep(3);
+    if (isCollapsed && onToggleCollapse) {
+      onToggleCollapse();
+    }
+  };
+
+  const handleNavigateToOutfitStep = (targetProjId?: string) => {
+    if (targetProjId && targetProjId !== activeProjectId) {
+      switchProject(targetProjId);
+    }
+    setActiveTab('ai');
+    changeAiWizardStep(1);
+    if (isCollapsed && onToggleCollapse) {
+      onToggleCollapse();
+    }
+  };
+
   useGenerationTaskRecovery({
     isConfigLoaded, projects, setProjects, activeProjectIdRef, setModelOutfitImgUrl, setModelOutfitImgUrls,
     setIsOutfitImgGenerating, videoModel, videoDuration, gatewayVideoUrl, gatewayVideoToken,
-    cancelledProjectsRef, setStoryboards, setI2vStep, setIsI2vGenerating
+    cancelledProjectsRef, setStoryboards, setI2vStep, setIsI2vGenerating,
+    onNavigateToVideoStep: handleNavigateToVideoStep,
+    onNavigateToOutfitStep: handleNavigateToOutfitStep
   });
 
   const [customPrompt, setCustomPrompt] = useState('');

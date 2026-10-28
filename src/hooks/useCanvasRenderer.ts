@@ -118,25 +118,43 @@ export function useCanvasRenderer(options: Options) {
       if (isVideo) {
         const videoUrl = lyr.properties.src;
         if (videoUrl) {
-          if (!videosCacheRef.current[videoUrl]) {
+          const cacheKey = lyr.id;
+          let videoSource = videosCacheRef.current[cacheKey];
+          if (!videoSource || videoSource.dataset.rawSrc !== videoUrl) {
+            if (videoSource) {
+              try { videoSource.pause(); } catch {}
+            }
             const video = document.createElement('video');
+            video.dataset.rawSrc = videoUrl;
             video.src = videoUrl;
             video.muted = true;
             video.playsInline = true;
             video.loop = false;
+            if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+              video.crossOrigin = 'anonymous';
+            }
             video.addEventListener('loadedmetadata', () => {
               setRenderTrigger(prev => prev + 1);
             });
+            video.addEventListener('canplaythrough', () => {
+              setRenderTrigger(prev => prev + 1);
+            });
+            video.addEventListener('seeked', () => {
+              setRenderTrigger(prev => prev + 1);
+            });
             video.load();
-            videosCacheRef.current[videoUrl] = video;
+            videosCacheRef.current[cacheKey] = video;
+            videoSource = video;
           }
-          const videoSource = videosCacheRef.current[videoUrl];
-  
+
           // Calculate target playback position based on layer start time and video offset
-          const elapsed = drawTime - lyr.start;
+          const elapsed = Math.max(0, drawTime - lyr.start);
           const startOffset = lyr.properties.videoStartOffset || 0;
-          const targetTime = elapsed + startOffset;
-  
+          let targetTime = elapsed + startOffset;
+          if (videoSource.duration && Number.isFinite(videoSource.duration) && videoSource.duration > 0) {
+            targetTime = Math.min(targetTime, Math.max(0, videoSource.duration - 0.05));
+          }
+
           // Align video element state with global timeline
           if (isOfflineExportingRef.current) {
             if (!videoSource.paused) videoSource.pause();
@@ -152,23 +170,48 @@ export function useCanvasRenderer(options: Options) {
               videoSource.pause();
             }
             const lastTarget = parseFloat(videoSource.dataset.lastTargetTime || '-1');
-            if (Math.abs(lastTarget - targetTime) > 0.05 && Math.abs(videoSource.currentTime - targetTime) > 0.05) {
+            const needsSeek = (Math.abs(lastTarget - targetTime) > 0.04 || Math.abs(videoSource.currentTime - targetTime) > 0.08) && !videoSource.seeking;
+            if (needsSeek && videoSource.readyState >= 1) {
               videoSource.currentTime = targetTime;
               videoSource.dataset.lastTargetTime = targetTime.toString();
             }
           }
-  
+
           const { w: targetW, h: targetH } = getMediaLayerSize(lyr, scale);
-  
+
           ctx.translate(pxX, pxY);
-  
+
           if (lyr.properties.blur) {
             ctx.filter = `blur(${lyr.properties.blur}px)`;
           }
-  
-          try {
-            ctx.drawImage(videoSource, -targetW / 2, -targetH / 2, targetW, targetH);
-          } catch {
+
+          let frameDrawn = false;
+          if (videoSource.readyState >= 2) {
+            try {
+              ctx.drawImage(videoSource, -targetW / 2, -targetH / 2, targetW, targetH);
+              frameDrawn = true;
+            } catch {
+              frameDrawn = false;
+            }
+          }
+
+          if (!frameDrawn) {
+            const posterUrl = lyr.properties.poster;
+            const posterImg = posterUrl ? imagesCacheRef.current[posterUrl] : null;
+            if (posterImg) {
+              try {
+                const pW = (posterImg as HTMLImageElement).naturalWidth || posterImg.width || targetW;
+                const pH = (posterImg as HTMLImageElement).naturalHeight || posterImg.height || targetH;
+                const pScale = Math.min(width / pW, height / pH) * scale;
+                const posterW = pW * pScale;
+                const posterH = pH * pScale;
+                ctx.drawImage(posterImg, -posterW / 2, -posterH / 2, posterW, posterH);
+                frameDrawn = true;
+              } catch {}
+            }
+          }
+
+          if (!frameDrawn) {
             ctx.fillStyle = 'rgba(255,255,255,0.05)';
             ctx.fillRect(-targetW / 2, -targetH / 2, targetW, targetH);
           }
@@ -253,19 +296,22 @@ export function useCanvasRenderer(options: Options) {
       // Seek upcoming video layers to their startOffset to avoid seek lag and flashes
       layers.forEach(layer => {
         if (layer.type === 'media' && layer.visible && layer.properties.isVideo) {
-          const src = layer.properties.src;
-          if (src && videosCacheRef.current[src]) {
-            const video = videosCacheRef.current[src];
-            const startOffset = layer.properties.videoStartOffset || 0;
-            
-            // If the playhead is before the layer starts, background-seek the video to startOffset
-            if (time < layer.start) {
-              if (Math.abs(video.currentTime - startOffset) > 0.05) {
-                video.currentTime = startOffset;
-              }
-              if (!video.paused) {
-                video.pause();
-              }
+          const video = videosCacheRef.current[layer.id];
+          if (!video) return;
+          const startOffset = layer.properties.videoStartOffset || 0;
+          
+          if (time < layer.start) {
+            const maxDuration = (video.duration && Number.isFinite(video.duration)) ? video.duration : Infinity;
+            const target = Math.min(startOffset, Math.max(0, maxDuration - 0.05));
+            if (!video.seeking && Math.abs(video.currentTime - target) > 0.05 && video.readyState >= 1) {
+              video.currentTime = target;
+            }
+            if (!video.paused) {
+              video.pause();
+            }
+          } else if (time > layer.end) {
+            if (!video.paused) {
+              video.pause();
             }
           }
         }

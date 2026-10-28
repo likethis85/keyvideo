@@ -80,8 +80,21 @@ const ToastMessage: React.FC<{ toast: ToastItem; onClose: () => void }> = ({ toa
     }
   }[item.type];
 
+  const isInteractive = Boolean(item.onClick || item.action);
+
+  const handleCardClick = () => {
+    if (item.onClick) {
+      item.onClick();
+      onClose();
+    } else if (item.action) {
+      item.action.onClick();
+      onClose();
+    }
+  };
+
   return (
     <div
+      onClick={isInteractive ? handleCardClick : undefined}
       style={{
         pointerEvents: 'auto',
         display: 'flex',
@@ -89,7 +102,7 @@ const ToastMessage: React.FC<{ toast: ToastItem; onClose: () => void }> = ({ toa
         gap: '12px',
         padding: '12px 16px',
         borderRadius: '10px',
-        background: 'rgba(16, 18, 27, 0.92)',
+        background: 'rgba(16, 18, 27, 0.94)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
         border: `1px solid ${typeConfig.borderColor}`,
@@ -100,15 +113,71 @@ const ToastMessage: React.FC<{ toast: ToastItem; onClose: () => void }> = ({ toa
         lineHeight: '1.4',
         animation: 'toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
         minWidth: '280px',
-        cursor: 'default'
+        cursor: isInteractive ? 'pointer' : 'default',
+        transition: 'transform 0.15s ease, border-color 0.15s ease, filter 0.15s ease'
+      }}
+      onMouseOver={e => {
+        if (isInteractive) {
+          e.currentTarget.style.filter = 'brightness(1.1)';
+          e.currentTarget.style.transform = 'translateY(-1px)';
+        }
+      }}
+      onMouseOut={e => {
+        if (isInteractive) {
+          e.currentTarget.style.filter = 'none';
+          e.currentTarget.style.transform = 'translateY(0)';
+        }
       }}
     >
       <span style={{ fontSize: '15px', flexShrink: 0 }}>{typeConfig.icon}</span>
       <div style={{ flex: 1, wordBreak: 'break-word', color: '#e5e7eb' }}>
         {item.message}
       </div>
+
+      {item.action && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            item.action?.onClick();
+            onClose();
+          }}
+          style={{
+            flexShrink: 0,
+            padding: '4px 10px',
+            borderRadius: '6px',
+            background: typeConfig.badgeBg,
+            border: `1px solid ${typeConfig.borderColor}`,
+            color: typeConfig.badgeColor,
+            fontSize: '12px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            transition: 'all 0.15s ease',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+          onMouseOver={e => {
+            e.stopPropagation();
+            e.currentTarget.style.filter = 'brightness(1.25)';
+            e.currentTarget.style.transform = 'scale(1.04)';
+          }}
+          onMouseOut={e => {
+            e.stopPropagation();
+            e.currentTarget.style.filter = 'none';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          {item.action.label}
+        </button>
+      )}
+
       <button
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         style={{
           background: 'none',
           border: 'none',
@@ -117,7 +186,8 @@ const ToastMessage: React.FC<{ toast: ToastItem; onClose: () => void }> = ({ toa
           padding: '2px 4px',
           fontSize: '14px',
           lineHeight: '1',
-          transition: 'color 0.15s'
+          transition: 'color 0.15s',
+          flexShrink: 0
         }}
         onMouseOver={e => (e.currentTarget.style.color = '#ffffff')}
         onMouseOut={e => (e.currentTarget.style.color = '#9ca3af')}

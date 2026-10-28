@@ -20,16 +20,21 @@ interface TaskRecoveryOptions {
   setStoryboards: Dispatch<SetStateAction<StoryboardItem[]>>;
   setI2vStep: (step: AIProject['i2vStep']) => void;
   setIsI2vGenerating: (generating: boolean) => void;
+  onNavigateToVideoStep?: (projectId: string) => void;
+  onNavigateToOutfitStep?: (projectId: string) => void;
 }
 
 export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
   const {
     isConfigLoaded, projects, setProjects, activeProjectIdRef, setModelOutfitImgUrl, setModelOutfitImgUrls,
     setIsOutfitImgGenerating, videoModel, videoDuration, gatewayVideoUrl, gatewayVideoToken,
-    cancelledProjectsRef, setStoryboards, setI2vStep, setIsI2vGenerating
+    cancelledProjectsRef, setStoryboards, setI2vStep, setIsI2vGenerating,
+    onNavigateToVideoStep, onNavigateToOutfitStep
   } = options;
 
     const activePollingOutfitTasksRef = useRef<{ [taskId: string]: boolean }>({});
+    const notifiedOutfitTasksRef = useRef<Set<string>>(new Set());
+    const notifiedVideoTasksRef = useRef<Set<string>>(new Set());
   
     const pollPendingOutfitTask = async (projId: string, taskId: string) => {
       console.log(`[Outfit Recovery] Polling pending outfit task ${taskId} for project ${projId}`);
@@ -62,7 +67,14 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
               setModelOutfitImgUrls(prev => prev.length > 0 ? [statusRes.resultUrl!, ...prev.slice(1)] : [statusRes.resultUrl!]);
               setIsOutfitImgGenerating(false);
             }
-            toast.success('🎉 成功恢复后台生成的 AI 试衣效果！');
+            toast.success('🎉 成功恢复后台生成的 AI 试衣效果！', {
+              duration: 5000,
+              action: {
+                label: '前往查看 →',
+                onClick: () => onNavigateToOutfitStep?.(projId)
+              },
+              onClick: () => onNavigateToOutfitStep?.(projId)
+            });
             delete activePollingOutfitTasksRef.current[taskId];
             break;
           } else if (statusRes.status === 'failed') {
@@ -113,12 +125,29 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
                   setModelOutfitImgUrls(prev => prev.length > 0 ? [t.resultUrl!, ...prev.slice(1)] : [t.resultUrl!]);
                   setIsOutfitImgGenerating(false);
                 }
-                toast.success('🎉 已自动恢复后台已完成的 AI 试衣效果！');
+                toast.success('🎉 已自动恢复后台已完成的 AI 试衣效果！', {
+                  duration: 5000,
+                  action: {
+                    label: '前往查看 →',
+                    onClick: () => onNavigateToOutfitStep?.(targetProj.id)
+                  },
+                  onClick: () => onNavigateToOutfitStep?.(targetProj.id)
+                });
               }
             } else if ((t.status === 'pending' || t.status === 'processing') && t.taskId) {
               if (!activePollingOutfitTasksRef.current[t.taskId]) {
                 activePollingOutfitTasksRef.current[t.taskId] = true;
-                toast.info('⏳ 检测到正在运行的 AI 试衣任务，已自动接管后台轮询');
+                if (!notifiedOutfitTasksRef.current.has(t.taskId)) {
+                  notifiedOutfitTasksRef.current.add(t.taskId);
+                  toast.info('⏳ 检测到正在运行的 AI 试衣任务，已自动接管后台轮询', {
+                    duration: 6000,
+                    action: {
+                      label: '查看试衣 →',
+                      onClick: () => onNavigateToOutfitStep?.(targetProj.id)
+                    },
+                    onClick: () => onNavigateToOutfitStep?.(targetProj.id)
+                  });
+                }
                 pollPendingOutfitTask(targetProj.id, t.taskId);
               }
             }
@@ -190,7 +219,14 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
           } : s));
         }
   
-        toast.success('🎉 分镜视频片段已生成完成并恢复！');
+        toast.success('🎉 分镜视频片段已生成完成并恢复！', {
+          duration: 5000,
+          action: {
+            label: '查看分镜 →',
+            onClick: () => onNavigateToVideoStep?.(projId)
+          },
+          onClick: () => onNavigateToVideoStep?.(projId)
+        });
   
         setProjects(prev => {
           const proj = prev.find(p => p.id === projId);
@@ -256,19 +292,29 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
     useEffect(() => {
       if (!isConfigLoaded || projects.length === 0) return;
   
-      let restoredCount = 0;
+      const newlyRestoredTasks: { projId: string; taskId: string }[] = [];
       // Check all storyboards across all projects to resume polling or recover completed videos
       projects.forEach(proj => {
         proj.storyboards.forEach(sb => {
           if (sb.videoTaskId && !sb.videoSrc && !activePollingTasksRef.current[sb.id]) {
-            restoredCount++;
+            newlyRestoredTasks.push({ projId: proj.id, taskId: sb.videoTaskId });
             resumeStoryboardVideoPolling(proj.id, sb.id, sb.videoTaskId);
           }
         });
       });
   
-      if (restoredCount > 0) {
-        toast.info(`⏳ 检测到 ${restoredCount} 个正在生成或待接收的视频分镜，已自动接管后台轮询`);
+      const unnotified = newlyRestoredTasks.filter(item => !notifiedVideoTasksRef.current.has(item.taskId));
+      if (unnotified.length > 0) {
+        unnotified.forEach(item => notifiedVideoTasksRef.current.add(item.taskId));
+        const targetProjId = unnotified[0].projId;
+        toast.info(`⏳ 检测到 ${unnotified.length} 个正在生成或待接收的视频分镜，已自动接管后台轮询`, {
+          duration: 6000,
+          action: {
+            label: '查看分镜 →',
+            onClick: () => onNavigateToVideoStep?.(targetProjId)
+          },
+          onClick: () => onNavigateToVideoStep?.(targetProjId)
+        });
       }
     // Project changes are the recovery scan trigger; the polling function uses the latest render snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
