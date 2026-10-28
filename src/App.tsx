@@ -13,7 +13,6 @@ import { ProjectSelector } from './components/app/ProjectSelector';
 import { AspectRatioSelector } from './components/app/AspectRatioSelector';
 import { AppHeaderActions } from './components/app/AppHeaderActions';
 import { AppLoadingScreen } from './components/app/AppLoadingScreen';
-import { AppBrand } from './components/app/AppBrand';
 import type { AIProject, StoryboardItem } from './types/aiProject';
 import type { SidebarDrawerRef } from './components/sidebar/sidebarTypes';
 import { localDB } from './utils/db';
@@ -212,7 +211,7 @@ function App() {
 
   // 3. Tab navigation state
   const [activeTab, setActiveTab] = useState<EditorToolTab>('template');
-  const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(false);
+  const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(true);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>('editor');
@@ -607,8 +606,6 @@ function App() {
       {/* Header bar */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: '10px' }}>
-          <AppBrand />
-
           <ProjectSelector
             projects={projects}
             activeProjectId={activeProjectId}
@@ -696,17 +693,29 @@ function App() {
       {/* Editor Body Workspace */}
       <div className="editor-container">
         {viewMode === 'canvas' ? (
-          <Suspense fallback={<AppLoadingScreen />}>
-            <InfiniteCanvas
-              projectId={activeProjectId}
-              activeProject={projects.find(p => p.id === activeProjectId)}
-              currentTime={currentTime}
-              layers={layers}
-              setLayers={setLayers}
-              commitHistory={commitInstantHistory}
-              onRegisterAutoLayout={(fn) => { canvasAutoLayoutRef.current = fn; }}
+          <div className="canvas-workspace-shell">
+            <ToolNavigation
+              activeTab={activeTab}
+              isDrawerCollapsed={true}
+              onSelectTab={(tab) => {
+                setViewMode('editor');
+                setActiveTab(tab);
+                setIsDrawerCollapsed(false);
+              }}
+              onSelectWorkspace={() => setIsDrawerCollapsed(true)}
             />
-          </Suspense>
+            <Suspense fallback={<AppLoadingScreen />}>
+              <InfiniteCanvas
+                projectId={activeProjectId}
+                activeProject={projects.find(p => p.id === activeProjectId)}
+                currentTime={currentTime}
+                layers={layers}
+                setLayers={setLayers}
+                commitHistory={commitInstantHistory}
+                onRegisterAutoLayout={(fn) => { canvasAutoLayoutRef.current = fn; }}
+              />
+            </Suspense>
+          </div>
         ) : (
           <>
             <ToolNavigation
@@ -716,7 +725,7 @@ function App() {
                 setActiveTab(tab);
                 setIsDrawerCollapsed(false);
               }}
-              onReopenDrawer={() => setIsDrawerCollapsed(false)}
+              onSelectWorkspace={() => setIsDrawerCollapsed(true)}
             />
 
             <SidebarDrawer
@@ -795,6 +804,7 @@ function App() {
           undoCount={historyState.index}
           redoCount={historyState.stack.length - 1 - historyState.index}
           commitInstantHistory={commitInstantHistory}
+          storyboards={projects.find(p => p.id === activeProjectId)?.storyboards ?? []}
         />
       )}
 

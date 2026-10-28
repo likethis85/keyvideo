@@ -7,6 +7,7 @@ import { TimelineRuler } from './timeline/TimelineRuler';
 import { TimelineTrackBlocks } from './timeline/TimelineTrackBlocks';
 import { TRANSITION_CONFIGS, type TransitionType } from './timeline/timelineTransitions';
 import { canSplitLayer, splitLayerInList } from '../services/timelineSplitService';
+import type { StoryboardItem } from '../types/aiProject';
 
 interface TimelineProps {
   layers: Layer[];
@@ -22,6 +23,7 @@ interface TimelineProps {
   undoCount?: number;
   redoCount?: number;
   commitInstantHistory?: (newLayers: Layer[], actionDesc: string) => void;
+  storyboards?: StoryboardItem[];
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -38,6 +40,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   undoCount,
   redoCount,
   commitInstantHistory,
+  storyboards = [],
 }) => {
   const rulerRef = React.useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -65,7 +68,7 @@ export const Timeline: React.FC<TimelineProps> = ({
       const parsed = parseInt(saved, 10);
       if (!isNaN(parsed) && parsed >= 120 && parsed <= 800) return parsed;
     }
-    return 240; // Default comfortable multi-track height
+    return 300; // Default comfortable multi-track height
   });
 
   const [isResizingHeight, setIsResizingHeight] = React.useState(false);
@@ -130,6 +133,9 @@ export const Timeline: React.FC<TimelineProps> = ({
   const activeLayers = React.useMemo(() => layers.filter(layer => layer.visible), [layers]);
   const maxLayerEnd = activeLayers.reduce((max, l) => l.end > max ? l.end : max, 0);
   const totalDuration = maxLayerEnd > 0 ? Math.min(15, maxLayerEnd) : 15;
+  const activeStoryboardIndex = storyboards.length > 0
+    ? Math.min(storyboards.length - 1, Math.max(0, Math.floor(currentTime / 3)))
+    : -1;
 
   // Selected layer reference
   const selectedLayer = React.useMemo(() => {
@@ -599,6 +605,37 @@ export const Timeline: React.FC<TimelineProps> = ({
           </div>
         )}
       </div>
+
+      {storyboards.length > 0 && (
+        <div className="timeline-story-rail">
+          <div className="timeline-story-label">
+            <b>AI 分镜</b>
+            <span>{storyboards.length} 镜 · 点击定位</span>
+          </div>
+          <div className="timeline-story-cards">
+            {storyboards.map((storyboard, index) => (
+              <button
+                key={storyboard.id}
+                className={`timeline-story-card ${activeStoryboardIndex === index ? 'active' : ''}`}
+                onClick={() => {
+                  setCurrentTime(index * 3);
+                  toast.info(`已定位到分镜 ${index + 1} · ${storyboard.name}`);
+                }}
+                title={`分镜 ${index + 1}：${storyboard.name}`}
+              >
+                <span className="timeline-story-thumb" style={storyboard.imageSrc ? { backgroundImage: `url(${storyboard.imageSrc})` } : undefined}>
+                  {!storyboard.imageSrc && <span>{index + 1}</span>}
+                </span>
+                <span className="timeline-story-meta">
+                  <span className="timeline-story-name">镜 {index + 1} · {storyboard.name}</span>
+                  <span className="timeline-story-time">{(index * 3).toFixed(1)}s – {((index + 1) * 3).toFixed(1)}s</span>
+                </span>
+                <span className={`timeline-story-status ${storyboard.videoSrc || storyboard.isGeneratingVideo ? 'ready' : ''}`} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <TimelineHeader
         zoom={zoom}
