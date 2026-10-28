@@ -40,6 +40,7 @@ export interface Layer {
     videoEndOffset?: number;
     speed?: number;
     loop?: boolean;
+    poster?: string;
     audioStartOffset?: number;
     transitionType?: 'none' | 'fade' | 'slideLeft' | 'slideRight' | 'zoom' | 'wipe';
     transitionDuration?: number;

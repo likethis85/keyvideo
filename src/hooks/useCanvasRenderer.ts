@@ -122,7 +122,7 @@ export function useCanvasRenderer(options: Options) {
           let videoSource = videosCacheRef.current[cacheKey];
           if (!videoSource || videoSource.dataset.rawSrc !== videoUrl) {
             if (videoSource) {
-              try { videoSource.pause(); } catch {}
+              try { videoSource.pause(); } catch { /* Media may already be detached. */ }
             }
             const video = document.createElement('video');
             video.dataset.rawSrc = videoUrl;
@@ -207,7 +207,9 @@ export function useCanvasRenderer(options: Options) {
                 const posterH = pH * pScale;
                 ctx.drawImage(posterImg, -posterW / 2, -posterH / 2, posterW, posterH);
                 frameDrawn = true;
-              } catch {}
+              } catch {
+                // Poster may not be decodable yet; fall back to the placeholder.
+              }
             }
           }
 
