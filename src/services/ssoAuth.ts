@@ -1,4 +1,5 @@
 import { getBackendUrl } from '../utils/aiGateway';
+import { SSO_SESSION_STORAGE_KEY } from '../utils/apiAuth';
 
 export interface AppUser {
   id: string;
@@ -18,8 +19,6 @@ export interface SsoStatus {
   configured: boolean;
   reachable: boolean;
 }
-
-const SSO_SESSION_KEY = 'KEYVIDEO_SSO_SESSION_V1';
 
 const ssoEndpoint = (path: string) => `${getBackendUrl().replace(/\/+$/, '')}/api/auth/sso${path}`;
 
@@ -50,7 +49,7 @@ const isAppUser = (value: unknown): value is AppUser => {
 
 export function saveSsoSession(session: StoredSsoSession): void {
   try {
-    localStorage.setItem(SSO_SESSION_KEY, JSON.stringify(session));
+    localStorage.setItem(SSO_SESSION_STORAGE_KEY, JSON.stringify(session));
   } catch (error) {
     console.warn('Unable to persist SSO session:', error);
   }
@@ -58,15 +57,15 @@ export function saveSsoSession(session: StoredSsoSession): void {
 
 export function loadSsoSession(): StoredSsoSession | null {
   try {
-    const raw = localStorage.getItem(SSO_SESSION_KEY);
+    const raw = localStorage.getItem(SSO_SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<StoredSsoSession>;
     if (!parsed || typeof parsed.token !== 'string' || !isAppUser(parsed.user)) {
-      localStorage.removeItem(SSO_SESSION_KEY);
+      localStorage.removeItem(SSO_SESSION_STORAGE_KEY);
       return null;
     }
     if (typeof parsed.expiresAt !== 'number' || parsed.expiresAt <= Date.now() + 5_000) {
-      localStorage.removeItem(SSO_SESSION_KEY);
+      localStorage.removeItem(SSO_SESSION_STORAGE_KEY);
       return null;
     }
     return { token: parsed.token, user: parsed.user, expiresAt: parsed.expiresAt };
@@ -77,7 +76,7 @@ export function loadSsoSession(): StoredSsoSession | null {
 
 export function clearSsoSession(): void {
   try {
-    localStorage.removeItem(SSO_SESSION_KEY);
+    localStorage.removeItem(SSO_SESSION_STORAGE_KEY);
   } catch {
     // Ignore storage failures; the in-memory user is cleared by the caller.
   }
@@ -148,9 +147,8 @@ export function exchangeSsoTicketOnce(ticket: string): Promise<StoredSsoSession>
 }
 
 /**
- * Verify the local SSO session with the backend.
- * Returns null only when the backend explicitly rejects the token. Network failures
- * keep the local session usable for offline/desktop use.
+ * Verify the local SSO session with the backend. A local session is never trusted
+ * without server verification: a forged localStorage entry must not unlock the UI.
  */
 export async function refreshSsoUser(session: StoredSsoSession): Promise<AppUser | null> {
   try {
@@ -165,7 +163,7 @@ export async function refreshSsoUser(session: StoredSsoSession): Promise<AppUser
       return null;
     }
     if (!response.ok) {
-      return session.user;
+      return null;
     }
     const body = await readJson(response);
     if (!isAppUser(body.user)) {
@@ -180,7 +178,7 @@ export async function refreshSsoUser(session: StoredSsoSession): Promise<AppUser
     saveSsoSession(nextSession);
     return body.user;
   } catch {
-    return session.user;
+    return null;
   }
 }
 

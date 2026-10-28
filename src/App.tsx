@@ -156,6 +156,9 @@ function App() {
       }
     : null);
 
+  // Keep browser/desktop local project storage isolated per authenticated user.
+  localDB.setScope(authUser?.id ?? null);
+
   // Bridge window.alert to modern toast system
   useEffect(() => {
     const originalAlert = window.alert;
@@ -257,6 +260,8 @@ function App() {
 
   // Load saved state from database on mount
   useEffect(() => {
+    if (!authUser?.id) return;
+
     const loadState = async () => {
       const savedRatio = await localDB.get('keyvideo_ratio') as AspectRatio | null;
       if (savedRatio) {
@@ -270,22 +275,34 @@ function App() {
 
       if (savedLayers) {
         const updatedLayers = savedLayers.map((layer) => {
-          if (layer.type === 'media' && layer.properties.isVideo) {
-            let sbIndex = -1;
-            if (layer.id.startsWith('media_i2v_0_')) sbIndex = 0;
-            else if (layer.id.startsWith('media_i2v_1_')) sbIndex = 1;
-            else if (layer.id.startsWith('media_i2v_2_')) sbIndex = 2;
+          if (layer.type !== 'media' || !layer.properties.isVideo) return layer;
 
-            if (sbIndex !== -1 && savedStoryboards && savedStoryboards[sbIndex]) {
-              const sb = savedStoryboards[sbIndex];
-              if (sb.videoBlob) {
-                const cacheKey = sb.id;
-                if (!videoBlobUrls.has(cacheKey)) {
-                  videoBlobUrls.set(cacheKey, URL.createObjectURL(sb.videoBlob));
-                }
-                layer.properties.src = videoBlobUrls.get(cacheKey);
-              }
+          const match = /^media_i2v_(\d+)_/.exec(layer.id);
+          const sbIndex = match ? Number(match[1]) : -1;
+          const sb = sbIndex !== -1 && savedStoryboards ? savedStoryboards[sbIndex] : null;
+          if (!sb) return layer;
+
+          if (typeof Blob !== 'undefined' && sb.videoBlob instanceof Blob) {
+            const cacheKey = sb.id;
+            if (!videoBlobUrls.has(cacheKey)) {
+              videoBlobUrls.set(cacheKey, URL.createObjectURL(sb.videoBlob));
             }
+            return {
+              ...layer,
+              properties: { ...layer.properties, src: videoBlobUrls.get(cacheKey) || '' }
+            };
+          }
+
+          // A blob URL from a previous page load is always dead. Keep a real
+          // remote URL, otherwise let recovery re-fetch the video by task ID.
+          if ((layer.properties.src || '').startsWith('blob:')) {
+            return {
+              ...layer,
+              properties: {
+                ...layer.properties,
+                src: sb.videoSrc && !sb.videoSrc.startsWith('blob:') ? sb.videoSrc : ''
+              }
+            };
           }
           return layer;
         });
@@ -297,7 +314,7 @@ function App() {
     };
 
     loadState();
-  }, []);
+  }, [authUser?.id]);
 
   // Save layers and ratio to localDB when they change
   useEffect(() => {

@@ -1,6 +1,7 @@
-import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { deleteFileFromOSS } from '../utils/ossClient';
+import { localDB } from '../utils/db';
 import { TemplateTab } from './sidebar/TemplateTab';
 import { TextTab } from './sidebar/TextTab';
 import { StickerTab } from './sidebar/StickerTab';
@@ -130,6 +131,15 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     setIsRegeneratingShotId, isStoryboardGenerating, setIsStoryboardGenerating, storyboardMode, setStoryboardMode,
     apparelStyle, setApparelStyle, cameraStyle, setCameraStyle, lightingMood, setLightingMood
   } = useAIGenerationState();
+
+  // Keep the timeline's video-blob recovery source in sync with the active project.
+  useEffect(() => {
+    if (!activeProjectId) return;
+    const timer = window.setTimeout(() => {
+      void localDB.set('ai_storyboards', storyboards);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [activeProjectId, storyboards]);
 
   const gatewayUrl = AI_GATEWAY_CONFIG.imageUrl;
   const gatewayVideoUrl = AI_GATEWAY_CONFIG.videoUrl;

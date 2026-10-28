@@ -1,4 +1,5 @@
 import { getBackendUrl } from './aiGateway';
+import { getApiAuthHeaders } from './apiAuth';
 
 /**
  * Uploads a file to Aliyun OSS via Vite dev server backend relay.
@@ -6,8 +7,10 @@ import { getBackendUrl } from './aiGateway';
  * @param file The file to upload.
  */
 export const uploadFileToOSS = async (file: File): Promise<string> => {
+  const authHeaders = await getApiAuthHeaders();
   const response = await fetch(`${getBackendUrl()}/api/upload?name=${encodeURIComponent(file.name)}`, {
     method: 'POST',
+    headers: authHeaders,
     body: file
   });
 
@@ -32,9 +35,11 @@ export const uploadAudioToOSS = uploadFileToOSS;
 export const deleteFileFromOSS = async (url: string): Promise<void> => {
   if (!url || !url.startsWith('http')) return;
   try {
+    const authHeaders = await getApiAuthHeaders();
     const response = await fetch(`${getBackendUrl()}/api/upload/delete`, {
       method: 'POST',
       headers: {
+        ...authHeaders,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ url })

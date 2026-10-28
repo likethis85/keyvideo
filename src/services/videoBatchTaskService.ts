@@ -1,4 +1,5 @@
 import { getBackendUrl } from '../utils/aiGateway';
+import { getApiAuthHeaders } from '../utils/apiAuth';
 
 export interface BatchVideoShotItem {
   id: string;
@@ -47,9 +48,10 @@ export async function submitBatchVideoTasks(params: {
   seconds?: number;
 }): Promise<BatchVideoTaskResult[]> {
   const backendUrl = getBackendUrl();
+  const authHeaders = await getApiAuthHeaders();
   const response = await fetch(`${backendUrl}/api/video/task/batch`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
   });
 
@@ -69,7 +71,10 @@ export async function fetchProjectVideoTasks(projectId: string): Promise<Project
   if (!projectId) return [];
   const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/video/tasks/project/${encodeURIComponent(projectId)}`);
+    const authHeaders = await getApiAuthHeaders();
+    const response = await fetch(`${backendUrl}/api/video/tasks/project/${encodeURIComponent(projectId)}`, {
+      headers: authHeaders
+    });
     if (!response.ok) return [];
     const data = await response.json();
     return data.tasks || [];

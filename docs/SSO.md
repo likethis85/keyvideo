@@ -54,6 +54,26 @@ SSO_POST_LOGIN_REDIRECT=https://www.marius.com.cn/videos/
 
 配置完成后重启后端即可，前端不需要重新构建，也不会接触 `client_secret`。
 
+## 2.1 API 鉴权
+
+除 `/api/health`、`/api/auth/sso/*` 和只读的 `/api/ai/image-proxy` 外，所有
+`/api/*` 接口都要求：
+
+```http
+Authorization: Bearer <KeyVideo 会话 JWT>
+```
+
+前端会自动从 SSO 会话或 Supabase 会话取 token 并附带。SSO 用户不需要配置
+Supabase；如果要保留旧的 Supabase 邮箱密码登录，后端还需要配置：
+
+```dotenv
+SUPABASE_URL=https://your-supabase-instance.example.com
+SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+```
+
+本地临时调试可设置 `API_AUTH_DISABLED=true`，但 `NODE_ENV=production` 时该开关会被忽略。
+
+
 ## 3. 登录流程
 
 ```text

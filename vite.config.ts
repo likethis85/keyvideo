@@ -6,8 +6,15 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  // Tauri bundles dist/ at its own root. The web deployment lives under /videos/.
+  const isTauriBuild = Boolean(
+    process.env.TAURI_ENV_PLATFORM
+    || process.env.TAURI_ENV_TARGET_TRIPLE
+    || process.env.TAURI_ENV_ARCH
+  );
+  const base = mode === 'production' ? (isTauriBuild ? './' : '/videos/') : '/';
   return {
-    base: mode === 'production' ? '/videos/' : '/',
+    base,
     plugins: [
       react(),
       {
@@ -83,6 +90,17 @@ export default defineConfig(({ mode }) => {
   },
   server: {
     cors: true,
+    // Backend edits and package-manager temp dirs must not crash the Vite watcher.
+    watch: {
+      ignored: [
+        '**/backend/**',
+        '**/.git/**',
+        '**/dist/**',
+        '**/.pnpm-store/**',
+        '**/*.tmpdir/**',
+        '**/.package.json.*'
+      ]
+    },
     proxy: {
       '/api-gateway': {
         target: 'https://aigateway.edgecloudapp.com',

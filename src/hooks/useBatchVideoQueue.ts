@@ -46,12 +46,21 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [isBatchGenerating, setIsBatchGenerating] = useState(false);
   const pollerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const storyboardsRef = useRef(storyboards);
+  const queueTasksRef = useRef(queueTasks);
+  storyboardsRef.current = storyboards;
 
-  // 1. Synchronize / Initialize queue with storyboards or server history on project switch
+  useEffect(() => {
+    queueTasksRef.current = queueTasks;
+  }, [queueTasks]);
+
+  // 1. Synchronize / Initialize queue with storyboards or server history on project switch.
+  // Storyboard progress updates must not reset an in-flight queue.
   useEffect(() => {
     if (!activeProjectId) return;
 
     let isSubscribed = true;
+    const projectStoryboards = storyboardsRef.current;
     fetchProjectVideoTasks(activeProjectId).then(serverTasks => {
       if (!isSubscribed) return;
 
@@ -62,7 +71,7 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
         }
       });
 
-      const initialQueue: QueueShotTask[] = storyboards.map((sb, idx) => {
+      const initialQueue: QueueShotTask[] = projectStoryboards.map((sb, idx) => {
         const matchingServerTask = serverTaskByShot.get(sb.id);
         const hasCompletedVideo = Boolean(sb.videoSrc || (matchingServerTask?.status === 'completed' && matchingServerTask.resultUrl));
 
@@ -71,7 +80,7 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
           shotIndex: idx + 1,
           shotName: sb.name || `分镜 ${idx + 1}`,
           imageSrc: sb.imageSrc,
-          prompt: '',
+          prompt: matchingServerTask?.prompt || '',
           taskId: matchingServerTask?.taskId || sb.videoTaskId || null,
           status: hasCompletedVideo ? 'completed' : normalizeQueueStatus(matchingServerTask?.status),
           progress: hasCompletedVideo ? 100 : (matchingServerTask?.status === 'processing' ? 60 : 0),
@@ -87,11 +96,13 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
     return () => {
       isSubscribed = false;
     };
-  }, [activeProjectId, storyboards]);
+    // The ref holds the latest storyboards; only project changes or a shot-count
+    // change should rebuild the queue. Progress updates must not reset it.
+  }, [activeProjectId, storyboards.length]);
 
   // 2. Active Polling Loop for In-Progress Tasks
+  const hasActiveTasks = queueTasks.some(t => t.status === 'processing' || t.status === 'submitting');
   useEffect(() => {
-    const hasActiveTasks = queueTasks.some(t => t.status === 'processing' || t.status === 'submitting');
     setIsBatchGenerating(hasActiveTasks);
 
     if (!hasActiveTasks) {
@@ -103,59 +114,53 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
     }
 
     if (!pollerTimerRef.current) {
-      pollerTimerRef.current = setInterval(async () => {
-        setQueueTasks(prevTasks => {
-          const activeTasks = prevTasks.filter(t => (t.status === 'processing' || t.status === 'submitting') && t.taskId);
-          if (activeTasks.length === 0) return prevTasks;
+      pollerTimerRef.current = setInterval(() => {
+        const activeTasks = queueTasksRef.current.filter(
+          task => (task.status === 'processing' || task.status === 'submitting') && task.taskId
+        );
+        if (activeTasks.length === 0) return;
 
-          // Poll each active task in parallel
-          activeTasks.forEach(async (task) => {
-            if (!task.taskId) return;
-            try {
-              const res = await pollVideoTask('', '', task.taskId);
-              if (res.status === 'completed' && res.resultUrl) {
-                const resultUrl = res.resultUrl;
-                // Update local task state
-                setQueueTasks(curr => curr.map(t => t.shotId === task.shotId ? {
-                  ...t,
-                  status: 'completed',
-                  progress: 100,
-                  resultUrl
-                } : t));
+        void Promise.all(activeTasks.map(async (task) => {
+          if (!task.taskId) return;
+          try {
+            const res = await pollVideoTask('', '', task.taskId);
+            if (res.status === 'completed' && res.resultUrl) {
+              const resultUrl = res.resultUrl;
+              setQueueTasks(curr => curr.map(t => t.shotId === task.shotId ? {
+                ...t,
+                status: 'completed',
+                progress: 100,
+                resultUrl
+              } : t));
 
-                // Backfill to active storyboards
-                setProjectStoryboards(activeProjectId, (prevSb) =>
-                  prevSb.map(sb => sb.id === task.shotId ? {
-                    ...sb,
-                    videoSrc: resultUrl,
-                    videoTaskId: task.taskId || undefined,
-                    isGeneratingVideo: false,
-                    progress: 100
-                  } : sb)
-                );
+              setProjectStoryboards(activeProjectId, (prevSb) =>
+                prevSb.map(sb => sb.id === task.shotId ? {
+                  ...sb,
+                  videoSrc: resultUrl,
+                  videoTaskId: task.taskId || undefined,
+                  isGeneratingVideo: false,
+                  progress: 100
+                } : sb)
+              );
 
-                toast.success(`🎉 「${task.shotName}」视频生成完成！`);
-              } else if (res.status === 'failed') {
-                setQueueTasks(curr => curr.map(t => t.shotId === task.shotId ? {
-                  ...t,
-                  status: 'failed',
-                  error: res.error || '生成失败'
-                } : t));
-                toast.error(`⚠️ 「${task.shotName}」生成失败: ${res.error || '大模型渲染超时'}`);
-              } else {
-                // Advance progress gracefully
-                setQueueTasks(curr => curr.map(t => t.shotId === task.shotId ? {
-                  ...t,
-                  progress: Math.min(95, t.progress + 6)
-                } : t));
-              }
-            } catch (pollErr) {
-              console.warn(`Polling task ${task.taskId} blip:`, pollErr);
+              toast.success(`🎉 「${task.shotName}」视频生成完成！`);
+            } else if (res.status === 'failed') {
+              setQueueTasks(curr => curr.map(t => t.shotId === task.shotId ? {
+                ...t,
+                status: 'failed',
+                error: res.error || '生成失败'
+              } : t));
+              toast.error(`⚠️ 「${task.shotName}」生成失败: ${res.error || '大模型渲染超时'}`);
+            } else {
+              setQueueTasks(curr => curr.map(t => t.shotId === task.shotId ? {
+                ...t,
+                progress: Math.min(95, t.progress + 6)
+              } : t));
             }
-          });
-
-          return prevTasks;
-        });
+          } catch (pollErr) {
+            console.warn(`Polling task ${task.taskId} blip:`, pollErr);
+          }
+        }));
       }, 3500);
     }
 
@@ -165,7 +170,7 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
         pollerTimerRef.current = null;
       }
     };
-  }, [queueTasks, activeProjectId, setProjectStoryboards]);
+  }, [hasActiveTasks, activeProjectId, setProjectStoryboards]);
 
   // 3. Trigger 5-Shot Batch Video Generation
   const startBatchGeneration = useCallback(async (

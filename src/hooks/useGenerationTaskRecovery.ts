@@ -87,6 +87,7 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
           if (!recentTasks || recentTasks.length === 0) return;
   
           for (const t of recentTasks) {
+            if (t.type !== 'tryon' && t.type !== 'mannequin') continue;
             const targetProj = t.projectId
               ? projects.find(p => p.id === t.projectId)
               : projects.find(p => !p.modelOutfitImgUrl || p.isOutfitImgGenerating);
