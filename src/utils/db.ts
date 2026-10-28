@@ -40,10 +40,34 @@ if (isTauri) {
 class LocalDB {
   private dbName: string;
   private storeName: string;
+  private scope: string | null = null;
 
   constructor(dbName = 'keyvideo_local_db', storeName = 'keyvalue_store') {
     this.dbName = dbName;
     this.storeName = storeName;
+  }
+
+  setScope(scope: string | null) {
+    this.scope = scope?.trim() || null;
+  }
+
+  private scopedKey(key: string): string {
+    return this.scope ? `user:${this.scope}:${key}` : key;
+  }
+
+  private canReadLegacyData(): boolean {
+    if (!this.scope) return false;
+    try {
+      const ownerKey = 'KEYVIDEO_LOCAL_SCOPE_OWNER';
+      const owner = localStorage.getItem(ownerKey);
+      if (!owner) {
+        localStorage.setItem(ownerKey, this.scope);
+        return true;
+      }
+      return owner === this.scope;
+    } catch {
+      return false;
+    }
   }
 
   private getDB(): Promise<IDBDatabase> {
@@ -60,7 +84,7 @@ class LocalDB {
     });
   }
 
-  async get<T = unknown>(key: string): Promise<T | null> {
+  private async readKey<T>(key: string): Promise<T | null> {
     if (isTauri) {
       try {
         const db = await sqliteDbPromise;
@@ -96,7 +120,7 @@ class LocalDB {
     }
   }
 
-  async set(key: string, val: unknown): Promise<boolean> {
+  private async writeKey(key: string, val: unknown): Promise<boolean> {
     if (isTauri) {
       try {
         const db = await sqliteDbPromise;
@@ -124,6 +148,27 @@ class LocalDB {
       console.error(`LocalDB IndexedDB set [${key}] failed:`, e);
       return false;
     }
+  }
+
+  async get<T = unknown>(key: string): Promise<T | null> {
+    const scoped = this.scopedKey(key);
+    const value = await this.readKey<T>(scoped);
+    if (value !== null) return value;
+
+    // One-time migration for data written before per-user scoping existed.
+    // Only the first user to open the new version claims that legacy data.
+    if (scoped !== key && this.canReadLegacyData()) {
+      const legacy = await this.readKey<T>(key);
+      if (legacy !== null) {
+        await this.writeKey(scoped, legacy);
+        return legacy;
+      }
+    }
+    return null;
+  }
+
+  async set(key: string, val: unknown): Promise<boolean> {
+    return this.writeKey(this.scopedKey(key), val);
   }
 
   // SQLite Specific local video asset management (with IndexedDB fallback)

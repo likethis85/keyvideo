@@ -1,12 +1,46 @@
-import React, { useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
+import React, { useEffect, useState } from 'react';
+import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
+import { getSsoStatus, startSsoLogin } from '../services/ssoAuth';
 
-export const AuthPage: React.FC = () => {
+interface AuthPageProps {
+  initialError?: string | null;
+}
+
+export const AuthPage: React.FC<AuthPageProps> = ({ initialError }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [ssoLoading, setSsoLoading] = useState(false);
+  const [ssoStatus, setSsoStatus] = useState<{ checking: boolean; configured: boolean; reachable: boolean }>({
+    checking: true,
+    configured: false,
+    reachable: false
+  });
+  const [errorMsg, setErrorMsg] = useState<string | null>(initialError || null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getSsoStatus().then((status) => {
+      if (!active) return;
+      setSsoStatus({ checking: false, configured: status.configured, reachable: status.reachable });
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleSsoLogin = () => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setSsoLoading(true);
+    try {
+      startSsoLogin();
+    } catch (err: unknown) {
+      setSsoLoading(false);
+      setErrorMsg(err instanceof Error ? err.message : '无法发起统一登录，请稍后重试');
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,8 +147,60 @@ export const AuthPage: React.FC = () => {
           </div>
           <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#ffffff', marginTop: '8px' }}>KeyVideo 智能剪辑</span>
           <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)' }}>
-            邮箱安全登录进入工作台
+            {isSupabaseConfigured ? '使用企业统一登录，或邮箱密码进入工作台' : '使用企业统一登录进入工作台'}
           </span>
+        </div>
+
+        {/* Unified SSO entry. Credentials and code exchange stay on the backend. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={handleSsoLogin}
+            disabled={ssoLoading || ssoStatus.checking || !ssoStatus.configured}
+            style={{
+              padding: '12px',
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, var(--accent-cyan, #00f2fe), var(--accent-purple, #8a2be2))',
+              border: 'none',
+              color: '#090a0f',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              cursor: ssoLoading || ssoStatus.checking || !ssoStatus.configured ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              opacity: ssoStatus.checking || !ssoStatus.configured ? 0.55 : 1,
+              boxShadow: ssoStatus.configured ? '0 4px 14px rgba(0, 242, 254, 0.2)' : 'none',
+              transition: 'transform 0.1s, opacity 0.2s'
+            }}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              <polyline points="10 17 15 12 10 7" />
+              <line x1="15" y1="12" x2="3" y2="12" />
+            </svg>
+            <span>
+              {ssoStatus.checking
+                ? '正在检查统一登录...'
+                : ssoStatus.configured
+                  ? (ssoLoading ? '正在跳转...' : '使用统一登录')
+                  : ssoStatus.reachable
+                    ? '统一登录尚未配置'
+                    : '统一登录服务暂不可用'}
+            </span>
+          </button>
+          {!ssoStatus.checking && !ssoStatus.configured && (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', textAlign: 'center', lineHeight: 1.5 }}>
+              {ssoStatus.reachable
+                ? (isSupabaseConfigured
+                    ? '请联系管理员配置统一登录，或使用下方邮箱密码登录'
+                    : '请联系管理员配置统一登录')
+                : (isSupabaseConfigured
+                    ? '无法连接后端统一登录接口，请检查后端地址或使用邮箱密码登录'
+                    : '无法连接后端统一登录接口，请检查后端地址')}
+            </span>
+          )}
         </div>
 
         {/* Form Error / Success Alerts */}
@@ -151,8 +237,16 @@ export const AuthPage: React.FC = () => {
           </div>
         )}
 
-        {/* Input Form */}
-        <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {isSupabaseConfigured && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 0' }}>
+              <span style={{ flex: 1, height: '1px', background: 'rgba(255, 255, 255, 0.08)' }} />
+              <span style={{ fontSize: '11px', color: 'var(--text-muted, #6b7280)' }}>或使用邮箱账号登录</span>
+              <span style={{ flex: 1, height: '1px', background: 'rgba(255, 255, 255, 0.08)' }} />
+            </div>
+
+            {/* Input Form */}
+            <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '11px', color: 'var(--text-secondary, #d1d5db)', fontWeight: '600' }}>电子邮箱</label>
             <input
@@ -220,7 +314,9 @@ export const AuthPage: React.FC = () => {
           >
             {loading ? '登录中...' : '邮箱安全登录'}
           </button>
-        </form>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

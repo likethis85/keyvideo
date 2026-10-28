@@ -1,5 +1,6 @@
 import { runPollingTask } from './aiTaskStateMachine';
 import { getCustomApiConfig, executeCustomApi } from './customApiRunner';
+import { getApiAuthHeaders } from './apiAuth';
 
 export const getBackendUrl = (): string => {
   const localUrl = localStorage.getItem('KEYVIDEO_BACKEND_URL');
@@ -112,6 +113,8 @@ const requestJson = async <T>(
     try {
       const headers = new Headers(init.headers);
       if (options.idempotencyKey) headers.set('X-Idempotency-Key', options.idempotencyKey);
+      const authHeaders = await getApiAuthHeaders();
+      if (authHeaders.Authorization) headers.set('Authorization', authHeaders.Authorization);
       const response = await fetchWithTimeout(url, { ...init, headers }, options.timeoutMs);
       if (!response.ok) {
         const message = await readErrorMessage(response, options.fallbackError);
@@ -423,8 +426,10 @@ export const getVideoContent = async (
   _gatewayToken: string,
   taskId: string
 ): Promise<Blob> => {
+  const authHeaders = await getApiAuthHeaders();
   const response = await fetchWithTimeout(`${getBackendUrl()}/api/video/content/${encodeURIComponent(taskId)}`, {
-    method: 'GET'
+    method: 'GET',
+    headers: authHeaders
   }, LONG_AI_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Fetching video content failed'));

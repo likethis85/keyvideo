@@ -4,7 +4,12 @@ import dotenv from 'dotenv';
 import OSS from 'ali-oss';
 import fs from 'fs';
 import path from 'path';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'url';
+import { createSsoRouter } from './sso.js';
+import { createApiAuthMiddleware } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +21,12 @@ const port = process.env.PORT || 3001;
 const host = process.env.HOST || '127.0.0.1';
 const DEFAULT_EXTERNAL_TIMEOUT_MS = Math.max(5, Number(process.env.EXTERNAL_REQUEST_TIMEOUT_SECONDS) || 30) * 1000;
 const LONG_EXTERNAL_TIMEOUT_MS = Math.max(30, Number(process.env.LONG_AI_REQUEST_TIMEOUT_SECONDS) || 180) * 1000;
+const MAX_JSON_MB = Math.max(1, Number(process.env.MAX_JSON_MB) || 50);
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+  'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac',
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'avif',
+  'mp4', 'webm', 'mov'
+]);
 
 const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_EXTERNAL_TIMEOUT_MS) => {
   const controller = new AbortController();
@@ -31,6 +42,78 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_EXTERNAL_
   } finally {
     clearTimeout(timeout);
   }
+};
+
+const isPrivateIpv4 = (address) => {
+  const parts = address.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+  const [a, b] = parts;
+  return a === 0
+    || a === 10
+    || a === 127
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || a >= 224;
+};
+
+const isPrivateAddress = (address) => {
+  const normalized = String(address).toLowerCase().split('%')[0];
+  const version = isIP(normalized);
+  if (version === 4) return isPrivateIpv4(normalized);
+  if (version !== 6) return true;
+  if (normalized === '::' || normalized === '::1') return true;
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+  if (/^fe[89ab]/.test(normalized)) return true;
+  if (normalized.startsWith('ff')) return true;
+  if (normalized.startsWith('::ffff:')) return isPrivateIpv4(normalized.slice(7));
+  return false;
+};
+
+const assertSafeRemoteUrl = async (value) => {
+  let url;
+  try {
+    url = value instanceof URL ? value : new URL(String(value));
+  } catch {
+    throw new Error('Invalid remote URL');
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('Only HTTP(S) remote URLs are allowed');
+  }
+  if (url.username || url.password) throw new Error('Remote URL must not contain credentials');
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')
+    || hostname.endsWith('.internal') || hostname.endsWith('.lan') || hostname === '[::1]') {
+    throw new Error('Remote URL host is not allowed');
+  }
+  const literalVersion = isIP(hostname.replace(/^\[|\]$/g, ''));
+  if (literalVersion && isPrivateAddress(hostname.replace(/^\[|\]$/g, ''))) {
+    throw new Error('Remote URL host is not allowed');
+  }
+  if (!literalVersion) {
+    const addresses = await lookup(hostname, { all: true, verbatim: true });
+    if (!addresses.length || addresses.some(entry => isPrivateAddress(entry.address))) {
+      throw new Error('Remote URL host is not allowed');
+    }
+  }
+  return url;
+};
+
+const safeFetchRemote = async (value, options = {}, timeoutMs = 60_000) => {
+  let current = value instanceof URL ? value : new URL(String(value));
+  for (let redirects = 0; redirects <= 3; redirects += 1) {
+    await assertSafeRemoteUrl(current);
+    const response = await fetchWithTimeout(current.toString(), { ...options, redirect: 'manual' }, timeoutMs);
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get('location');
+      if (!location) return response;
+      current = new URL(location, current);
+      continue;
+    }
+    return response;
+  }
+  throw new Error('Too many remote redirects');
 };
 
 const requiredEnv = [
@@ -78,7 +161,7 @@ const getChatCompletionConfig = () => {
   };
 };
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,https://www.marius.com.cn,https://marius.com.cn')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -94,8 +177,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key'],
   exposedHeaders: ['X-Idempotency-Replayed']
 }));
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
+app.use(express.json({ limit: `${MAX_JSON_MB}mb` }));
+app.use(express.urlencoded({ limit: `${MAX_JSON_MB}mb`, extended: true }));
 
 const idempotencyStore = new Map();
 const idempotencyTtlMs = Math.max(5, Number(process.env.IDEMPOTENCY_TTL_SECONDS) || 30) * 1000;
@@ -107,7 +190,8 @@ const idempotentGenerationPaths = [
   '/api/ai/background',
   '/api/ai/stylist',
   '/api/ai/prompts-skill',
-  '/api/video/task'
+  '/api/video/task',
+  '/api/video/task/batch'
 ];
 
 app.use(idempotentGenerationPaths, async (req, res, next) => {
@@ -164,11 +248,53 @@ app.use((err, _req, res, next) => {
   if (err?.message === 'Origin is not allowed by CORS') {
     return res.status(403).json({ error: err.message });
   }
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'invalid_json' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'request_too_large' });
+  }
   return next(err);
 });
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'keyvideo-backend', timestamp: Date.now() });
+});
+
+// Unified SSO (marius-sso). The client secret and code exchange stay on the server.
+const ssoRouter = createSsoRouter();
+app.use('/api/auth/sso', ssoRouter);
+// Production may proxy /videos/api/* without stripping the /videos prefix.
+app.use('/videos/api/auth/sso', ssoRouter);
+
+// Every remaining /api/* route requires a valid KeyVideo SSO session or a
+// Supabase access token. Public media proxying is handled inside the middleware.
+app.use('/api', createApiAuthMiddleware());
+
+// Keep authenticated API traffic bounded. Polling five video tasks every 3.5s
+// stays well below this; abusive loops are rejected with 429.
+const API_RATE_LIMIT_PER_MINUTE = Math.max(60, Number(process.env.API_RATE_LIMIT_PER_MINUTE) || 600);
+const apiRateBuckets = new Map();
+app.use('/api', (req, res, next) => {
+  const userId = req.authUser?.id;
+  if (!userId) return next();
+  const now = Date.now();
+  const existing = apiRateBuckets.get(userId);
+  const bucket = !existing || existing.resetAt <= now
+    ? { count: 0, resetAt: now + 60_000 }
+    : existing;
+  bucket.count += 1;
+  apiRateBuckets.set(userId, bucket);
+  if (bucket.count > API_RATE_LIMIT_PER_MINUTE) {
+    res.set('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
+    return res.status(429).json({ error: 'rate_limited', error_description: '请求过于频繁，请稍后重试' });
+  }
+  if (apiRateBuckets.size > 5000) {
+    for (const [key, value] of apiRateBuckets) {
+      if (value.resetAt <= now) apiRateBuckets.delete(key);
+    }
+  }
+  return next();
 });
 
 const TRYON_SCENE_PROMPT_DESCRIPTIONS = {
@@ -179,6 +305,18 @@ const TRYON_SCENE_PROMPT_DESCRIPTIONS = {
   beach: 'posing on a beautiful sunny holiday beach with soft sand and gentle ocean waves',
   runway: 'posing on a fashion show runway with stage lights and professional modeling setup',
   minimalist: 'posing against a minimalist wabi-sabi concrete wall with artistic soft shadows'
+};
+
+const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
+const REAL_PUBLIC_DIR = fs.existsSync(PUBLIC_DIR) ? fs.realpathSync(PUBLIC_DIR) : PUBLIC_DIR;
+const MAX_LOCAL_IMAGE_BYTES = Math.max(1, Number(process.env.MAX_IMAGE_MB) || 25) * 1024 * 1024;
+const LOCAL_IMAGE_MIME_TYPES = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.avif': 'image/avif'
 };
 
 // Helper: Normalize image URL for Sandbase API
@@ -196,15 +334,22 @@ const normalizeImageUrl = (url) => {
   // 2. Handle local relative assets (like /clothing_model.png)
   if (url.startsWith('/')) {
     try {
-      const localPath = path.join(__dirname, '..', 'public', url);
-      if (fs.existsSync(localPath)) {
-        const fileBuffer = fs.readFileSync(localPath);
-        const ext = path.extname(localPath).toLowerCase().replace('.', '');
-        const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-        return `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
-      }
+      const pathname = decodeURIComponent(url.split('?')[0].split('#')[0]);
+      if (!pathname || pathname.includes('\0') || pathname.includes('\\')) return '';
+      const localPath = path.resolve(PUBLIC_DIR, `.${pathname}`);
+      if (localPath !== PUBLIC_DIR && !localPath.startsWith(`${PUBLIC_DIR}${path.sep}`)) return '';
+      if (!fs.existsSync(localPath)) return '';
+      const realPath = fs.realpathSync(localPath);
+      if (realPath !== REAL_PUBLIC_DIR && !realPath.startsWith(`${REAL_PUBLIC_DIR}${path.sep}`)) return '';
+      const ext = path.extname(realPath).toLowerCase();
+      const mimeType = LOCAL_IMAGE_MIME_TYPES[ext];
+      if (!mimeType) return '';
+      const stat = fs.statSync(realPath);
+      if (!stat.isFile() || stat.size > MAX_LOCAL_IMAGE_BYTES) return '';
+      const fileBuffer = fs.readFileSync(realPath);
+      return `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
     } catch (e) {
-      console.warn(`Failed to resolve local asset ${url} to base64:`, e);
+      console.warn(`Failed to resolve local asset ${url} to base64:`, e.message);
     }
   }
 
@@ -233,14 +378,22 @@ const normalizeImageUrl = (url) => {
 // Helper: Fetch remote image as Base64 Data URL (when explicitly needed for OSS upload or canvas)
 const fetchImageAsBase64 = async (url) => {
   const normalized = normalizeImageUrl(url);
+  if (!normalized) throw new Error('Invalid or unsupported image URL');
   if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
     return normalized;
   }
-  const response = await fetchWithTimeout(normalized, {}, 60_000);
+  const response = await safeFetchRemote(normalized, {}, 60_000);
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.statusText}`);
   }
+  const contentLength = Number(response.headers.get('content-length') || 0);
+  if (contentLength > MAX_LOCAL_IMAGE_BYTES) {
+    throw new Error('Remote image exceeds the size limit');
+  }
   const buffer = await response.arrayBuffer();
+  if (buffer.byteLength > MAX_LOCAL_IMAGE_BYTES) {
+    throw new Error('Remote image exceeds the size limit');
+  }
   const base64 = Buffer.from(buffer).toString('base64');
   let contentType = response.headers.get('content-type');
   if (!contentType || !contentType.startsWith('image/')) {
@@ -260,7 +413,7 @@ const extractTaskOutputUrl = (data) => {
 
 // Helper: Upload remote URL directly to Alibaba Cloud OSS
 const uploadUrlToOSS = async (imageUrl) => {
-  const response = await fetchWithTimeout(imageUrl, {}, 60_000);
+  const response = await safeFetchRemote(imageUrl, {}, 60_000);
   if (!response.ok) {
     throw new Error(`Failed to fetch image from URL: ${response.statusText}`);
   }
@@ -440,8 +593,15 @@ const sanitizeTaskRecord = (record = {}) => ({
   ...(record.updatedAt ? { updatedAt: record.updatedAt } : {}),
   ...(record.type ? { type: record.type } : {}),
   ...(record.scene ? { scene: String(record.scene).slice(0, 100) } : {}),
-  ...(record.projectId ? { projectId: record.projectId } : {}),
-  ...(record.userId ? { userId: record.userId } : {}),
+  ...(record.projectId ? { projectId: String(record.projectId).slice(0, 100) } : {}),
+  ...(record.userId ? { userId: String(record.userId).slice(0, 100) } : {}),
+  ...(record.shotId ? { shotId: String(record.shotId).slice(0, 100) } : {}),
+  ...(record.shotName ? { shotName: String(record.shotName).slice(0, 200) } : {}),
+  ...(Number.isFinite(record.shotIndex) ? { shotIndex: record.shotIndex } : {}),
+  ...(record.prompt ? { prompt: String(record.prompt).slice(0, 4000) } : {}),
+  ...(typeof record.imageSrc === 'string' && /^https?:\/\//.test(record.imageSrc)
+    ? { imageSrc: record.imageSrc.slice(0, 2000) }
+    : {}),
   ...(record.resultUrl ? { resultUrl: record.resultUrl } : {}),
   ...(record.error ? { error: typeof record.error === 'string' ? record.error.slice(0, 1000) : JSON.stringify(record.error).slice(0, 1000) } : {}),
   ...(record.model ? { model: String(record.model).slice(0, 150) } : {}),
@@ -573,23 +733,20 @@ const updateTaskStatus = (taskId, patch = {}) => {
   saveTaskStore();
 };
 
-// API: Query status and result of any task by taskId
+// API: Query status and result of a task owned by the current user
 app.get('/api/ai/task/:taskId', (req, res) => {
   const { taskId } = req.params;
   const task = taskStore[taskId];
-  if (!task) {
+  if (!task || task.userId !== req.authUser?.id) {
     return res.status(404).json({ error: 'Task not found' });
   }
   res.json(task);
 });
 
-// API: Pull recent generated tasks history (for recovery after disconnect or cross-device)
+// API: Pull recent generated tasks history for the current user.
 app.get('/api/ai/tasks/recent', (req, res) => {
-  const { userId, projectId } = req.query;
-  let list = Object.values(taskStore);
-  if (userId) {
-    list = list.filter(t => !t.userId || t.userId === userId);
-  }
+  const { projectId } = req.query;
+  let list = Object.values(taskStore).filter(t => t.userId === req.authUser?.id);
   if (projectId) {
     list = list.filter(t => t.projectId === projectId);
   }
@@ -602,7 +759,11 @@ app.get('/api/ai/tasks/recent', (req, res) => {
 
 // 1. Raw Binary Upload to Aliyun OSS (drop-in replacement for Vite configureServer proxy)
 app.post('/api/upload', (req, res) => {
-  const fileName = req.query.name || 'file.mp3';
+  const requestedName = String(req.query.name || 'file.mp3').slice(0, 200);
+  const fileExt = requestedName.split('.').pop()?.toLowerCase() || '';
+  if (!ALLOWED_UPLOAD_EXTENSIONS.has(fileExt)) {
+    return res.status(400).json({ error: 'File type is not allowed' });
+  }
   const chunks = [];
   const maxUploadBytes = Math.max(1, Number(process.env.MAX_UPLOAD_MB) || 100) * 1024 * 1024;
   let receivedBytes = 0;
@@ -635,7 +796,6 @@ app.post('/api/upload', (req, res) => {
         secure: true
       });
 
-      const fileExt = fileName.split('.').pop() || 'mp3';
       const randomName = `${Date.now()}_${Math.random().toString(36).substring(2, 11)}.${fileExt}`;
       const ossPath = `audio/${randomName}`;
       const result = await client.put(ossPath, buffer);
@@ -711,7 +871,7 @@ app.post('/api/ai/mannequin', async (req, res) => {
     };
 
     const taskId = await submitSandbaseTask(sandbasePayload);
-    registerTask(taskId, { type: 'mannequin', prompt: textPrompt, status: 'processing' });
+    registerTask(taskId, { type: 'mannequin', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
 
     const poller = async () => {
       try {
@@ -846,7 +1006,7 @@ HANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or acc
     };
 
     const taskId = await submitSandbaseTask(sandbasePayload);
-    registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt, projectId, status: 'processing' });
+    registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt, projectId, userId: req.authUser?.id, status: 'processing' });
 
     const poller = async () => {
       try {
@@ -1346,6 +1506,9 @@ app.post('/api/video/task', async (req, res) => {
       model: sandbaseVideoModel,
       duration,
       projectId,
+      prompt,
+      imageSrc,
+      userId: req.authUser?.id,
       status: 'processing'
     });
 
@@ -1360,7 +1523,11 @@ app.post('/api/video/task', async (req, res) => {
 app.get('/api/video/poll/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const apiKey = process.env.SANDBASE_API_KEY;
+    const knownTask = taskStore[taskId];
+    if (!knownTask || knownTask.userId !== req.authUser?.id) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
 
     const response = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${taskId}`, {
       method: 'GET',
@@ -1402,6 +1569,12 @@ app.post('/api/video/task/batch', async (req, res) => {
     if (!Array.isArray(shots) || shots.length === 0) {
       return res.status(400).json({ error: 'No shots provided for batch generation' });
     }
+    if (shots.length > 10) {
+      return res.status(400).json({ error: 'At most 10 shots are allowed per batch' });
+    }
+    if (shots.some(shot => !shot || typeof shot !== 'object')) {
+      return res.status(400).json({ error: 'Every shot must be an object' });
+    }
 
     const sandbaseVideoModel = model || "kwaivgi/kling-video/3.0/omni/pro/image-to-video";
     console.log(`\n[Sandbase API] >>> Submitting Batch Video Tasks (${shots.length} shots) for Project: ${projectId || 'default'}`);
@@ -1428,6 +1601,7 @@ app.post('/api/video/task/batch', async (req, res) => {
           shotName: shot.name || `分镜 ${idx + 1}`,
           prompt: shot.prompt,
           imageSrc: shot.imageSrc,
+          userId: req.authUser?.id,
           status: 'processing'
         };
         registerTask(taskId, taskMeta);
@@ -1465,7 +1639,7 @@ app.get('/api/video/tasks/project/:projectId', (req, res) => {
   try {
     const { projectId } = req.params;
     const projectTasks = Object.values(taskStore)
-      .filter(t => t.type === 'video' && t.projectId === projectId)
+      .filter(t => t.type === 'video' && t.projectId === projectId && t.userId === req.authUser?.id)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     res.status(200).json({ tasks: projectTasks });
   } catch (err) {
@@ -1519,7 +1693,11 @@ setInterval(async () => {
 app.get('/api/video/content/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
-    const apiKey = process.env.SANDBASE_API_KEY;
+    const knownTask = taskStore[taskId];
+    if (!knownTask || knownTask.userId !== req.authUser?.id) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
 
     // 1. Get task status to find the output URL
     const statusResponse = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${taskId}`, {
@@ -1547,10 +1725,13 @@ app.get('/api/video/content/:taskId', async (req, res) => {
 
     updateTaskStatus(taskId, { status: 'completed', resultUrl: videoUrl, error: null });
 
-    // 2. Fetch the actual video binary
-    const videoResponse = await fetchWithTimeout(videoUrl, {}, LONG_EXTERNAL_TIMEOUT_MS);
+    // 2. Stream the video binary instead of buffering the entire file in memory.
+    const videoResponse = await safeFetchRemote(videoUrl, {}, LONG_EXTERNAL_TIMEOUT_MS);
     if (!videoResponse.ok) {
       throw new Error(`Failed to fetch video binary from ${videoUrl} (${videoResponse.status})`);
+    }
+    if (!videoResponse.body) {
+      throw new Error('Video provider returned an empty body');
     }
 
     res.setHeader('Content-Type', videoResponse.headers.get('content-type') || 'video/mp4');
@@ -1558,9 +1739,13 @@ app.get('/api/video/content/:taskId', async (req, res) => {
     if (contentLength) {
       res.setHeader('Content-Length', contentLength);
     }
-
-    const buffer = await videoResponse.arrayBuffer();
-    res.status(200).send(Buffer.from(buffer));
+    res.status(200);
+    Readable.fromWeb(videoResponse.body)
+      .on('error', (streamError) => {
+        console.error('Video stream failed:', streamError);
+        res.destroy(streamError);
+      })
+      .pipe(res);
   } catch (err) {
     console.error('Failed to retrieve video content:', err);
     res.status(500).json({ error: err.message || 'Failed to fetch video content' });
@@ -1585,10 +1770,12 @@ const saveCanvasStore = (store) => {
   }
 };
 
+const canvasStoreKey = (req, projectId) => `${req.authUser?.id || 'anonymous'}:${projectId}`;
+
 app.get('/api/canvas/state/:projectId', (req, res) => {
   const { projectId } = req.params;
   const store = getCanvasStore();
-  const canvas = store[projectId] || {
+  const canvas = store[canvasStoreKey(req, projectId)] || {
     projectId,
     viewport: { x: 80, y: 60, scale: 1 },
     nodes: [],
@@ -1602,15 +1789,16 @@ app.post('/api/canvas/state/:projectId', (req, res) => {
   const { projectId } = req.params;
   const { nodes, connections, viewport } = req.body || {};
   const store = getCanvasStore();
-  store[projectId] = {
+  const key = canvasStoreKey(req, projectId);
+  store[key] = {
     projectId,
-    nodes: Array.isArray(nodes) ? nodes : (store[projectId]?.nodes || []),
-    connections: Array.isArray(connections) ? connections : (store[projectId]?.connections || []),
-    viewport: viewport || store[projectId]?.viewport || { x: 80, y: 60, scale: 1 },
+    nodes: Array.isArray(nodes) ? nodes : (store[key]?.nodes || []),
+    connections: Array.isArray(connections) ? connections : (store[key]?.connections || []),
+    viewport: viewport || store[key]?.viewport || { x: 80, y: 60, scale: 1 },
     updatedAt: new Date().toISOString()
   };
   saveCanvasStore(store);
-  res.json({ success: true, canvas: store[projectId] });
+  res.json({ success: true, canvas: store[key] });
 });
 
 // 2.1 Google image inpainting with an explicit black/white mask.
@@ -1640,7 +1828,7 @@ app.post('/api/ai/inpaint', async (req, res) => {
     };
 
     const taskId = await submitSandbaseTask(sandbasePayload);
-    registerTask(taskId, { type: 'inpaint', prompt: textPrompt, status: 'processing' });
+    registerTask(taskId, { type: 'inpaint', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
     const poller = async () => {
       try {
         const resultImageUrl = await pollSandbaseTask(taskId);
@@ -1690,7 +1878,7 @@ app.post('/api/ai/upscale', async (req, res) => {
     };
 
     const taskId = await submitSandbaseTask(sandbasePayload);
-    registerTask(taskId, { type: 'upscale', prompt: textPrompt, status: 'processing' });
+    registerTask(taskId, { type: 'upscale', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
     const poller = async () => {
       try {
         const resultImageUrl = await pollSandbaseTask(taskId);
@@ -1724,7 +1912,10 @@ app.get('/api/ai/image-proxy', async (req, res) => {
     if (!response.ok) return res.status(502).json({ error: `Image provider returned ${response.status}` });
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.startsWith('image/')) return res.status(502).json({ error: 'Upstream response is not an image' });
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_LOCAL_IMAGE_BYTES) return res.status(413).json({ error: 'Image exceeds the size limit' });
     const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > MAX_LOCAL_IMAGE_BYTES) return res.status(413).json({ error: 'Image exceeds the size limit' });
     res.set('Content-Type', contentType);
     res.set('Cache-Control', 'private, max-age=3600');
     return res.send(buffer);

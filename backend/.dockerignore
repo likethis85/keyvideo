@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+tasks_history.json
+tasks_history.json.bak
+tasks_history.json.tmp.*
+canvas_state.json
+*.log
+.pytest_cache
+coverage
+sso.test.js
+auth.test.js

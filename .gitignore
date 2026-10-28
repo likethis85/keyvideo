@@ -33,3 +33,5 @@ backend/.env
 backend/tasks_history.json
 backend/tasks_history.json.bak
 backend/tasks_history.json.tmp.*
+backend/canvas_state.json
+backend/canvas_state.json.tmp.*

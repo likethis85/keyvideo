@@ -1,4 +1,5 @@
 import { getBackendUrl } from '../utils/aiGateway';
+import { getApiAuthHeaders } from '../utils/apiAuth';
 
 export interface BatchVideoShotItem {
   id: string;
@@ -40,6 +41,26 @@ export interface ProjectVideoTaskRecord {
 /**
  * Submit all 5 storyboard shots in a single parallel batch request to backend
  */
+const buildBatchRequestKey = (params: {
+  projectId: string;
+  shots: BatchVideoShotItem[];
+  model?: string;
+  seconds?: number;
+}): string => {
+  const signature = JSON.stringify({
+    projectId: params.projectId,
+    model: params.model,
+    seconds: params.seconds,
+    shots: params.shots.map(shot => ({ id: shot.id, prompt: shot.prompt, seconds: shot.seconds }))
+  });
+  let hash = 2166136261;
+  for (let index = 0; index < signature.length; index += 1) {
+    hash ^= signature.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `batch:${params.projectId}:${(hash >>> 0).toString(16)}`;
+};
+
 export async function submitBatchVideoTasks(params: {
   projectId: string;
   shots: BatchVideoShotItem[];
@@ -47,9 +68,14 @@ export async function submitBatchVideoTasks(params: {
   seconds?: number;
 }): Promise<BatchVideoTaskResult[]> {
   const backendUrl = getBackendUrl();
+  const authHeaders = await getApiAuthHeaders();
   const response = await fetch(`${backendUrl}/api/video/task/batch`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      ...authHeaders,
+      'Content-Type': 'application/json',
+      'X-Idempotency-Key': buildBatchRequestKey(params)
+    },
     body: JSON.stringify(params)
   });
 
@@ -69,7 +95,10 @@ export async function fetchProjectVideoTasks(projectId: string): Promise<Project
   if (!projectId) return [];
   const backendUrl = getBackendUrl();
   try {
-    const response = await fetch(`${backendUrl}/api/video/tasks/project/${encodeURIComponent(projectId)}`);
+    const authHeaders = await getApiAuthHeaders();
+    const response = await fetch(`${backendUrl}/api/video/tasks/project/${encodeURIComponent(projectId)}`, {
+      headers: authHeaders
+    });
     if (!response.ok) return [];
     const data = await response.json();
     return data.tasks || [];

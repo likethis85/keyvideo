@@ -75,10 +75,24 @@ export function useAssetLibraryActions({
     try {
       const finalUrl = await uploadImageSource(srcUrl, 'ai_model');
       const { data: userSession } = await supabase.auth.getSession();
+      const userId = userSession?.session?.user?.id || null;
+
+      // SSO users intentionally have no Supabase session; keep their assets local.
+      if (!userId) {
+        const localItem: ModelAsset = {
+          id: createLocalAssetId('model'),
+          src: finalUrl,
+          date: new Date().toLocaleDateString(),
+          name
+        };
+        setModelLibrary(previous => saveModelLibrarySafely([localItem, ...previous]));
+        return localItem;
+      }
+
       const { data, error } = await supabase.from('model_assets').insert([{
         name,
         src: finalUrl,
-        user_id: userSession?.session?.user?.id || null
+        user_id: userId
       }]).select();
       if (error) throw error;
 
@@ -102,10 +116,16 @@ export function useAssetLibraryActions({
     try {
       const finalUrl = await uploadImageSource(srcUrl, 'custom_scene');
       const { data: userSession } = await supabase.auth.getSession();
+      const userId = userSession?.session?.user?.id || null;
+
+      if (!userId) {
+        return { id: createLocalAssetId('scene'), name, src: finalUrl };
+      }
+
       const { data, error } = await supabase.from('model_assets').insert([{
         name: `[BG] ${name}`,
         src: finalUrl,
-        user_id: userSession?.session?.user?.id || null
+        user_id: userId
       }]).select();
       if (error) throw error;
 

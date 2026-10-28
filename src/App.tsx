@@ -19,6 +19,17 @@ import type { SidebarDrawerRef } from './components/sidebar/sidebarTypes';
 import { localDB } from './utils/db';
 import { supabase } from './utils/supabaseClient';
 import { AuthPage } from './components/AuthPage';
+import {
+  clearSsoParams,
+  describeSsoError,
+  exchangeSsoTicketOnce,
+  loadSsoSession,
+  logoutSso,
+  readSsoError,
+  readSsoTicket,
+  refreshSsoUser
+} from './services/ssoAuth';
+import type { AppUser } from './services/ssoAuth';
 import { ToastContainer } from './components/Toast';
 import { toast } from './components/toastStore';
 import { reflowLayersForRatio, RATIO_CONFIGS } from './utils/smartReflow';
@@ -71,23 +82,89 @@ function App() {
   const selectedLayerIdRef = useRef<string | null>(null);
   const currentTimeRef = useRef<number>(0);
 
-  const [session, setSession] = useState<Session | null>(null);
+  const [supabaseSession, setSupabaseSession] = useState<Session | null>(null);
+  const [ssoUser, setSsoUser] = useState<AppUser | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [loadedLocalStateUserId, setLoadedLocalStateUserId] = useState<string | null>(null);
 
-  // Check active session on mount
+  // Restore either an SSO session or the legacy Supabase session. The SSO ticket
+  // (if present) is consumed exactly once through our backend.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoadingSession(false);
-    });
+    let active = true;
+
+    const bootstrap = async () => {
+      const ssoError = readSsoError();
+      if (ssoError) {
+        setAuthError(describeSsoError(ssoError));
+        clearSsoParams();
+      }
+
+      const ticket = readSsoTicket();
+      if (ticket) {
+        try {
+          const session = await exchangeSsoTicketOnce(ticket);
+          if (active) {
+            setSsoUser(session.user);
+            setAuthError(null);
+          }
+        } catch (error) {
+          if (active) {
+            setAuthError(error instanceof Error ? error.message : '统一登录失败，请重试');
+          }
+        } finally {
+          clearSsoParams();
+        }
+      } else {
+        const stored = loadSsoSession();
+        if (stored) {
+          const user = await refreshSsoUser(stored);
+          if (active && user) setSsoUser(user);
+        }
+      }
+
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (active) setSupabaseSession(data.session);
+      } catch (error) {
+        console.warn('Failed to read the Supabase session:', error);
+      } finally {
+        if (active) setLoadingSession(false);
+      }
+    };
+
+    void bootstrap();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setLoadingSession(false);
+      setSupabaseSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  const authUser: AppUser | null = ssoUser ?? (supabaseSession?.user
+    ? {
+        id: supabaseSession.user.id,
+        email: supabaseSession.user.email ?? null,
+        displayName: (supabaseSession.user.user_metadata?.display_name as string | undefined)
+          || (supabaseSession.user.user_metadata?.full_name as string | undefined)
+          || null,
+        provider: 'supabase',
+        avatarUrl: null
+      }
+    : null);
+
+  // Keep browser/desktop local project storage isolated per authenticated user.
+  localDB.setScope(authUser?.id ?? null);
+
+  // Object URLs are process-global; never let a new user reuse the previous user's videos.
+  useEffect(() => {
+    for (const url of videoBlobUrls.values()) URL.revokeObjectURL(url);
+    videoBlobUrls.clear();
+  }, [authUser?.id]);
 
   // Bridge window.alert to modern toast system
   useEffect(() => {
@@ -190,58 +267,82 @@ function App() {
 
   // Load saved state from database on mount
   useEffect(() => {
+    const userId = authUser?.id;
+    if (!userId) return;
+
+    let cancelled = false;
     const loadState = async () => {
       const savedRatio = await localDB.get('keyvideo_ratio') as AspectRatio | null;
-      if (savedRatio) {
-        setRatio(savedRatio);
-      }
+      if (cancelled) return;
+      setRatio(savedRatio && ['1-1', '3-4', '9-16', '16-9'].includes(savedRatio) ? savedRatio : '9-16');
 
       const savedLayers = await localDB.get('keyvideo_layers') as Layer[] | null;
       const savedStoryboards = await localDB.get('ai_storyboards') as StoryboardItem[] | null;
+      if (cancelled) return;
 
       let initialLayers = createDefaultLayers();
 
-      if (savedLayers) {
+      if (Array.isArray(savedLayers)) {
+        const storyboardList = Array.isArray(savedStoryboards) ? savedStoryboards : [];
         const updatedLayers = savedLayers.map((layer) => {
-          if (layer.type === 'media' && layer.properties.isVideo) {
-            let sbIndex = -1;
-            if (layer.id.startsWith('media_i2v_0_')) sbIndex = 0;
-            else if (layer.id.startsWith('media_i2v_1_')) sbIndex = 1;
-            else if (layer.id.startsWith('media_i2v_2_')) sbIndex = 2;
+          if (!layer || typeof layer !== 'object' || !layer.properties) return layer;
+          if (layer.type !== 'media' || !layer.properties.isVideo) return layer;
 
-            if (sbIndex !== -1 && savedStoryboards && savedStoryboards[sbIndex]) {
-              const sb = savedStoryboards[sbIndex];
-              if (sb.videoBlob) {
-                const cacheKey = sb.id;
-                if (!videoBlobUrls.has(cacheKey)) {
-                  videoBlobUrls.set(cacheKey, URL.createObjectURL(sb.videoBlob));
-                }
-                layer.properties.src = videoBlobUrls.get(cacheKey);
-              }
+          const match = /^media_i2v_(\d+)_/.exec(layer.id);
+          const sbIndex = match ? Number(match[1]) : -1;
+          const sb = sbIndex !== -1 ? storyboardList[sbIndex] : null;
+          if (!sb) return layer;
+
+          if (typeof Blob !== 'undefined' && sb.videoBlob instanceof Blob) {
+            const cacheKey = sb.id;
+            if (!videoBlobUrls.has(cacheKey)) {
+              videoBlobUrls.set(cacheKey, URL.createObjectURL(sb.videoBlob));
             }
+            return {
+              ...layer,
+              properties: { ...layer.properties, src: videoBlobUrls.get(cacheKey) || '' }
+            };
+          }
+
+          // A blob URL from a previous page load is always dead. Keep a real
+          // remote URL, otherwise let recovery re-fetch the video by task ID.
+          if ((layer.properties.src || '').startsWith('blob:')) {
+            return {
+              ...layer,
+              properties: {
+                ...layer.properties,
+                src: sb.videoSrc && !sb.videoSrc.startsWith('blob:') ? sb.videoSrc : ''
+              }
+            };
           }
           return layer;
         });
         initialLayers = updatedLayers;
-        setLayers(updatedLayers);
       }
 
+      setLayers(initialLayers);
       setHistoryState(createInitialHistory(initialLayers, '加载工程模板'));
+      setLoadedLocalStateUserId(userId);
     };
 
-    loadState();
-  }, []);
+    void loadState();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id]);
 
-  // Save layers and ratio to localDB when they change
+  // Save layers and ratio to localDB only after the authenticated storage scope is known.
   useEffect(() => {
+    if (!authUser?.id || loadedLocalStateUserId !== authUser.id) return;
     if (layers.length > 0 && historyState.index >= 0) {
       localDB.set('keyvideo_layers', layers);
     }
-  }, [layers, historyState.index]);
+  }, [authUser?.id, loadedLocalStateUserId, layers, historyState.index]);
 
   useEffect(() => {
+    if (!authUser?.id || loadedLocalStateUserId !== authUser.id) return;
     localDB.set('keyvideo_ratio', ratio);
-  }, [ratio]);
+  }, [authUser?.id, loadedLocalStateUserId, ratio]);
 
   // Track continuous layer modifications with a 400ms debounce
   useEffect(() => {
@@ -493,8 +594,12 @@ function App() {
     return <AppLoadingScreen />;
   }
 
-  if (!session) {
-    return <AuthPage />;
+  if (authUser && loadedLocalStateUserId !== authUser.id) {
+    return <AppLoadingScreen />;
+  }
+
+  if (!authUser) {
+    return <AuthPage initialError={authError} />;
   }
 
   return (
@@ -534,7 +639,7 @@ function App() {
 
         <AppHeaderActions
           theme={theme}
-          userEmail={session.user.email}
+          userEmail={authUser.email || authUser.displayName || authUser.id}
           onAddLayer={addDefaultTextLayer}
           onExport={triggerExport}
           onToggleCopilot={() => setIsCopilotOpen(prev => !prev)}
@@ -575,7 +680,16 @@ function App() {
             setTheme(newTheme);
             toast.info(`已切换至 ${newTheme === 'dark' ? '🌙 暗黑主题' : '☀️ 浅色主题'}`);
           }}
-          onSignOut={async () => { await supabase.auth.signOut(); }}
+          onSignOut={async () => {
+            setSsoUser(null);
+            setSupabaseSession(null);
+            await logoutSso();
+            try {
+              await supabase.auth.signOut();
+            } catch (error) {
+              console.warn('Failed to sign out of Supabase:', error);
+            }
+          }}
         />
      </header>
 
@@ -615,7 +729,7 @@ function App() {
               setSelectedLayerId={setSelectedLayerId}
               setModelSwapRunning={setModelSwapRunning}
               ratio={ratio}
-              session={session}
+              session={authUser.id}
               projects={projects}
               setProjects={setProjects}
               activeProjectId={activeProjectId}

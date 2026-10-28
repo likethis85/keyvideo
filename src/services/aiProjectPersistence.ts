@@ -9,6 +9,25 @@ export interface PersistedProjectState {
   swapModelUrl: string | null;
 }
 
+function restoreStoryboardVideoUrls(project: AIProject): AIProject {
+  return {
+    ...project,
+    storyboards: (project.storyboards || []).map(storyboard => {
+      if (!storyboard.videoSrc || !storyboard.videoSrc.startsWith('blob:')) return storyboard;
+      // IndexedDB can retain a Blob, but object URLs never survive a reload.
+      if (typeof Blob !== 'undefined' && storyboard.videoBlob instanceof Blob) {
+        try {
+          return { ...storyboard, videoSrc: URL.createObjectURL(storyboard.videoBlob) };
+        } catch {
+          return { ...storyboard, videoSrc: null };
+        }
+      }
+      // Tauri/SQLite stores Blob as {}, so fall back to videoTaskId recovery.
+      return { ...storyboard, videoSrc: null };
+    })
+  };
+}
+
 export async function loadPersistedProjectState(): Promise<PersistedProjectState> {
   let projects: AIProject[] = [];
   const { data: userSession } = await supabase.auth.getSession();
@@ -45,7 +64,7 @@ export async function loadPersistedProjectState(): Promise<PersistedProjectState
   const storedSwapModelUrl: unknown = await localDB.get('ai_swap_model_url');
 
   return {
-    projects,
+    projects: projects.map(restoreStoryboardVideoUrls),
     activeProjectId: typeof storedActiveProjectId === 'string' ? storedActiveProjectId : null,
     swapModelUrl: typeof storedSwapModelUrl === 'string' ? storedSwapModelUrl : null
   };
