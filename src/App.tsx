@@ -86,6 +86,7 @@ function App() {
   const [ssoUser, setSsoUser] = useState<AppUser | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [loadedLocalStateUserId, setLoadedLocalStateUserId] = useState<string | null>(null);
 
   // Restore either an SSO session or the legacy Supabase session. The SSO ticket
   // (if present) is consumed exactly once through our backend.
@@ -158,6 +159,12 @@ function App() {
 
   // Keep browser/desktop local project storage isolated per authenticated user.
   localDB.setScope(authUser?.id ?? null);
+
+  // Object URLs are process-global; never let a new user reuse the previous user's videos.
+  useEffect(() => {
+    for (const url of videoBlobUrls.values()) URL.revokeObjectURL(url);
+    videoBlobUrls.clear();
+  }, [authUser?.id]);
 
   // Bridge window.alert to modern toast system
   useEffect(() => {
@@ -260,26 +267,30 @@ function App() {
 
   // Load saved state from database on mount
   useEffect(() => {
-    if (!authUser?.id) return;
+    const userId = authUser?.id;
+    if (!userId) return;
 
+    let cancelled = false;
     const loadState = async () => {
       const savedRatio = await localDB.get('keyvideo_ratio') as AspectRatio | null;
-      if (savedRatio) {
-        setRatio(savedRatio);
-      }
+      if (cancelled) return;
+      setRatio(savedRatio && ['1-1', '3-4', '9-16', '16-9'].includes(savedRatio) ? savedRatio : '9-16');
 
       const savedLayers = await localDB.get('keyvideo_layers') as Layer[] | null;
       const savedStoryboards = await localDB.get('ai_storyboards') as StoryboardItem[] | null;
+      if (cancelled) return;
 
       let initialLayers = createDefaultLayers();
 
-      if (savedLayers) {
+      if (Array.isArray(savedLayers)) {
+        const storyboardList = Array.isArray(savedStoryboards) ? savedStoryboards : [];
         const updatedLayers = savedLayers.map((layer) => {
+          if (!layer || typeof layer !== 'object' || !layer.properties) return layer;
           if (layer.type !== 'media' || !layer.properties.isVideo) return layer;
 
           const match = /^media_i2v_(\d+)_/.exec(layer.id);
           const sbIndex = match ? Number(match[1]) : -1;
-          const sb = sbIndex !== -1 && savedStoryboards ? savedStoryboards[sbIndex] : null;
+          const sb = sbIndex !== -1 ? storyboardList[sbIndex] : null;
           if (!sb) return layer;
 
           if (typeof Blob !== 'undefined' && sb.videoBlob instanceof Blob) {
@@ -307,25 +318,31 @@ function App() {
           return layer;
         });
         initialLayers = updatedLayers;
-        setLayers(updatedLayers);
       }
 
+      setLayers(initialLayers);
       setHistoryState(createInitialHistory(initialLayers, '加载工程模板'));
+      setLoadedLocalStateUserId(userId);
     };
 
-    loadState();
+    void loadState();
+    return () => {
+      cancelled = true;
+    };
   }, [authUser?.id]);
 
-  // Save layers and ratio to localDB when they change
+  // Save layers and ratio to localDB only after the authenticated storage scope is known.
   useEffect(() => {
+    if (!authUser?.id || loadedLocalStateUserId !== authUser.id) return;
     if (layers.length > 0 && historyState.index >= 0) {
       localDB.set('keyvideo_layers', layers);
     }
-  }, [layers, historyState.index]);
+  }, [authUser?.id, loadedLocalStateUserId, layers, historyState.index]);
 
   useEffect(() => {
+    if (!authUser?.id || loadedLocalStateUserId !== authUser.id) return;
     localDB.set('keyvideo_ratio', ratio);
-  }, [ratio]);
+  }, [authUser?.id, loadedLocalStateUserId, ratio]);
 
   // Track continuous layer modifications with a 400ms debounce
   useEffect(() => {
@@ -574,6 +591,10 @@ function App() {
   };
 
   if (loadingSession) {
+    return <AppLoadingScreen />;
+  }
+
+  if (authUser && loadedLocalStateUserId !== authUser.id) {
     return <AppLoadingScreen />;
   }
 

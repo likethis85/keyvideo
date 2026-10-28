@@ -187,6 +187,10 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
       toast.warning('当前暂无可用的分镜画面');
       return;
     }
+    if (queueTasksRef.current.some(task => task.status === 'processing' || task.status === 'submitting')) {
+      toast.warning('当前已有分镜视频任务在生成中，请等待完成后再提交');
+      return;
+    }
 
     const parsedPrompts = parseFiveShotPrompt(masterPrompt15s || '');
     const defaultPrompts = [

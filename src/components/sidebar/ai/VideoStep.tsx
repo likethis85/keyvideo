@@ -221,7 +221,7 @@ export const VideoStep: React.FC<VideoStepProps> = ({
             type="button"
             className="btn-primary"
             onClick={onStartBatchGeneration}
-            disabled={isI2vGenerating}
+            disabled={isI2vGenerating || batchActiveCount > 0}
             style={{
               background: 'linear-gradient(135deg, #7928ca, #ff0080)',
               color: '#ffffff',

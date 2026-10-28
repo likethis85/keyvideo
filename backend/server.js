@@ -202,7 +202,8 @@ const idempotentGenerationPaths = [
   '/api/ai/background',
   '/api/ai/stylist',
   '/api/ai/prompts-skill',
-  '/api/video/task'
+  '/api/video/task',
+  '/api/video/task/batch'
 ];
 
 app.use(idempotentGenerationPaths, async (req, res, next) => {
@@ -281,6 +282,32 @@ app.use('/videos/api/auth/sso', ssoRouter);
 // Every remaining /api/* route requires a valid KeyVideo SSO session or a
 // Supabase access token. Public media proxying is handled inside the middleware.
 app.use('/api', createApiAuthMiddleware());
+
+// Keep authenticated API traffic bounded. Polling five video tasks every 3.5s
+// stays well below this; abusive loops are rejected with 429.
+const API_RATE_LIMIT_PER_MINUTE = Math.max(60, Number(process.env.API_RATE_LIMIT_PER_MINUTE) || 600);
+const apiRateBuckets = new Map();
+app.use('/api', (req, res, next) => {
+  const userId = req.authUser?.id;
+  if (!userId) return next();
+  const now = Date.now();
+  const existing = apiRateBuckets.get(userId);
+  const bucket = !existing || existing.resetAt <= now
+    ? { count: 0, resetAt: now + 60_000 }
+    : existing;
+  bucket.count += 1;
+  apiRateBuckets.set(userId, bucket);
+  if (bucket.count > API_RATE_LIMIT_PER_MINUTE) {
+    res.set('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
+    return res.status(429).json({ error: 'rate_limited', error_description: '请求过于频繁，请稍后重试' });
+  }
+  if (apiRateBuckets.size > 5000) {
+    for (const [key, value] of apiRateBuckets) {
+      if (value.resetAt <= now) apiRateBuckets.delete(key);
+    }
+  }
+  return next();
+});
 
 const TRYON_SCENE_PROMPT_DESCRIPTIONS = {
   street: 'posing in a modern urban street with city lights and soft outdoor background',

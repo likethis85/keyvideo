@@ -88,22 +88,10 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
     const load = async () => {
       const deletedModelIds = asStringArray(await localDB.get('deleted_model_ids'));
       const deletedSceneIds = asStringArray(await localDB.get('deleted_scene_ids'));
+      const { data: sessionData } = await supabase.auth.getSession();
+      const hasSupabaseUser = Boolean(sessionData.session?.user?.id);
 
-      try {
-        const { data, error } = await supabase.from('model_assets').select('*').order('created_at', { ascending: false });
-        if (error || !data) throw error || new Error('Model assets unavailable');
-        const models = mapModels(data, deletedModelIds);
-        const scenes = mapScenes(data, deletedSceneIds, true);
-        if (!cancelled) {
-          setModelLibrary(models);
-          setCustomScenes(scenes);
-        }
-        await Promise.all([
-          localDB.set('ai_model_library', models),
-          localDB.set('ai_custom_scenes', scenes)
-        ]);
-      } catch (error) {
-        console.error('Failed to load models from Supabase:', error);
+      const loadLocalAssets = async () => {
         const [modelRows, sceneRows] = await Promise.all([
           loadLocalModelAssets(),
           localDB.get('ai_custom_scenes')
@@ -112,16 +100,46 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
           setModelLibrary(mapModels(modelRows, deletedModelIds));
           setCustomScenes(mapScenes(Array.isArray(sceneRows) ? sceneRows : [], deletedSceneIds));
         }
+      };
+
+      if (hasSupabaseUser) {
+        try {
+          const { data, error } = await supabase.from('model_assets').select('*').order('created_at', { ascending: false });
+          if (error || !data) throw error || new Error('Model assets unavailable');
+          const models = mapModels(data, deletedModelIds);
+          const scenes = mapScenes(data, deletedSceneIds, true);
+          if (!cancelled) {
+            setModelLibrary(models);
+            setCustomScenes(scenes);
+          }
+          await Promise.all([
+            localDB.set('ai_model_library', models),
+            localDB.set('ai_custom_scenes', scenes)
+          ]);
+        } catch (error) {
+          console.error('Failed to load models from Supabase:', error);
+          await loadLocalAssets();
+        }
+      } else {
+        // SSO users have no Supabase session and keep their own local library.
+        await loadLocalAssets();
       }
 
-      try {
-        const { data, error } = await supabase.from('audio_assets').select('*').order('created_at', { ascending: false });
-        if (error || !data) throw error || new Error('Audio assets unavailable');
-        const audio = mapAudio(data);
-        if (!cancelled) setBgmLibrary(audio);
-        applyDefaultAudio(audio);
-      } catch (error) {
-        console.error('Failed to load bgms from Supabase:', error);
+      if (hasSupabaseUser) {
+        try {
+          const { data, error } = await supabase.from('audio_assets').select('*').order('created_at', { ascending: false });
+          if (error || !data) throw error || new Error('Audio assets unavailable');
+          const audio = mapAudio(data);
+          if (!cancelled) setBgmLibrary(audio);
+          applyDefaultAudio(audio);
+        } catch (error) {
+          console.error('Failed to load bgms from Supabase:', error);
+          const rows: unknown = await localDB.get('ai_bgm_library');
+          const audio = mapAudio(Array.isArray(rows) ? rows : []);
+          if (!cancelled) setBgmLibrary(audio);
+          applyDefaultAudio(audio);
+        }
+      } else {
         const rows: unknown = await localDB.get('ai_bgm_library');
         const audio = mapAudio(Array.isArray(rows) ? rows : []);
         if (!cancelled) setBgmLibrary(audio);
