@@ -55,7 +55,7 @@
 - [ ] **避免跨账号复用前端生成请求。** `src/utils/aiGateway.ts` 的模块级 in-flight map 只按操作和 payload 去重；账号切换期间相同请求可能复用前一账号的 Promise。把身份/后端范围纳入去重作用域，并在登出时取消或清空旧请求。
 - [ ] **补全 API 集成与回归测试。** 当前前端测试集中在纯工具函数，后端测试集中在 SSO/auth 单元逻辑；关键路由、RLS/OSS 边界、幂等、图片代理、批量生成、持久化与导出流程缺少端到端覆盖。为本清单 P1 事项建立可注入上游服务的路由测试和关键前端状态测试。
 - [ ] **让 CI 覆盖后端、Rust 格式和依赖安全。** 部分完成：新增 `.github/workflows/ci.yml`，在 push/PR 上分别运行前端 `npm test` 与 `backend/npm test`（Node 22，因为前端测试依赖 `--experimental-strip-types`），发布工作流也升级到 Node 22。仍未加入 `cargo fmt --check`、Rust 构建/测试、`cargo-audit` 与 npm 依赖审计，也未修复已知 Rust 格式问题。
-- [ ] **完善 README 与部署手册。** 根目录 `README.md` 仍是 Vite 模板，缺少真实安装、环境变量、Supabase/RLS 初始化、TLS/反向代理、Docker 持久化、桌面构建及故障排查说明。用 `.env.example` 和 CI 实际流程验证每条步骤。
+- [x] **完善 README 与部署手册。** 根目录 `README.md` 已重写为真实手册：环境要求、前后端安装与启动、`.env.example` 关键变量、SSO 链接、Supabase 建表与两个迁移顺序、素材私有/公开标记、HTTPS/反向代理、Docker 持久卷与非 root/健康检查、桌面标签发布、测试命令与常见问题。Docker 与真实 Supabase 迁移未在本环境执行，步骤以现有 compose/Dockerfile/CI 配置为准。
 
 ## P3：清理与一致性
 
