@@ -73,8 +73,9 @@ export function useAssetLibraryActions({
   }, []);
 
   const addModelToLibrary = useCallback(async (name: string, srcUrl: string): Promise<ModelAsset | null> => {
+    let finalUrl = srcUrl;
     try {
-      const finalUrl = await uploadImageSource(srcUrl, 'ai_model');
+      finalUrl = await uploadImageSource(srcUrl, 'ai_model');
       const { data: userSession } = await supabase.auth.getSession();
       const userId = userSession?.session?.user?.id || null;
 
@@ -98,7 +99,7 @@ export function useAssetLibraryActions({
       if (error) throw error;
 
       const inserted = data?.[0];
-      if (!inserted) return null;
+      if (!inserted) throw new Error('Supabase did not return the inserted model');
       const localItem: ModelAsset = {
         id: inserted.id,
         src: inserted.src,
@@ -108,8 +109,17 @@ export function useAssetLibraryActions({
       setModelLibrary(previous => saveModelLibrarySafely([localItem, ...previous]));
       return localItem;
     } catch (error) {
-      console.error('Failed to add model to library:', error);
-      return null;
+      // The object is already uploaded; keep a local record so it is neither
+      // lost nor orphaned when RLS/network rejects the cloud insert.
+      console.warn('Cloud model insert failed, keeping a local record:', error);
+      const localItem: ModelAsset = {
+        id: createLocalAssetId('model'),
+        src: finalUrl,
+        date: new Date().toLocaleDateString(),
+        name
+      };
+      setModelLibrary(previous => saveModelLibrarySafely([localItem, ...previous]));
+      return localItem;
     }
   }, [saveModelLibrarySafely, setModelLibrary]);
 

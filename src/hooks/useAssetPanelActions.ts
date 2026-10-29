@@ -47,7 +47,9 @@ export function useAssetPanelActions(options: AssetPanelActionsOptions) {
     if (!file) return;
     const name = file.name.split('.')[0] || '上传模特';
     const added = await options.addModelToLibrary(name, await readDataUrl(file));
-    alert(added ? `模特「${name}」上传并保存至云端模特库成功！` : `模特「${name}」上传失败，请检查网络或服务配置。`);
+    alert(added
+      ? `模特「${name}」已保存到模特库（云端不可用时自动保存到本地）。`
+      : `模特「${name}」上传失败，请检查网络或服务配置。`);
   }, [options]);
 
   const loadReference = useCallback(async (event: React.ChangeEvent<HTMLInputElement>, setter: (url: string) => void) => {
