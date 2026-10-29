@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type WorkspaceViewMode = 'editor' | 'canvas';
+export type WorkspaceViewMode = 'editor' | 'timeline' | 'canvas';
 
 interface ViewModeSwitchProps {
   mode: WorkspaceViewMode;
@@ -36,7 +36,22 @@ export const ViewModeSwitch: React.FC<ViewModeSwitchProps> = ({ mode, onChange }
           <line x1="17" y1="17" x2="22" y2="17" />
           <line x1="17" y1="7" x2="22" y2="7" />
         </svg>
-        <span>时间线剪辑</span>
+        <span>剪辑</span>
+      </button>
+
+      <button
+        type="button"
+        className={`mode-switch-btn ${mode === 'timeline' ? 'active' : ''}`}
+        onClick={() => onChange('timeline')}
+        title="进入独立全屏时间轴工作区"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="mode-btn-svg">
+          <rect x="3" y="5" width="18" height="4" rx="1" />
+          <rect x="3" y="11" width="11" height="4" rx="1" />
+          <rect x="7" y="17" width="14" height="3" rx="1" />
+          <path d="M7 3v18" />
+        </svg>
+        <span>时间轴</span>
       </button>
 
       <button

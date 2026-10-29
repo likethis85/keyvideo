@@ -26,6 +26,7 @@ interface TimelineProps {
   storyboards?: StoryboardItem[];
   isCollapsed?: boolean;
   onToggleCollapsed?: () => void;
+  fullPage?: boolean;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -45,6 +46,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   storyboards = [],
   isCollapsed = false,
   onToggleCollapsed,
+  fullPage = false,
 }) => {
   const rulerRef = React.useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -608,8 +610,8 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   return (
     <div
-      className="timeline-panel"
-      style={{
+      className={`timeline-panel ${fullPage ? 'timeline-panel-fullpage' : ''}`}
+      style={fullPage ? { height: '100%', flex: 1 } : {
         height: `${timelineHeight}px`,
         transition: isResizingHeight ? 'none' : 'height 0.16s cubic-bezier(0.16, 1, 0.3, 1)'
       }}

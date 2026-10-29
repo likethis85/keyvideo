@@ -4038,3 +4038,65 @@ body[data-theme="light"] {
 .script-template-search input::placeholder {
   color: var(--text-muted);
 }
+/* Full-screen timeline workspace */
+.timeline-workspace {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-fullpage-shell {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  background: var(--bg-base);
+  overflow: hidden;
+}
+
+.timeline-fullpage-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-panel-fullpage {
+  border-top: 0 !important;
+  height: 100% !important;
+  flex: 1;
+}
+
+.timeline-panel-fullpage .timeline-resizer {
+  display: none;
+}
+
+.timeline-panel-fullpage .timeline-header {
+  height: 48px;
+  padding: 0 24px;
+}
+
+.timeline-panel-fullpage .timeline-title {
+  font-size: 15px;
+}
+
+.timeline-panel-fullpage .timeline-hint {
+  font-size: 9px;
+}
+
+.timeline-panel-fullpage .timeline-story-rail {
+  flex-basis: 64px;
+  padding: 8px 24px;
+}
+
+.timeline-panel-fullpage .timeline-story-card {
+  min-width: 128px;
+  height: 48px;
+}
+
+.timeline-panel-fullpage .timeline-story-thumb {
+  width: 30px;
+  height: 36px;
+  flex-basis: 30px;
+}

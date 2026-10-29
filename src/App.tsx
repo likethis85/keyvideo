@@ -643,6 +643,28 @@ function App() {
     && !isDrawerCollapsed
     && (activeTab === 'template' || activeTab === 'media' || activeTab === 'prompt');
 
+  const renderTimeline = (fullPage = false) => (
+    <Timeline
+      layers={layers}
+      setLayers={setLayers}
+      currentTime={currentTime}
+      setCurrentTime={setCurrentTime}
+      selectedLayerId={selectedLayerId}
+      setSelectedLayerId={setSelectedLayerId}
+      undo={undo}
+      redo={redo}
+      canUndo={historyState.index > 0}
+      canRedo={historyState.index < historyState.stack.length - 1}
+      undoCount={historyState.index}
+      redoCount={historyState.stack.length - 1 - historyState.index}
+      commitInstantHistory={commitInstantHistory}
+      storyboards={projects.find(p => p.id === activeProjectId)?.storyboards ?? []}
+      isCollapsed={fullPage ? false : isTimelineCollapsed}
+      onToggleCollapsed={fullPage ? undefined : () => setIsTimelineCollapsed(previous => !previous)}
+      fullPage={fullPage}
+    />
+  );
+
   if (loadingSession) {
     return <AppLoadingScreen />;
   }
@@ -747,7 +769,33 @@ function App() {
 
       {/* Editor Body Workspace */}
       <div className={`editor-container ${isLibraryWorkspace ? 'library-workspace' : ''}`}>
-        {viewMode === 'canvas' ? (
+        {viewMode === 'timeline' ? (
+          <div className="canvas-workspace-shell timeline-workspace">
+            <ToolNavigation
+              activeTab={activeTab}
+              isDrawerCollapsed={true}
+              onSelectTab={(tab) => {
+                setViewMode('editor');
+                setActiveTab(tab);
+                setIsDrawerCollapsed(false);
+              }}
+              onSelectWorkspace={() => { setViewMode('editor'); setIsDrawerCollapsed(true); }}
+            />
+            <div className="timeline-fullpage-shell">
+              <div className="timeline-fullpage-main">
+                {renderTimeline(true)}
+              </div>
+              <PropertyInspector
+                layers={layers}
+                setLayers={setLayers}
+                selectedLayerId={selectedLayerId}
+                setSelectedLayerId={setSelectedLayerId}
+                isCollapsed={false}
+                onToggleCollapse={() => undefined}
+              />
+            </div>
+          </div>
+        ) : viewMode === 'canvas' ? (
           <div className="canvas-workspace-shell">
             <ToolNavigation
               activeTab={activeTab}
@@ -757,7 +805,7 @@ function App() {
                 setActiveTab(tab);
                 setIsDrawerCollapsed(false);
               }}
-              onSelectWorkspace={() => setIsDrawerCollapsed(true)}
+              onSelectWorkspace={() => { setViewMode('editor'); setIsDrawerCollapsed(true); }}
             />
             <Suspense fallback={<AppLoadingScreen />}>
               <InfiniteCanvas
@@ -848,26 +896,7 @@ function App() {
       </div>
 
       {/* Bottom timeline track scrubbers (Hidden during fullscreen preview or canvas mode) */}
-      {!isFullscreen && viewMode === 'editor' && !isLibraryWorkspace && (
-        <Timeline
-          layers={layers}
-          setLayers={setLayers}
-          currentTime={currentTime}
-          setCurrentTime={setCurrentTime}
-          selectedLayerId={selectedLayerId}
-          setSelectedLayerId={setSelectedLayerId}
-          undo={undo}
-          redo={redo}
-          canUndo={historyState.index > 0}
-          canRedo={historyState.index < historyState.stack.length - 1}
-          undoCount={historyState.index}
-          redoCount={historyState.stack.length - 1 - historyState.index}
-          commitInstantHistory={commitInstantHistory}
-          storyboards={projects.find(p => p.id === activeProjectId)?.storyboards ?? []}
-          isCollapsed={isTimelineCollapsed}
-          onToggleCollapsed={() => setIsTimelineCollapsed(previous => !previous)}
-        />
-      )}
+      {!isFullscreen && viewMode === 'editor' && !isLibraryWorkspace && renderTimeline(false)}
 
       {isOnboardingOpen && (
         <OnboardingWizard
@@ -906,7 +935,7 @@ function App() {
           selectedLayerId,
           setSelectedLayerId,
           triggerExport,
-          viewMode,
+          viewMode: viewMode === 'canvas' ? 'canvas' : 'editor',
           setViewMode,
           onCanvasGeneratePipeline: async (theme?: string) => {
             const currentProj = projects.find(p => p.id === activeProjectId);
