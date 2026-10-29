@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { CanvasNodeData, CanvasConnection, CanvasViewport, CanvasNodeType } from '../types/canvas';
 import { localDB } from '../utils/db';
 import { resolveNodeOverlaps, autoLayoutCanvasNodes } from '../utils/canvasLayout';
+import { CANVAS_IMPORT_EVENT, normalizeCanvasState, type CanvasImportEventDetail } from '../utils/canvasImport';
 
 interface CanvasHistorySnapshot {
   nodes: CanvasNodeData[];
@@ -71,6 +72,26 @@ export function useCanvasStore(projectId: string) {
       active = false;
     };
   }, [storageKey]);
+
+  // Replace the mounted canvas when a project package is imported. Without
+  // this, the debounced autosave below would overwrite the imported data.
+  useEffect(() => {
+    const handleImport = (event: Event) => {
+      const detail = (event as CustomEvent<CanvasImportEventDetail>).detail;
+      if (!detail || (detail.projectId || 'default') !== (projectId || 'default')) return;
+      const state = normalizeCanvasState(detail);
+      if (!state) return;
+      const importedNodes = resolveNodeOverlaps(state.nodes, 48);
+      setNodes(importedNodes);
+      setConnections(state.connections);
+      if (state.viewport) setViewport(state.viewport);
+      setSelectedNodeIds([]);
+      setHistory([{ nodes: importedNodes, connections: state.connections }]);
+      setHistoryIndex(0);
+    };
+    window.addEventListener(CANVAS_IMPORT_EVENT, handleImport);
+    return () => window.removeEventListener(CANVAS_IMPORT_EVENT, handleImport);
+  }, [projectId]);
 
   // Auto-save debounced to localDB
   useEffect(() => {

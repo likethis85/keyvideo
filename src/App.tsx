@@ -52,6 +52,7 @@ import { generateCanvasPipeline, saveCanvasTopologyToLocalDB, convertAiProjectTo
 import { splitLayerInList } from './services/timelineSplitService';
 import { projectStorageKey } from './utils/projectStorage';
 import { findStoryboardForLayer } from './utils/storyboardLayerBinding';
+import { notifyCanvasImport } from './utils/canvasImport';
 import './App.css';
 import './studio.css';
 
@@ -850,6 +851,7 @@ function App() {
               }
               if (pkg.infiniteCanvas) {
                 await localDB.set(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`, pkg.infiniteCanvas);
+                notifyCanvasImport({ projectId: activeProjectId || 'default', ...pkg.infiniteCanvas });
               }
               toast.success(`已恢复工程「${pkg.project?.name || '导入工程'}」的全量配置与画布！`);
             } catch (err) {

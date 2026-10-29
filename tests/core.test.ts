@@ -7,6 +7,7 @@ import { DEFAULT_PROJECT_ID, createProjectId, migrateLegacyProjectIds } from '..
 import { findStoryboardForLayer } from '../src/utils/storyboardLayerBinding.ts';
 import { mergeBatchVideosIntoTimeline } from '../src/utils/batchTimelineMerge.ts';
 import { DEFAULT_VIDEO_MODEL, isSupportedVideoModel, normalizeVideoModel } from '../src/config/videoModels.ts';
+import { normalizeCanvasState } from '../src/utils/canvasImport.ts';
 import type { Layer } from '../src/components/VideoCanvas.tsx';
 import type { StoryboardItem } from '../src/types/aiProject.ts';
 
@@ -95,6 +96,25 @@ test('timeline media layers bind to storyboards by id before index', () => {
   assert.equal(missing, null);
 
   assert.equal(findStoryboardForLayer({ id: 'logo_1', properties: {} }, reordered), null);
+});
+
+test('imported canvas payloads are validated before replacing live state', () => {
+  assert.equal(normalizeCanvasState(null), null);
+  assert.equal(normalizeCanvasState({ nodes: 'nope' }), null);
+
+  const node = { id: 'node-1', type: 'image', position: { x: 0, y: 0 } };
+  const state = normalizeCanvasState({
+    nodes: [node],
+    connections: [{ id: 'c1', from: 'a', to: 'b' }],
+    viewport: { x: 10, y: 20, scale: 0.5 }
+  });
+  assert.equal(state?.nodes.length, 1);
+  assert.equal(state?.connections.length, 1);
+  assert.deepEqual(state?.viewport, { x: 10, y: 20, scale: 0.5 });
+
+  const noViewport = normalizeCanvasState({ nodes: [node], viewport: { x: 'bad' } });
+  assert.equal(noViewport?.viewport, undefined);
+  assert.deepEqual(noViewport?.connections, []);
 });
 
 test('unsupported video models normalize to the only mapped upstream model', () => {
