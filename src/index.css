@@ -3887,3 +3887,154 @@ body[data-theme="light"] {
   border-color: var(--border-accent);
   color: var(--accent-cyan);
 }
+/* Full-page library workspace: template/media/prompt become pages, not narrow drawers. */
+.editor-container.library-workspace .sidebar-drawer {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 1 1 auto;
+  border-right: 0;
+}
+
+.editor-container.library-workspace .sidebar-drawer-resizer {
+  display: none;
+}
+
+.editor-container.library-workspace .sidebar-drawer .drawer-header {
+  padding: 22px 32px 16px;
+}
+
+.editor-container.library-workspace .sidebar-drawer .drawer-title {
+  font-size: 25px;
+  letter-spacing: -0.4px;
+}
+
+.editor-container.library-workspace .sidebar-drawer .drawer-subtitle {
+  max-width: 720px;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.editor-container.library-workspace .sidebar-drawer .drawer-content {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 20px 32px 32px;
+}
+
+/* Template page: two-column card wall */
+.editor-container.library-workspace .script-template-content {
+  max-width: 1240px;
+}
+
+.editor-container.library-workspace .script-template-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.editor-container.library-workspace .script-template-card {
+  padding: 16px;
+}
+
+.editor-container.library-workspace .script-template-name {
+  font-size: 15px;
+}
+
+.editor-container.library-workspace .script-template-desc {
+  font-size: 11px;
+}
+
+.editor-container.library-workspace .script-template-tags span {
+  font-size: 9px;
+}
+
+.editor-container.library-workspace .script-template-sample p {
+  font-size: 10px;
+}
+
+.editor-container.library-workspace .script-template-categories {
+  gap: 6px;
+}
+
+/* Media page: four-column asset wall */
+.editor-container.library-workspace .media-tab-content {
+  max-width: 1240px;
+}
+
+.editor-container.library-workspace .media-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.editor-container.library-workspace .media-card-media {
+  height: 172px;
+}
+
+.editor-container.library-workspace .media-add-card {
+  min-height: 221px;
+}
+
+.editor-container.library-workspace .media-card-body b {
+  font-size: 11px;
+}
+
+.editor-container.library-workspace .media-card-body small {
+  font-size: 9px;
+}
+
+/* Prompt page: two-column prompt wall */
+.editor-container.library-workspace .prompt-library-content {
+  max-width: 1240px;
+}
+
+.editor-container.library-workspace .prompt-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.editor-container.library-workspace .prompt-card-head b {
+  font-size: 12px;
+}
+
+.editor-container.library-workspace .prompt-card > p {
+  font-size: 10px;
+}
+
+@media (max-width: 1050px) {
+  .editor-container.library-workspace .media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .editor-container.library-workspace .script-template-list,
+  .editor-container.library-workspace .prompt-list {
+    grid-template-columns: 1fr;
+  }
+}
+.script-template-search {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-element);
+  color: var(--text-muted);
+}
+
+.script-template-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.script-template-search input::placeholder {
+  color: var(--text-muted);
+}

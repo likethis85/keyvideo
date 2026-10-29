@@ -13,13 +13,19 @@ interface TemplateTabProps {
 
 export const TemplateTab: React.FC<TemplateTabProps> = ({ applyTemplate, onUseTemplate }) => {
   const [category, setCategory] = useState<'all' | ScriptTemplateCategory>('all');
+  const [query, setQuery] = useState('');
 
-  const visibleTemplates = useMemo(
-    () => category === 'all'
-      ? SCRIPT_TEMPLATES
-      : SCRIPT_TEMPLATES.filter(template => template.category === category),
-    [category]
-  );
+  const visibleTemplates = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return SCRIPT_TEMPLATES.filter(template => {
+      const matchesCategory = category === 'all' || template.category === category;
+      const matchesQuery = !normalizedQuery
+        || template.title.toLowerCase().includes(normalizedQuery)
+        || template.description.toLowerCase().includes(normalizedQuery)
+        || template.tags.some(tag => tag.toLowerCase().includes(normalizedQuery));
+      return matchesCategory && matchesQuery;
+    });
+  }, [category, query]);
 
   return (
     <>
@@ -31,6 +37,14 @@ export const TemplateTab: React.FC<TemplateTabProps> = ({ applyTemplate, onUseTe
       </div>
 
       <div className="drawer-content script-template-content">
+        <div className="script-template-search">
+          <span>⌕</span>
+          <input
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="搜索：口播 / 转场 / 产品细节"
+          />
+        </div>
         <div className="script-template-categories">
           {SCRIPT_TEMPLATE_CATEGORIES.map(item => (
             <button

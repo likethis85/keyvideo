@@ -639,6 +639,10 @@ function App() {
     }
   };
 
+  const isLibraryWorkspace = viewMode === 'editor'
+    && !isDrawerCollapsed
+    && (activeTab === 'template' || activeTab === 'media' || activeTab === 'prompt');
+
   if (loadingSession) {
     return <AppLoadingScreen />;
   }
@@ -742,7 +746,7 @@ function App() {
      </header>
 
       {/* Editor Body Workspace */}
-      <div className="editor-container">
+      <div className={`editor-container ${isLibraryWorkspace ? 'library-workspace' : ''}`}>
         {viewMode === 'canvas' ? (
           <div className="canvas-workspace-shell">
             <ToolNavigation
@@ -806,42 +810,45 @@ function App() {
               onOpenInCanvas={handleOpenInCanvas}
             />
 
-            <VideoCanvas
-              ratio={ratio}
-              currentTime={currentTime}
-              setCurrentTime={setCurrentTime}
-              isPlaying={isPlaying}
-              setIsPlaying={setIsPlaying}
-              layers={layers}
-              setLayers={setLayers}
-              selectedLayerId={selectedLayerId}
-              setSelectedLayerId={setSelectedLayerId}
-              modelSwapRunning={modelSwapRunning}
-              exporting={exporting}
-              setExporting={setExporting}
-              exportProgress={exportProgress}
-              setExportProgress={setExportProgress}
-              exportLogs={exportLogs}
-              setExportLogs={setExportLogs}
-              isFullscreen={isFullscreen}
-              setIsFullscreen={setIsFullscreen}
-            />
+            {!isLibraryWorkspace && (
+              <VideoCanvas
+                ratio={ratio}
+                currentTime={currentTime}
+                setCurrentTime={setCurrentTime}
+                isPlaying={isPlaying}
+                setIsPlaying={setIsPlaying}
+                layers={layers}
+                setLayers={setLayers}
+                selectedLayerId={selectedLayerId}
+                setSelectedLayerId={setSelectedLayerId}
+                modelSwapRunning={modelSwapRunning}
+                exporting={exporting}
+                setExporting={setExporting}
+                exportProgress={exportProgress}
+                setExportProgress={setExportProgress}
+                exportLogs={exportLogs}
+                setExportLogs={setExportLogs}
+                isFullscreen={isFullscreen}
+                setIsFullscreen={setIsFullscreen}
+              />
+            )}
 
-            {/* Right side settings column */}
-            <PropertyInspector
-              layers={layers}
-              setLayers={setLayers}
-              selectedLayerId={selectedLayerId}
-              setSelectedLayerId={setSelectedLayerId}
-              isCollapsed={isInspectorCollapsed}
-              onToggleCollapse={() => setIsInspectorCollapsed(!isInspectorCollapsed)}
-            />
+            {!isLibraryWorkspace && (
+              <PropertyInspector
+                layers={layers}
+                setLayers={setLayers}
+                selectedLayerId={selectedLayerId}
+                setSelectedLayerId={setSelectedLayerId}
+                isCollapsed={isInspectorCollapsed}
+                onToggleCollapse={() => setIsInspectorCollapsed(!isInspectorCollapsed)}
+              />
+            )}
           </>
         )}
       </div>
 
       {/* Bottom timeline track scrubbers (Hidden during fullscreen preview or canvas mode) */}
-      {!isFullscreen && viewMode === 'editor' && (
+      {!isFullscreen && viewMode === 'editor' && !isLibraryWorkspace && (
         <Timeline
           layers={layers}
           setLayers={setLayers}
