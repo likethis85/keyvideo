@@ -8,6 +8,7 @@ import {
 } from '../services/videoBatchTaskService';
 import { pollVideoTask } from '../utils/aiGateway';
 import { parseFiveShotPrompt } from '../services/storyboardPromptParser';
+import { mergeBatchVideosIntoTimeline } from '../utils/batchTimelineMerge';
 import { toast } from '../components/toastStore';
 
 export interface QueueShotTask {
@@ -337,29 +338,15 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
       return;
     }
 
-    const shotDuration = 3;
-    const newMediaLayers: Layer[] = readyTasks.map((t, idx) => ({
-      id: `layer_batch_video_${Date.now()}_${idx}`,
-      type: 'media',
-      name: `分镜 ${t.shotIndex}: ${t.shotName}`,
-      start: idx * shotDuration,
-      end: (idx + 1) * shotDuration,
-      visible: true,
-      x: 50,
-      y: 50,
-      scale: 1,
-      opacity: 1,
-      properties: {
-        src: t.resultUrl,
-        isVideo: true,
-        transitionType: idx > 0 ? 'fade' : 'none',
-        transitionDuration: 0.5
-      }
+    const completedShots = readyTasks.map(task => ({
+      shotId: task.shotId,
+      shotIndex: task.shotIndex,
+      shotName: task.shotName,
+      resultUrl: task.resultUrl as string
     }));
 
     setLayers(prev => {
-      const nonMedia = prev.filter(l => l.type !== 'media');
-      const merged = [...newMediaLayers, ...nonMedia];
+      const merged = mergeBatchVideosIntoTimeline(prev, completedShots);
       if (commitHistory) {
         commitHistory(merged, `批量导入 ${readyTasks.length} 个分镜视频至时间轴`);
       }

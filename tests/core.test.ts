@@ -5,6 +5,8 @@ import { calculateExportDimensions, estimateExportFileSizeMb } from '../src/type
 import { buildBatchRequestKey } from '../src/utils/batchRequestKey.ts';
 import { DEFAULT_PROJECT_ID, createProjectId, migrateLegacyProjectIds } from '../src/utils/aiProjectFactory.ts';
 import { findStoryboardForLayer } from '../src/utils/storyboardLayerBinding.ts';
+import { mergeBatchVideosIntoTimeline } from '../src/utils/batchTimelineMerge.ts';
+import type { Layer } from '../src/components/VideoCanvas.tsx';
 import type { StoryboardItem } from '../src/types/aiProject.ts';
 
 test('custom API JSON templates interpolate without executing code', () => {
@@ -92,6 +94,48 @@ test('timeline media layers bind to storyboards by id before index', () => {
   assert.equal(missing, null);
 
   assert.equal(findStoryboardForLayer({ id: 'logo_1', properties: {} }, reordered), null);
+});
+
+test('batch imports replace only their own storyboard layers', () => {
+  const layer = (overrides: Partial<Layer> & { id: string }): Layer => ({
+    type: 'media',
+    name: overrides.id,
+    start: 0,
+    end: 3,
+    visible: true,
+    x: 50,
+    y: 50,
+    scale: 1,
+    opacity: 1,
+    properties: {},
+    ...overrides
+  });
+
+  const existing: Layer[] = [
+    layer({ id: 'photo', end: 3, properties: { src: '/photo.png' } }),
+    layer({ id: 'other-video', end: 10, properties: { src: '/other.mp4', isVideo: true } }),
+    layer({ id: 'old-shot-1', start: 3, end: 6, properties: { src: 'old', storyboardId: 'shot-1', isVideo: true } }),
+    layer({ id: 'voice', type: 'audio', end: 15, properties: { src: 'voice.mp3' } })
+  ];
+  const completed = [
+    { shotId: 'shot-2', shotIndex: 2, shotName: 'two', resultUrl: 'two.mp4' },
+    { shotId: 'shot-1', shotIndex: 1, shotName: 'one', resultUrl: 'one.mp4' }
+  ];
+
+  const merged = mergeBatchVideosIntoTimeline(existing, completed, { timestamp: 42 });
+  const ids = merged.map(item => item.id);
+  assert.ok(ids.includes('photo'));
+  assert.ok(ids.includes('other-video'));
+  assert.ok(ids.includes('voice'));
+  assert.ok(!ids.includes('old-shot-1'));
+
+  const imported = merged.filter(item => item.id.startsWith('layer_batch_video_42_'));
+  assert.equal(imported.length, 2);
+  assert.deepEqual(imported.map(item => item.properties.storyboardId), ['shot-1', 'shot-2']);
+  assert.deepEqual(imported.map(item => [item.start, item.end]), [[10, 13], [13, 16]]);
+
+  const mergedAgain = mergeBatchVideosIntoTimeline(merged, completed, { timestamp: 43 });
+  assert.equal(mergedAgain.filter(item => item.id.startsWith('layer_batch_video_')).length, 2);
 });
 
 test('batch idempotency keys cover reference images and explicit retries', () => {
