@@ -12,6 +12,7 @@ import { fetchWithTimeout, assertSafeRemoteUrl, safeFetchRemote } from './remote
 import { createIdempotencyMiddleware, IDEMPOTENT_GENERATION_PATHS } from './idempotency.js';
 import { createImageProxyHandler } from './imageProxy.js';
 import { createUploadRouter } from './uploads.js';
+import { submitSandbaseTask } from './sandbaseSubmit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -322,62 +323,6 @@ const findImageUrlInObject = (obj) => {
   return '';
 };
 
-// Helper: Submit task to sandbase.ai (with automatic retries on 5xx / Bad Gateway)
-const submitSandbaseTask = async (payload) => {
-  const apiKey = process.env.SANDBASE_API_KEY;
-  const maxRetries = 4;
-  let delay = 1500;
-
-  console.log(`\n[Sandbase API] >>> Submitting task with model: "${payload.model}"`);
-  console.log(`[Sandbase API] Prompt: "${payload.prompt}"`);
-  if (payload.images && payload.images.length > 0) {
-    console.log(`[Sandbase API] Input images count: ${payload.images.length}`);
-    payload.images.forEach((img, idx) => {
-      console.log(`  - Image[${idx}]: ${img.substring(0, 120)}${img.length > 120 ? '...' : ''}`);
-    });
-  }
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetchWithTimeout('https://api.sandbase.ai/v1/run', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        // If it's a server error (502, 503, 504, 500) or rate limit (429), retry
-        if (response.status >= 500 || response.status === 429) {
-          if (attempt < maxRetries) {
-            console.warn(`[Sandbase API] Submission failed with status ${response.status}. Retrying in ${delay}ms... (Attempt ${attempt}/${maxRetries})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            delay *= 2; // exponential backoff
-            continue;
-          }
-        }
-        throw new Error(`Sandbase submission failed (${response.status}): ${errText}`);
-      }
-
-      const data = await response.json();
-      if (!data.id) {
-        throw new Error(`Sandbase submission did not return a task ID. Response: ${JSON.stringify(data)}`);
-      }
-      console.log(`[Sandbase API] Task submitted. Task ID: ${data.id} | Initial Status: ${data.status}`);
-      return data.id;
-    } catch (err) {
-      if (attempt === maxRetries) {
-        throw err;
-      }
-      console.warn(`[Sandbase API] Submission error: ${err.message}. Retrying in ${delay}ms... (Attempt ${attempt}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      delay *= 2;
-    }
-  }
-};
 
 // Helper: Poll sandbase.ai task until completed (with retry on transient errors)
 const pollSandbaseTask = async (taskId, timeoutSeconds = 360) => {
@@ -640,7 +585,10 @@ app.post('/api/ai/mannequin', async (req, res) => {
       enable_image_search: false
     };
 
-    const taskId = await submitSandbaseTask(sandbasePayload);
+    const taskId = await submitSandbaseTask(sandbasePayload, {
+      userId: req.authUser?.id,
+      requestKey: req.get('X-Idempotency-Key')
+    });
     registerTask(taskId, { type: 'mannequin', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
 
     const poller = async () => {
@@ -775,7 +723,10 @@ HANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or acc
       enable_image_search: false
     };
 
-    const taskId = await submitSandbaseTask(sandbasePayload);
+    const taskId = await submitSandbaseTask(sandbasePayload, {
+      userId: req.authUser?.id,
+      requestKey: req.get('X-Idempotency-Key')
+    });
     registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt, projectId, userId: req.authUser?.id, status: 'processing' });
 
     const poller = async () => {
@@ -824,7 +775,10 @@ app.post('/api/ai/background', async (req, res) => {
       sandbasePayload.images = [refImageUrl];
     }
 
-    const taskId = await submitSandbaseTask(sandbasePayload);
+    const taskId = await submitSandbaseTask(sandbasePayload, {
+      userId: req.authUser?.id,
+      requestKey: req.get('X-Idempotency-Key')
+    });
     const resultImageUrl = await pollSandbaseTask(taskId);
 
     // Convert to base64 to bypass browser CORS on frontend
@@ -1301,7 +1255,10 @@ app.post('/api/video/task', async (req, res) => {
     console.log(`[Sandbase API] Prompt: "${prompt}"`);
     console.log(`[Sandbase API] Duration: ${duration}s`);
 
-    const taskId = await submitSandbaseTask(sandbasePayload);
+    const taskId = await submitSandbaseTask(sandbasePayload, {
+      userId: req.authUser?.id,
+      requestKey: req.get('X-Idempotency-Key')
+    });
 
     registerTask(taskId, {
       type: 'video',
@@ -1392,7 +1349,13 @@ app.post('/api/video/task/batch', async (req, res) => {
 
       try {
         console.log(`[Sandbase API] Submitting Shot [${idx + 1}/${shots.length}]: "${shot.name || shot.id}"`);
-        const taskId = await submitSandbaseTask(sandbasePayload);
+        const batchRequestKey = req.get('X-Idempotency-Key');
+        const taskId = await submitSandbaseTask(sandbasePayload, {
+          userId: req.authUser?.id,
+          requestKey: batchRequestKey
+            ? `${batchRequestKey}:shot:${shot.id || idx + 1}`
+            : ''
+        });
         const taskMeta = {
           type: 'video',
           model: sandbaseVideoModel,
@@ -1629,7 +1592,10 @@ app.post('/api/ai/inpaint', async (req, res) => {
       enable_image_search: false
     };
 
-    const taskId = await submitSandbaseTask(sandbasePayload);
+    const taskId = await submitSandbaseTask(sandbasePayload, {
+      userId: req.authUser?.id,
+      requestKey: req.get('X-Idempotency-Key')
+    });
     registerTask(taskId, { type: 'inpaint', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
     const poller = async () => {
       try {
@@ -1679,7 +1645,10 @@ app.post('/api/ai/upscale', async (req, res) => {
       enable_image_search: false
     };
 
-    const taskId = await submitSandbaseTask(sandbasePayload);
+    const taskId = await submitSandbaseTask(sandbasePayload, {
+      userId: req.authUser?.id,
+      requestKey: req.get('X-Idempotency-Key')
+    });
     registerTask(taskId, { type: 'upscale', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
     const poller = async () => {
       try {
