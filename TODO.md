@@ -59,5 +59,5 @@
 
 ## P3：清理与一致性
 
-- [ ] **移除或说明重复的演示视频。** 根目录 `video.mp4` 与 `public/video.mp4` 均为 16,687,742 字节，SHA-256 相同（`8887EB425A9767FF09F5FC7DF67362A18946B67C288DFC3C84730E96DE5AC5E4`）；应用使用 `/video.mp4` 对应的 public 资源。确认根目录副本没有构建用途后删除，避免仓库重复保存约 16 MB 素材。
+- [x] **移除或说明重复的演示视频。** 已确认两份文件 SHA-256 相同（`8887EB425A9767FF09F5FC7DF67362A18946B67C288DFC3C84730E96DE5AC5E4`），且代码只引用 `/video.mp4`（由 `public/` 提供、Vite 构建复制到 `dist/`）。已从 Git 与工作区删除根目录副本，仓库减少约 16 MB，`public/video.mp4` 保留。
 - [x] **统一版本与包元数据。** 根 `package.json`、`backend/package.json`、`src-tauri/Cargo.toml` 与 `src-tauri/tauri.conf.json` 统一为 `0.1.0`，两个 lockfile 同步；Cargo 描述改为 KeyVideo、作者 `KeyVideo`、许可证 `UNLICENSED`，移除 Tauri 模板值。发布标签校验继续以 `tauri.conf.json` 版本为准。
