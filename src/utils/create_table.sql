@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS public.audio_assets (
     src TEXT NOT NULL,
     "desc" TEXT,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    -- Assets are private by default. Only rows explicitly marked public are
+    -- visible to other authenticated accounts.
+    is_public BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 
@@ -20,12 +23,12 @@ CREATE TABLE IF NOT EXISTS public.audio_assets (
 ALTER TABLE public.audio_assets ENABLE ROW LEVEL SECURITY;
 
 -- 3. Create RLS Policies
--- Allow anyone (including anonymous users if public) to read assets
--- Note: You can change this to "auth.uid() = user_id" if assets must be strictly private.
-CREATE POLICY "Allow public read access" 
-ON public.audio_assets FOR SELECT 
-TO public 
-USING (true);
+-- Owners can read their own assets; everyone can read rows flagged public.
+-- Anonymous callers have no read access at all.
+CREATE POLICY "Allow owner or public read for audio_assets"
+ON public.audio_assets FOR SELECT
+TO authenticated
+USING (is_public OR auth.uid() = user_id);
 
 -- Allow authenticated users to insert their own upload records
 CREATE POLICY "Allow individual insert" 
@@ -52,8 +55,11 @@ CREATE INDEX IF NOT EXISTS idx_audio_assets_created_at ON public.audio_assets(cr
 CREATE TABLE IF NOT EXISTS public.model_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    src TEXT NOT NULL, -- The public OSS URL of the model image
+    src TEXT NOT NULL, -- The OSS URL of the model image
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    -- Assets are private by default. Only rows explicitly marked public are
+    -- visible to other authenticated accounts.
+    is_public BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 
@@ -61,11 +67,12 @@ CREATE TABLE IF NOT EXISTS public.model_assets (
 ALTER TABLE public.model_assets ENABLE ROW LEVEL SECURITY;
 
 -- 3. Create RLS Policies
--- Allow anyone to read models
-CREATE POLICY "Allow public read access for model_assets" 
-ON public.model_assets FOR SELECT 
-TO public 
-USING (true);
+-- Owners can read their own assets; everyone can read rows flagged public.
+-- Anonymous callers have no read access at all.
+CREATE POLICY "Allow owner or public read for model_assets"
+ON public.model_assets FOR SELECT
+TO authenticated
+USING (is_public OR auth.uid() = user_id);
 
 -- Allow authenticated users to insert their own model uploads
 CREATE POLICY "Allow individual insert for model_assets" 

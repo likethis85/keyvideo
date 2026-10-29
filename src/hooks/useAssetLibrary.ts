@@ -104,7 +104,10 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
 
       if (hasSupabaseUser) {
         try {
-          const { data, error } = await supabase.from('model_assets').select('*').order('created_at', { ascending: false });
+          const { data, error } = await supabase
+            .from('model_assets')
+            .select('id, name, src, created_at, is_public')
+            .order('created_at', { ascending: false });
           if (error || !data) throw error || new Error('Model assets unavailable');
           const models = mapModels(data, deletedModelIds);
           const scenes = mapScenes(data, deletedSceneIds, true);
@@ -127,7 +130,10 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
 
       if (hasSupabaseUser) {
         try {
-          const { data, error } = await supabase.from('audio_assets').select('*').order('created_at', { ascending: false });
+          const { data, error } = await supabase
+            .from('audio_assets')
+            .select('id, name, src, desc, created_at, is_public')
+            .order('created_at', { ascending: false });
           if (error || !data) throw error || new Error('Audio assets unavailable');
           const audio = mapAudio(data);
           if (!cancelled) setBgmLibrary(audio);
