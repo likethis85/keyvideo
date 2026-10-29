@@ -2,6 +2,7 @@ import { runPollingTask } from './aiTaskStateMachine';
 import { getCustomApiConfig, executeCustomApi } from './customApiRunner';
 import { getApiAuthHeaders } from './apiAuth';
 import { buildRequestKey, getSyncAuthFingerprint } from './requestIdentity';
+import { readBodyWithTimeout } from './http.ts';
 
 export const getBackendUrl = (): string => {
   const localUrl = localStorage.getItem('KEYVIDEO_BACKEND_URL');
@@ -66,10 +67,13 @@ const dedupeGenerationRequest = <T>(
 const readErrorMessage = async (response: Response, fallback: string): Promise<string> => {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
-    const body = await response.json().catch(() => null) as { error?: string; message?: string } | null;
+    const body = await readBodyWithTimeout<{ error?: string; message?: string } | null>(
+      response,
+      { timeoutMs: 10_000, format: 'json' }
+    ).catch(() => null);
     return body?.error || body?.message || fallback;
   }
-  const text = await response.text().catch(() => '');
+  const text = await readBodyWithTimeout<string>(response, { timeoutMs: 10_000, format: 'text' }).catch(() => '');
   return text.trim() || fallback;
 };
 
@@ -113,7 +117,10 @@ const requestJson = async <T>(
         error.status = response.status;
         throw error;
       }
-      return await response.json() as T;
+      return await readBodyWithTimeout<T>(response, {
+        timeoutMs: options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+        format: 'json'
+      });
     } catch (error) {
       lastError = error;
       const status = (error as { status?: number })?.status;
@@ -451,7 +458,11 @@ export const getVideoContent = async (
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Fetching video content failed'));
   }
-  return response.blob();
+  const buffer = await readBodyWithTimeout<ArrayBuffer>(response, {
+    timeoutMs: LONG_AI_REQUEST_TIMEOUT_MS,
+    format: 'arrayBuffer'
+  });
+  return new Blob([buffer], { type: response.headers.get('content-type') || 'video/mp4' });
 };
 
 export const getRecentTasks = async (projectId?: string): Promise<Array<{

@@ -1,7 +1,9 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
-export const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_EXTERNAL_TIMEOUT_MS) => {
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+export const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   timeout.unref?.();
@@ -14,6 +16,39 @@ export const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_EX
     throw error;
   } finally {
     clearTimeout(timeout);
+  }
+};
+
+/**
+ * Reads a response body with a hard timeout. `fetchWithTimeout` only covers the
+ * wait for headers; a slow or endless body must be cancelled separately so it
+ * cannot hold a connection (or fill a buffer) forever.
+ */
+export const readBodyWithTimeout = async (
+  response,
+  { timeoutMs = DEFAULT_TIMEOUT_MS, format = 'arrayBuffer' } = {}
+) => {
+  let timer;
+  try {
+    return await Promise.race([
+      response[format](),
+      new Promise((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`External response body timed out after ${Math.round(timeoutMs / 1000)}s`)),
+          Math.max(1, timeoutMs)
+        );
+        timer.unref?.();
+      })
+    ]);
+  } catch (error) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // The body may already be consumed or locked.
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
 };
 

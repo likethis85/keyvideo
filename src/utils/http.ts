@@ -27,6 +27,33 @@ export async function fetchWithTimeout(
   }
 }
 
+export async function readBodyWithTimeout<T = unknown>(
+  response: Response,
+  { timeoutMs = 30_000, format = 'json' as 'json' | 'text' | 'arrayBuffer' } = {}
+): Promise<T> {
+  let timer;
+  try {
+    return await Promise.race([
+      (format === 'json' ? response.json() : format === 'text' ? response.text() : response.arrayBuffer()) as Promise<T>,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Response body timed out after ${Math.round(timeoutMs / 1000)}s`)),
+          Math.max(1, timeoutMs)
+        );
+      })
+    ]);
+  } catch (error) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // Body may already be consumed.
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function readResponseText(response: Response, fallback = ''): Promise<string> {
   try {
     return await response.text();

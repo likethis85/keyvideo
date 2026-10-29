@@ -36,7 +36,7 @@
 
 - [ ] **让任务历史上限按用户并保护运行任务。** `backend/server.js` 的持久任务存储只保留全局最近 100 条；其他用户的新请求可能挤掉尚在运行的任务，后台轮询和恢复会失去记录。为活跃任务保留独立索引，历史按用户分区并设置可配置保留策略，覆盖并发用户和长任务场景。
 - [ ] **持久化部署数据并保护画布文件。** 部分完成：新增 `DATA_DIR`（默认代码目录，容器为 `/app/data`），任务历史与画布状态均写入该目录；`docker-compose.yml` 使用命名卷 `keyvideo-data` 持久化并配置健康检查；Dockerfile 改为 `npm ci --omit=dev`、`USER node`、`/app/data` 归属 node。任务历史已有临时文件 + 备份 + rename 原子写入；画布 JSON 仍为直接覆盖，恢复演练/画布原子写入尚未完成。
-- [ ] **让超时和大小限制覆盖完整响应体。** 前后端 `fetchWithTimeout` 在收到响应头后就清除 timer；`arrayBuffer()`、`json()` 或视频流读取可无限等待。图片/视频服务还应在分配大缓冲区前按流限制字节数；验证慢速或永不结束的响应最终会中止并释放连接。
+- [x] **让超时和大小限制覆盖完整响应体。** 后端新增 `readBodyWithTimeout()`（body 读取超时后 `body.cancel()`），并替换图片转 base64、Sandbase 轮询、视频轮询/状态、聊天补全等 `response.json()/arrayBuffer()`；同时修复 `remoteUrl.js` 未定义的默认超时常量。前端 `http.ts` 增加同类 body 超时读取，`aiGateway` 的 JSON/文本/视频 Blob 读取均受控。`backend/remoteUrl.test.js` 与 `tests/core.test.ts` 覆盖永不结束 body 的取消与正常读取。图片代理的字节上限此前已实现。
 - [ ] **清理敏感日志。** 部分完成：已移除视频提交时的提示词/输入图片 URL、轮询结果 URL、storyboard 图片 URL 等直接内容日志；生成提交只记录模型与时长。尚未引入统一结构化日志（请求 ID、用户 ID 哈希、耗时、错误类别），其余 `console.error` 仍可能透出上游错误文本。
 - [ ] **约束开发服务器上传面。** `vite.config.ts` 的 OSS 中间件没有鉴权、大小/扩展限制，并返回通配 CORS；Vite 配置也启用了 `cors: true`。将代理限制为本机开发用途，增加上传限制和来源检查，默认不暴露局域网，并验证恶意网页无法借开发服务器消耗 OSS。
 - [x] **严格限制进程内缓存与限流表容量。** 抽出可测试的 `createTokenCache()`：Suppabase token 缓存按 TTL 过期并设硬上限（`AUTH_TOKEN_CACHE_MAX_ENTRIES`，默认 5000），更新已存在键不误删自身；按用户限流表新增 `API_RATE_BUCKET_CAPACITY`（默认 5000）并在清理过期项后按最旧顺序淘汰仍有效的桶；幂等缓存、SSO 撤销表与待处理 state/ticket 已有硬上限。`backend/auth.test.js` 覆盖过期、硬上限淘汰与同键刷新。未增加运行指标导出。

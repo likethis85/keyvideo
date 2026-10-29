@@ -8,7 +8,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'url';
 import { createSsoRouter } from './sso.js';
 import { createApiAuthMiddleware } from './auth.js';
-import { fetchWithTimeout, assertSafeRemoteUrl, safeFetchRemote } from './remoteUrl.js';
+import { fetchWithTimeout, assertSafeRemoteUrl, safeFetchRemote, readBodyWithTimeout } from './remoteUrl.js';
 import { createIdempotencyMiddleware, IDEMPOTENT_GENERATION_PATHS } from './idempotency.js';
 import { createImageProxyHandler } from './imageProxy.js';
 import { createUploadRouter } from './uploads.js';
@@ -294,7 +294,7 @@ const fetchImageAsBase64 = async (url) => {
   if (contentLength > MAX_LOCAL_IMAGE_BYTES) {
     throw new Error('Remote image exceeds the size limit');
   }
-  const buffer = await response.arrayBuffer();
+  const buffer = await readBodyWithTimeout(response, { timeoutMs: 60_000 });
   if (buffer.byteLength > MAX_LOCAL_IMAGE_BYTES) {
     throw new Error('Remote image exceeds the size limit');
   }
@@ -403,7 +403,7 @@ const pollSandbaseTask = async (taskId, timeoutSeconds = 360) => {
         throw new Error(`Sandbase polling failed (${response.status}): ${errText}`);
       }
 
-      const data = await response.json();
+      const data = await readBodyWithTimeout(response, { timeoutMs: 30_000, format: 'json' });
       const elapsedSeconds = Math.round(((i + 1) * pollInterval) / 1000);
       console.log(`[Sandbase API] Polling Task ID: ${taskId} | Status: ${data.status} | Elapsed: ${elapsedSeconds}s/${timeoutSeconds}s`);
 
@@ -612,7 +612,7 @@ const refreshProcessingImageTask = async (taskId) => {
       headers: { Authorization: `Bearer ${apiKey}` }
     }, 8_000);
     if (!response.ok) return;
-    const data = await response.json();
+    const data = await readBodyWithTimeout(response, { timeoutMs: 30_000, format: 'json' });
     if (!data?.status) return;
     const resultUrl = data.status === 'completed' ? extractTaskOutputUrl(data) : '';
     updateTaskStatus(taskId, {
@@ -1021,7 +1021,7 @@ Output ONLY the JSON object, no markdown wrappers, no other text.`;
 
     if (!response.ok) throw new Error(`AI Stylist failed (${response.status})`);
 
-    const responseData = await response.json();
+    const responseData = await readBodyWithTimeout(response, { timeoutMs: 30_000, format: 'json' });
     const choiceContent = responseData.choices?.[0]?.message?.content;
     if (!choiceContent) throw new Error('No message content returned from AI Stylist');
 
@@ -1073,7 +1073,7 @@ app.post('/api/ai/text-copy', async (req, res) => {
     }, LONG_EXTERNAL_TIMEOUT_MS);
 
     if (!response.ok) throw new Error(`AI 文案生成失败 (${response.status})`);
-    const data = await response.json();
+    const data = await readBodyWithTimeout(response, { timeoutMs: 30_000, format: 'json' });
     const text = data.choices?.[0]?.message?.content;
     if (typeof text !== 'string' || !text.trim()) throw new Error('AI 未返回文案内容');
     return res.status(200).json({ text: text.trim() });
@@ -1372,7 +1372,7 @@ ${is15s ? `最终生成的提示词应该类似：
 
     if (!response.ok) throw new Error(`AI prompt generator failed (${response.status})`);
 
-    const responseData = await response.json();
+    const responseData = await readBodyWithTimeout(response, { timeoutMs: 30_000, format: 'json' });
     const choiceContent = responseData.choices?.[0]?.message?.content;
     if (!choiceContent) throw new Error('No message content returned from AI prompt generator');
 
@@ -1462,7 +1462,7 @@ app.get('/api/video/poll/:taskId', async (req, res) => {
       throw new Error(`Polling status failed (${response.status}): ${errorText}`);
     }
 
-    const data = await response.json();
+    const data = await readBodyWithTimeout(response, { timeoutMs: 30_000, format: 'json' });
     console.log(`[Sandbase API] Polling Video Task ID: ${taskId} | Status: ${data.status}`);
 
     const resultUrl = data.status === 'completed' ? extractTaskOutputUrl(data) : '';
@@ -1600,7 +1600,7 @@ setInterval(async () => {
         }, 8000);
 
         if (response.ok) {
-          const data = await response.json();
+          const data = await readBodyWithTimeout(response, { timeoutMs: 30_000, format: 'json' });
           if (data.status && data.status !== task.status) {
             const resultUrl = data.status === 'completed' ? extractTaskOutputUrl(data) : '';
             updateTaskStatus(task.taskId, {
@@ -1642,7 +1642,7 @@ app.get('/api/video/content/:taskId', async (req, res) => {
       throw new Error(`Failed to check video task status (${statusResponse.status}): ${errorText}`);
     }
 
-    const data = await statusResponse.json();
+    const data = await readBodyWithTimeout(statusResponse, { timeoutMs: 30_000, format: 'json' });
     if (data.status !== 'completed') {
       throw new Error(`Video task is not completed yet (current status: ${data.status})`);
     }

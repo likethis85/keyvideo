@@ -10,7 +10,7 @@ import { DEFAULT_VIDEO_MODEL, isSupportedVideoModel, normalizeVideoModel } from 
 import { normalizeCanvasState } from '../src/utils/canvasImport.ts';
 import { createProjectSyncScheduler } from '../src/utils/projectSyncScheduler.ts';
 import { buildRequestKey } from '../src/utils/requestIdentity.ts';
-import { fetchWithTimeout } from '../src/utils/http.ts';
+import { fetchWithTimeout, readBodyWithTimeout } from '../src/utils/http.ts';
 import type { Layer } from '../src/components/VideoCanvas.tsx';
 import type { StoryboardItem } from '../src/types/aiProject.ts';
 
@@ -121,6 +121,26 @@ test('fetchWithTimeout aborts a request that never answers', async () => {
     fetchImpl: async () => okResponse
   });
   assert.equal(response.status, 200);
+});
+
+test('readBodyWithTimeout aborts a body that never finishes', async () => {
+  let cancelled = false;
+  const stalled = {
+    json: () => new Promise(() => {}),
+    body: { cancel: async () => { cancelled = true; } }
+  };
+
+  await assert.rejects(
+    readBodyWithTimeout(stalled as unknown as Response, { timeoutMs: 10, format: 'json' }),
+    /body timed out/
+  );
+  assert.equal(cancelled, true);
+
+  const response = new Response(JSON.stringify({ ok: true }));
+  assert.deepEqual(
+    await readBodyWithTimeout(response, { timeoutMs: 1_000, format: 'json' }),
+    { ok: true }
+  );
 });
 
 test('request dedup keys include the identity and payload', () => {
