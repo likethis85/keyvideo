@@ -24,8 +24,25 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onSk
   const [name, setName] = useState('2026 秋冬 · 通勤羊毛大衣口播');
   const [ratio, setRatio] = useState<'9-16' | '16-9'>('9-16');
   const [templateId, setTemplateId] = useState(SCRIPT_TEMPLATES[0].id);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
 
   if (!isOpen) return null;
+
+  const startDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('button, input, a, label')) return;
+    event.preventDefault();
+    const startX = event.clientX - offset.x;
+    const startY = event.clientY - offset.y;
+    const handleMove = (moveEvent: PointerEvent) => {
+      setOffset({ x: moveEvent.clientX - startX, y: moveEvent.clientY - startY });
+    };
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+  };
 
   const selectedTemplate = SCRIPT_TEMPLATES.find(template => template.id === templateId) ?? SCRIPT_TEMPLATES[0];
   const finish = () => onComplete({
@@ -36,8 +53,12 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onSk
 
   return (
     <div className="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="首次使用引导">
-      <div className="onboarding-modal">
-        <aside className="onboarding-rail">
+      <div
+        className="onboarding-modal"
+        style={{ transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px)` }}
+      >
+        <aside className="onboarding-rail" onPointerDown={startDrag}>
+          <span className="onboarding-drag-grip" title="拖动窗口">⠿</span>
           <div className="onboarding-brand">
             <div className="onboarding-brand-mark">✦</div>
             <div>
