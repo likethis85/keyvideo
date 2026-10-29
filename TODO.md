@@ -48,7 +48,7 @@
 - [ ] **清理 OSS 孤儿对象并校验删除失败。** 模特/场景/BGM 上传后若 Supabase 写入失败会遗留已上传对象；成功删除资产记录时也没有统一删除 OSS 对象。设计带所有者记录的删除/回滚和定期孤儿清理，避免因跨用户或上传中断误删，并测试 DB 写入失败、重试和删除部分失败。
 - [ ] **统一前端网络超时策略。** `src/services/videoBatchTaskService.ts`、`src/utils/customApiRunner.ts` 及若干文件读取路径直接 `fetch`，没有超时/取消；提交任务或自定义接口无响应时界面可能永久停留在 submitting。复用带 AbortSignal 的请求层，并验证超时后 UI 恢复且后台任务可查询。
 - [ ] **让视频剪辑属性在预览与导出中一致生效。** `Layer.properties` 定义了 `videoEndOffset`、`speed`、`loop`，分割服务也维护视频起止偏移，但 `useCanvasRenderer` 和 WebCodecs 导出按原始时间/时长播放，没有消费这些字段。明确支持的剪辑属性，补齐 UI、实时预览及两种导出引擎的一致计算；未支持的属性不要静默保存在工程包中。覆盖分割、裁切、变速、循环和导出对比。
-- [ ] **把 Supabase 初始化脚本改为可追踪的迁移。** `src/utils/create_table.sql` 的建表虽使用 `IF NOT EXISTS`，但每次执行都会重复 `CREATE POLICY` 并失败；后续修改该文件也不会自动更新既有数据库。迁移到有序、可审计的 schema migrations，区分新装和升级步骤，并在空库与已初始化库上验证。
+- [ ] **把 Supabase 初始化脚本改为可追踪的迁移。** 部分完成：`create_table.sql` 的每个策略前加入 `DROP POLICY IF EXISTS`，脚本可在已初始化库重复执行不再报错；已新增 `supabase/migrations/20261030_asset_privacy.sql` 与 `20261030_model_assets_update.sql` 两个可审计升级脚本。尚未把全部建表/触发器拆成完整有序迁移历史，也未在真实空库/已有库上跑迁移验证。
 - [x] **阻止发布工作流反复创建同一个版本。** 工作流改为只在推送 `v*` 标签时触发（移除 main/master 与手动触发），发布前校验标签名必须等于 `v` + `src-tauri/tauri.conf.json` 版本，`tauri-action` 的 `tagName` 改用实际推送标签而非固定 `app-v__VERSION__`，避免每次主分支推送生成重复发布；矩阵多架构仍上传到同一 draft release。
 - [ ] **收紧桌面 WebView 权限。** `src-tauri/tauri.conf.json` 设置 `csp: null` 且 asset protocol scope 为 `**/*`。按实际 API/资源需求配置 CSP 与最小文件访问范围，验证本地素材、远程后端、预览与导出仍可用。
 - [ ] **让本地保存失败可见。** 部分完成：`localDB.set` 失败时会派发 `keyvideo:local-save-failed` 事件，`src/App.tsx` 监听后 10 秒节流提示“本地保存失败，请清理后重试”；返回值语义保持 `boolean`。仍未实现失败写入的待重试队列/自动重试，也未覆盖配额耗尽与存储不可用的自动化测试。

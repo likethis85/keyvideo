@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS public.audio_assets (
 ALTER TABLE public.audio_assets ENABLE ROW LEVEL SECURITY;
 
 -- 3. Create RLS Policies
+-- Drop first so this script can be re-run against an initialized database.
+DROP POLICY IF EXISTS "Allow owner or public read for audio_assets" ON public.audio_assets;
+DROP POLICY IF EXISTS "Allow individual insert" ON public.audio_assets;
+DROP POLICY IF EXISTS "Allow individual delete" ON public.audio_assets;
+
 -- Owners can read their own assets; everyone can read rows flagged public.
 -- Anonymous callers have no read access at all.
 CREATE POLICY "Allow owner or public read for audio_assets"
@@ -67,6 +72,12 @@ CREATE TABLE IF NOT EXISTS public.model_assets (
 ALTER TABLE public.model_assets ENABLE ROW LEVEL SECURITY;
 
 -- 3. Create RLS Policies
+-- Drop first so this script can be re-run against an initialized database.
+DROP POLICY IF EXISTS "Allow owner or public read for model_assets" ON public.model_assets;
+DROP POLICY IF EXISTS "Allow individual insert for model_assets" ON public.model_assets;
+DROP POLICY IF EXISTS "Allow individual update for model_assets" ON public.model_assets;
+DROP POLICY IF EXISTS "Allow individual delete for model_assets" ON public.model_assets;
+
 -- Owners can read their own assets; everyone can read rows flagged public.
 -- Anonymous callers have no read access at all.
 CREATE POLICY "Allow owner or public read for model_assets"
@@ -128,6 +139,12 @@ CREATE TABLE IF NOT EXISTS public.ai_video_projects (
 ALTER TABLE public.ai_video_projects ENABLE ROW LEVEL SECURITY;
 
 -- 3. Create RLS Policies
+-- Drop first so this script can be re-run against an initialized database.
+DROP POLICY IF EXISTS "Allow individual read for video projects" ON public.ai_video_projects;
+DROP POLICY IF EXISTS "Allow individual insert for video projects" ON public.ai_video_projects;
+DROP POLICY IF EXISTS "Allow individual update for video projects" ON public.ai_video_projects;
+DROP POLICY IF EXISTS "Allow individual delete for video projects" ON public.ai_video_projects;
+
 -- Allow authenticated users to view only their own video projects
 CREATE POLICY "Allow individual read for video projects" 
 ON public.ai_video_projects FOR SELECT 
