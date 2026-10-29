@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Layer } from '../components/VideoCanvas';
+import { fitKeyingDimensions } from '../utils/keyingLimits';
 
 interface Options {
   imagesCacheRef: MutableRefObject<Record<string, HTMLImageElement | HTMLCanvasElement>>;
@@ -31,13 +32,17 @@ export function useCanvasRenderer(options: Options) {
   
       if (cached instanceof HTMLImageElement) {
         const offscreen = document.createElement('canvas');
-        const w = cached.naturalWidth || cached.width || 800;
-        const h = cached.naturalHeight || cached.height || 800;
+        const sourceWidth = cached.naturalWidth || cached.width || 800;
+        const sourceHeight = cached.naturalHeight || cached.height || 800;
+        const { width: w, height: h, scaled } = fitKeyingDimensions(sourceWidth, sourceHeight);
         offscreen.width = w;
         offscreen.height = h;
         const ctx = offscreen.getContext('2d');
         if (ctx) {
-          ctx.drawImage(cached, 0, 0);
+          ctx.drawImage(cached, 0, 0, w, h);
+          if (scaled) {
+            console.warn(`Downscaled a ${sourceWidth}x${sourceHeight} image for background keying to ${w}x${h}.`);
+          }
           
           // Smart flood-fill keying starting from boundaries to remove white/beige background
           // and protect matching clothing items in the center

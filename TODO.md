@@ -44,7 +44,7 @@
 - [ ] **校验无限画布拓扑输入。** `/api/canvas/state/:projectId` 和 MCP `canvas_apply_ops` 接受节点/连线/视口对象后直接保存；未限制数量、字段尺寸、视口数值，也未校验连线端点。加入版本化 schema、节点/连线数量及元数据大小上限、数值边界和端点存在性检查，覆盖超大、畸形及悬空连线输入。
 - [x] **修复 MCP JSON-RPC 错误响应。** `backend/mcpServer.js` 抽出可测试的 `processJsonRpcLine()`：解析失败返回 `-32700`，非法请求 `-32600`、未知方法 `-32601`、缺少工具名 `-32602`、工具执行失败 `-32603`，并保留已解析的请求 `id`；无 `id` 的通知不再输出响应；stdio 仅在作为主模块运行时启动。`backend/mcpServer.test.js` 覆盖解析错误、非法请求、未知方法、缺参、失败工具调用、initialize 与通知。
 - [ ] **回收时间轴素材缓存与生成 Blob URL。** `src/hooks/useCanvasRenderer.ts` 将所有图片和视频永久保留在 cache refs，删除/替换图层时不释放视频解码资源；视频生成、重新生成与手动替换路径也会反复 `URL.createObjectURL`，但替换旧结果时没有统一撤销。按当前工程素材做缓存淘汰，暂停并卸载失效媒体，集中管理 Blob URL 并覆盖大量素材、替换、登出和卸载。
-- [ ] **为超大图片的智能抠图设置资源上限。** `src/hooks/useCanvasRenderer.ts` 按原图宽高创建完整 `ImageData`、`Uint8Array(w*h)` 和逐像素坐标队列；超大用户图片会造成主线程长时间阻塞和高内存占用。抠图前限制像素数、缩放到受控分辨率或移至 Worker，并验证大图会平稳拒绝/降采样且不冻结编辑器。
+- [x] **为超大图片的智能抠图设置资源上限。** 新增 `src/utils/keyingLimits.ts` 的 `fitKeyingDimensions()`，抠图前把图像按总像素上限 4,000,000 等比降采样并输出警告，再创建 `ImageData`/`visited`/队列；`useCanvasRenderer` 用缩放后的宽高绘制与处理，避免超大原图阻塞主线程。`tests/core.test.ts` 覆盖无需缩放、超大图降采样保持比例、像素预算与非法尺寸。未迁移到 Worker。
 - [ ] **清理 OSS 孤儿对象并校验删除失败。** 模特/场景/BGM 上传后若 Supabase 写入失败会遗留已上传对象；成功删除资产记录时也没有统一删除 OSS 对象。设计带所有者记录的删除/回滚和定期孤儿清理，避免因跨用户或上传中断误删，并测试 DB 写入失败、重试和删除部分失败。
 - [x] **统一前端网络超时策略。** 新增 `src/utils/http.ts` 的 `fetchWithTimeout()`（AbortController，超时抛明确错误）；批量视频提交（60s）、项目任务拉取（15s）与自定义 API（180s）已接入，超时后调用方 `catch` 会结束 submitting 状态。`tests/core.test.ts` 覆盖永不响应时中止与正常响应。素材下载/上传路径仍有直接 `fetch`，后续可继续迁移。
 - [ ] **让视频剪辑属性在预览与导出中一致生效。** `Layer.properties` 定义了 `videoEndOffset`、`speed`、`loop`，分割服务也维护视频起止偏移，但 `useCanvasRenderer` 和 WebCodecs 导出按原始时间/时长播放，没有消费这些字段。明确支持的剪辑属性，补齐 UI、实时预览及两种导出引擎的一致计算；未支持的属性不要静默保存在工程包中。覆盖分割、裁切、变速、循环和导出对比。

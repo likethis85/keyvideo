@@ -11,6 +11,7 @@ import { normalizeCanvasState } from '../src/utils/canvasImport.ts';
 import { createProjectSyncScheduler } from '../src/utils/projectSyncScheduler.ts';
 import { buildRequestKey } from '../src/utils/requestIdentity.ts';
 import { fetchWithTimeout, readBodyWithTimeout } from '../src/utils/http.ts';
+import { fitKeyingDimensions, MAX_KEYING_PIXELS } from '../src/utils/keyingLimits.ts';
 import type { Layer } from '../src/components/VideoCanvas.tsx';
 import type { StoryboardItem } from '../src/types/aiProject.ts';
 
@@ -121,6 +122,19 @@ test('fetchWithTimeout aborts a request that never answers', async () => {
     fetchImpl: async () => okResponse
   });
   assert.equal(response.status, 200);
+});
+
+test('background keying dimensions stay inside the pixel budget', () => {
+  assert.deepEqual(fitKeyingDimensions(800, 600), { width: 800, height: 600, scaled: false });
+
+  const scaled = fitKeyingDimensions(12_000, 8_000);
+  assert.equal(scaled.scaled, true);
+  assert.ok(scaled.width * scaled.height <= MAX_KEYING_PIXELS);
+  assert.ok(Math.abs((scaled.width / scaled.height) - (12_000 / 8_000)) < 0.01);
+
+  const tiny = fitKeyingDimensions(0, 0);
+  assert.equal(tiny.width, 1);
+  assert.equal(tiny.height, 1);
 });
 
 test('readBodyWithTimeout aborts a body that never finishes', async () => {
