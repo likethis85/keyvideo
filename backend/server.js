@@ -399,11 +399,11 @@ const pollSandbaseTask = async (taskId, timeoutSeconds = 360) => {
 
       if (data.status === 'completed') {
         if (data.outputs && data.outputs.length > 0 && data.outputs[0].url) {
-          console.log(`[Sandbase API] Task ${taskId} completed! Output URL: ${data.outputs[0].url}`);
+          console.log(`[Sandbase API] Task ${taskId} completed.`);
           return data.outputs[0].url;
         }
         if (data.result && data.result.images && data.result.images.length > 0) {
-          console.log(`[Sandbase API] Task ${taskId} completed! Output URL: ${data.result.images[0]}`);
+          console.log(`[Sandbase API] Task ${taskId} completed.`);
           return data.result.images[0];
         }
         throw new Error('Sandbase task completed but no images returned');
@@ -1163,7 +1163,7 @@ app.post('/api/ai/prompts-skill', async (req, res) => {
           if (!url) return null;
           return await fetchImageAsBase64(url);
         } catch (err) {
-          console.warn(`Failed to fetch storyboard image: ${url}`, err.message);
+          console.warn('Failed to fetch a storyboard image:', err.message);
           return null;
         }
       })
@@ -1400,11 +1400,7 @@ app.post('/api/video/task', async (req, res) => {
       duration: duration
     };
 
-    console.log(`\n[Sandbase API] >>> Submitting Video Task`);
-    console.log(`[Sandbase API] Model: "${sandbaseVideoModel}"`);
-    console.log(`[Sandbase API] Input Image URL: ${imageSrc}`);
-    console.log(`[Sandbase API] Prompt: "${prompt}"`);
-    console.log(`[Sandbase API] Duration: ${duration}s`);
+    console.log(`[Sandbase API] Submitting video task (model: ${sandbaseVideoModel}, duration: ${duration}s)`);
 
     let taskId;
     try {
