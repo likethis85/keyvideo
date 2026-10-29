@@ -35,6 +35,16 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
     const activePollingOutfitTasksRef = useRef<{ [taskId: string]: boolean }>({});
     const notifiedOutfitTasksRef = useRef<Set<string>>(new Set());
     const notifiedVideoTasksRef = useRef<Set<string>>(new Set());
+    // Failed/timeout recoveries must not be retried by every `projects` change.
+    const failedVideoTasksRef = useRef<Set<string>>(new Set());
+    const isMountedRef = useRef(true);
+
+    useEffect(() => {
+      isMountedRef.current = true;
+      return () => {
+        isMountedRef.current = false;
+      };
+    }, []);
   
     const pollPendingOutfitTask = async (projId: string, taskId: string) => {
       console.log(`[Outfit Recovery] Polling pending outfit task ${taskId} for project ${projId}`);
@@ -42,6 +52,7 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
       if (projId === activeProjectIdRef.current) setIsOutfitImgGenerating(true);
   
       let attempts = 0;
+      let settled = false;
       const maxAttempts = 120;
       while (attempts < maxAttempts) {
         await new Promise(r => setTimeout(r, 3000));
@@ -75,18 +86,29 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
               },
               onClick: () => onNavigateToOutfitStep?.(projId)
             });
+            settled = true;
             delete activePollingOutfitTasksRef.current[taskId];
             break;
           } else if (statusRes.status === 'failed') {
             console.warn(`[Outfit Recovery] Task ${taskId} failed: ${statusRes.error}`);
             setProjects(prev => prev.map(p => p.id === projId ? { ...p, isOutfitImgGenerating: false } : p));
             if (projId === activeProjectIdRef.current) setIsOutfitImgGenerating(false);
+            settled = true;
             delete activePollingOutfitTasksRef.current[taskId];
             break;
           }
         } catch (err) {
           console.warn(`[Outfit Recovery] Network error checking task ${taskId}:`, err);
         }
+      }
+
+      if (!settled) {
+        // Polling exhausted without a terminal status: reset the UI and allow a
+        // later explicit retry instead of leaving the project stuck as "generating".
+        delete activePollingOutfitTasksRef.current[taskId];
+        setProjects(prev => prev.map(p => p.id === projId ? { ...p, isOutfitImgGenerating: false } : p));
+        if (projId === activeProjectIdRef.current) setIsOutfitImgGenerating(false);
+        toast.warning('试衣任务轮询超时，已停止自动轮询，可手动重试。');
       }
     };
   
@@ -165,7 +187,8 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
     const activePollingTasksRef = useRef<{ [storyboardId: string]: boolean }>({});
   
     const resumeStoryboardVideoPolling = async (projId: string, sbId: string, taskId: string) => {
-      activePollingTasksRef.current[sbId] = true;
+      const pollingKey = `${projId}:${sbId}`;
+      activePollingTasksRef.current[pollingKey] = true;
       console.log(`[Resume Polling] Starting polling loop for storyboard ${sbId}, task ID: ${taskId}`);
   
       try {
@@ -180,7 +203,7 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
           maxAttempts: maxPolls,
           estimatedAttempts,
           recovering: true,
-          isCancelled: () => !!cancelledProjectsRef.current[projId],
+          isCancelled: () => !isMountedRef.current || !!cancelledProjectsRef.current[projId],
           onProgress: progress => {
             const visibleProgress = Math.min(progress, 90);
             setProjects(prev => prev.map(p => p.id !== projId ? p : {
@@ -243,6 +266,7 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
   
       } catch (err) {
         console.error(`[Resume Polling Error] Storyboard ${sbId} failed:`, err);
+        failedVideoTasksRef.current.add(`${projId}:${taskId}`);
         
         setProjects(prev => prev.map(p => {
           if (p.id !== projId) return p;
@@ -285,7 +309,7 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
           setIsI2vGenerating(false);
         }
       } finally {
-        delete activePollingTasksRef.current[sbId];
+        delete activePollingTasksRef.current[pollingKey];
       }
     };
   
@@ -296,7 +320,11 @@ export function useGenerationTaskRecovery(options: TaskRecoveryOptions) {
       // Check all storyboards across all projects to resume polling or recover completed videos
       projects.forEach(proj => {
         proj.storyboards.forEach(sb => {
-          if (sb.videoTaskId && !sb.videoSrc && !activePollingTasksRef.current[sb.id]) {
+          const pollingKey = `${proj.id}:${sb.id}`;
+          const failedKey = `${proj.id}:${sb.videoTaskId}`;
+          if (sb.videoTaskId && !sb.videoSrc
+            && !activePollingTasksRef.current[pollingKey]
+            && !failedVideoTasksRef.current.has(failedKey)) {
             newlyRestoredTasks.push({ projId: proj.id, taskId: sb.videoTaskId });
             resumeStoryboardVideoPolling(proj.id, sb.id, sb.videoTaskId);
           }
