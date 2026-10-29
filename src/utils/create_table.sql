@@ -80,6 +80,13 @@ ON public.model_assets FOR INSERT
 TO authenticated 
 WITH CHECK (auth.uid() = user_id);
 
+-- Allow authenticated users to rename or regenerate their own models/scenes
+CREATE POLICY "Allow individual update for model_assets"
+ON public.model_assets FOR UPDATE
+TO authenticated
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
 -- Allow authenticated users to delete their own models
 CREATE POLICY "Allow individual delete for model_assets" 
 ON public.model_assets FOR DELETE 
