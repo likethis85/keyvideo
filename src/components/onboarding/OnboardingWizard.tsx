@@ -135,9 +135,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onSk
           )}
 
           {step === 1 && (
-            <div className="onboarding-panel">
+            <div className="onboarding-panel onboarding-panel-templates">
               <h3>这条片子想怎么讲？</h3>
               <p>先选一个内容脚本。它会预填主提示词、分镜提示词和字幕节奏，不是滤镜。</p>
+              <div className="onboarding-template-scroll-note">共 8 个脚本模板，向下滚动查看全部 · 选中后会预填主提示词和分镜</div>
               <div className="onboarding-template-grid">
                 {SCRIPT_TEMPLATES.map(template => (
                   <button
@@ -147,10 +148,17 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onSk
                     onClick={() => setTemplateId(template.id)}
                     style={{ '--template-accent': template.accent } as React.CSSProperties}
                   >
-                    <span className="onboarding-template-icon">{template.icon}</span>
+                    <span className="onboarding-template-top">
+                      <span className="onboarding-template-icon">{template.icon}</span>
+                      <span className="onboarding-template-meta">{template.category} · {template.duration} · {template.shots}</span>
+                    </span>
                     <span className="onboarding-template-name">{template.title}</span>
-                    <span className="onboarding-template-meta">{template.duration} · {template.shots}</span>
                     <span className="onboarding-template-desc">{template.description}</span>
+                    <span className="onboarding-template-tags">
+                      {template.tags.slice(0, 3).map(tag => <em key={tag}>{tag}</em>)}
+                    </span>
+                    <span className="onboarding-template-sample">{template.sample}</span>
+                    <span className="onboarding-template-prefill">{template.prefill}</span>
                   </button>
                 ))}
               </div>

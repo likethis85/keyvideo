@@ -42,6 +42,7 @@ export const TemplateTab: React.FC<TemplateTabProps> = ({ onUseTemplate }) => {
             </button>
           ))}
         </div>
+        <div className="script-template-count">共 {visibleTemplates.length} 个内容脚本 · 选中后会预填主提示词和分镜</div>
 
         <div className="script-template-list">
           {visibleTemplates.map(template => (
