@@ -13,6 +13,18 @@ import { createIdempotencyMiddleware, IDEMPOTENT_GENERATION_PATHS } from './idem
 import { createImageProxyHandler } from './imageProxy.js';
 import { createUploadRouter } from './uploads.js';
 import { submitSandbaseTask } from './sandbaseSubmit.js';
+import {
+  createGenerationQuota,
+  validateVideoTaskInput,
+  validateVideoBatchInput,
+  validateImageGenerationInput,
+  validateMannequinInput,
+  validateTryOnInput,
+  validateInpaintInput,
+  validateUpscaleInput,
+  DEFAULT_DAILY_TASK_LIMIT,
+  DEFAULT_MAX_CONCURRENT_TASKS
+} from './generationLimits.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +37,27 @@ const host = process.env.HOST || '127.0.0.1';
 const DEFAULT_EXTERNAL_TIMEOUT_MS = Math.max(5, Number(process.env.EXTERNAL_REQUEST_TIMEOUT_SECONDS) || 30) * 1000;
 const LONG_EXTERNAL_TIMEOUT_MS = Math.max(30, Number(process.env.LONG_AI_REQUEST_TIMEOUT_SECONDS) || 180) * 1000;
 const MAX_JSON_MB = Math.max(1, Number(process.env.MAX_JSON_MB) || 50);
+const generationQuota = createGenerationQuota({
+  dailyLimit: Number(process.env.AI_DAILY_TASK_LIMIT) || DEFAULT_DAILY_TASK_LIMIT,
+  maxConcurrent: Number(process.env.AI_MAX_CONCURRENT_TASKS) || DEFAULT_MAX_CONCURRENT_TASKS
+});
+
+const enforceGenerationQuota = (req, res, cost = 1) => {
+  const reservation = generationQuota.reserve(req.authUser?.id, cost);
+  if (!reservation.ok) {
+    res.set('Retry-After', '60');
+    res.status(reservation.status || 429).json({
+      error: reservation.error,
+      code: reservation.code
+    });
+    return null;
+  }
+  // Safety net: release the concurrency slot no matter how the request exits.
+  // release() is idempotent, so the explicit release after submission is safe.
+  res.once('finish', reservation.release);
+  res.once('close', reservation.release);
+  return reservation;
+};
 
 
 const requiredEnv = [
@@ -563,7 +596,14 @@ app.use('/api', createUploadRouter());
 // AI Mannequin Model Swap
 app.post('/api/ai/mannequin', async (req, res) => {
   try {
-    const { imageUrl, gender, region, ratio, customPrompt } = req.body;
+    const validation = validateMannequinInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error, code: validation.code });
+    }
+    const { imageUrl, gender, region, ratio, customPrompt } = validation.value;
+
+    const reservation = enforceGenerationQuota(req, res, 1);
+    if (!reservation) return;
 
     const genderStr = gender === 'female' ? 'female' : 'male';
     const regionStr = region === 'east-asian' ? 'East Asian' : 'Western';
@@ -585,10 +625,15 @@ app.post('/api/ai/mannequin', async (req, res) => {
       enable_image_search: false
     };
 
-    const taskId = await submitSandbaseTask(sandbasePayload, {
-      userId: req.authUser?.id,
-      requestKey: req.get('X-Idempotency-Key')
-    });
+    let taskId;
+    try {
+      taskId = await submitSandbaseTask(sandbasePayload, {
+        userId: req.authUser?.id,
+        requestKey: req.get('X-Idempotency-Key')
+      });
+    } finally {
+      reservation.release();
+    }
     registerTask(taskId, { type: 'mannequin', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
 
     const poller = async () => {
@@ -619,9 +664,14 @@ app.post('/api/ai/mannequin', async (req, res) => {
 // 3. AI Try-On & Pose Integration
 app.post('/api/ai/tryon', async (req, res) => {
   try {
-    const { clothingUrl, clothingBottomUrl, modelUrl, gender, region, scene, ratio, customPrompt, backgroundImageUrl, poseImageUrl, projectId } = req.body;
+    const validation = validateTryOnInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error, code: validation.code });
+    }
+    const { clothingUrl, clothingBottomUrl, modelUrl, gender, region, scene, ratio, customPrompt, backgroundImageUrl, poseImageUrl, projectId } = validation.value;
 
-    console.log(`[/api/ai/tryon] backgroundImageUrl present: ${!!backgroundImageUrl}, length: ${backgroundImageUrl ? backgroundImageUrl.length : 0}, prefix: ${backgroundImageUrl ? backgroundImageUrl.substring(0, 40) : 'N/A'}`);
+    const reservation = enforceGenerationQuota(req, res, 1);
+    if (!reservation) return;
 
     let rawImages = [];
 
@@ -723,10 +773,15 @@ HANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or acc
       enable_image_search: false
     };
 
-    const taskId = await submitSandbaseTask(sandbasePayload, {
-      userId: req.authUser?.id,
-      requestKey: req.get('X-Idempotency-Key')
-    });
+    let taskId;
+    try {
+      taskId = await submitSandbaseTask(sandbasePayload, {
+        userId: req.authUser?.id,
+        requestKey: req.get('X-Idempotency-Key')
+      });
+    } finally {
+      reservation.release();
+    }
     registerTask(taskId, { type: 'tryon', scene, prompt: textPrompt, projectId, userId: req.authUser?.id, status: 'processing' });
 
     const poller = async () => {
@@ -756,7 +811,17 @@ HANDBAG & ACCESSORY ADAPTATION: If the model originally carried a handbag or acc
 // 4. AI Background Scene Generation
 app.post('/api/ai/background', async (req, res) => {
   try {
-    const { prompt, ratio, refImageUrl } = req.body;
+    const validation = validateImageGenerationInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error, code: validation.code });
+    }
+    const { prompt, ratio, refImageUrl } = validation.value;
+    if (!ratio) {
+      return res.status(400).json({ error: 'ratio is required', code: 'INVALID_INPUT' });
+    }
+
+    const reservation = enforceGenerationQuota(req, res, 1);
+    if (!reservation) return;
 
     const apiAspectRatio = ratio.replace('-', ':');
     const backgroundPrompt = `A professional commercial background scene, high resolution, photorealistic, empty setting for fashion model photoshoot, clean composition, studio lighting. Scene description: ${prompt}. No people, no models, no text, no watermarks.`;
@@ -775,16 +840,20 @@ app.post('/api/ai/background', async (req, res) => {
       sandbasePayload.images = [refImageUrl];
     }
 
-    const taskId = await submitSandbaseTask(sandbasePayload, {
-      userId: req.authUser?.id,
-      requestKey: req.get('X-Idempotency-Key')
-    });
-    const resultImageUrl = await pollSandbaseTask(taskId);
+    try {
+      const taskId = await submitSandbaseTask(sandbasePayload, {
+        userId: req.authUser?.id,
+        requestKey: req.get('X-Idempotency-Key')
+      });
+      const resultImageUrl = await pollSandbaseTask(taskId);
 
-    // Convert to base64 to bypass browser CORS on frontend
-    const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
+      // Convert to base64 to bypass browser CORS on frontend
+      const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
 
-    res.status(200).json({ url: base64DataUrl });
+      res.status(200).json({ url: base64DataUrl });
+    } finally {
+      reservation.release();
+    }
   } catch (err) {
     console.error('Background generation failed:', err);
     res.status(500).json({ error: err.message || 'Background generation failed' });
@@ -1235,13 +1304,17 @@ ${is15s ? `最终生成的提示词应该类似：
 // 7. Video Generation Task Creator
 app.post('/api/video/task', async (req, res) => {
   try {
-    const { model, prompt, imageSrc, modelOutfitImgUrl, storyboardImgUrls, sceneImgUrl, seconds = 4, size = '720p', aspectRatio, projectId } = req.body;
+    const validation = validateVideoTaskInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error, code: validation.code });
+    }
+    const { prompt, imageSrc, seconds: duration, projectId } = validation.value;
+
+    const reservation = enforceGenerationQuota(req, res, 1);
+    if (!reservation) return;
 
     // Use sandbase.ai's Kling 3.0 Omni Pro Video model
     const sandbaseVideoModel = "kwaivgi/kling-video/3.0/omni/pro/image-to-video";
-    // Map seconds (4 or other value) to duration integer
-    const duration = Math.round(seconds) || 3;
-
     const sandbasePayload = {
       model: sandbaseVideoModel,
       image: imageSrc,
@@ -1255,10 +1328,15 @@ app.post('/api/video/task', async (req, res) => {
     console.log(`[Sandbase API] Prompt: "${prompt}"`);
     console.log(`[Sandbase API] Duration: ${duration}s`);
 
-    const taskId = await submitSandbaseTask(sandbasePayload, {
-      userId: req.authUser?.id,
-      requestKey: req.get('X-Idempotency-Key')
-    });
+    let taskId;
+    try {
+      taskId = await submitSandbaseTask(sandbasePayload, {
+        userId: req.authUser?.id,
+        requestKey: req.get('X-Idempotency-Key')
+      });
+    } finally {
+      reservation.release();
+    }
 
     registerTask(taskId, {
       type: 'video',
@@ -1324,22 +1402,20 @@ app.get('/api/video/poll/:taskId', async (req, res) => {
 // 8.1 Batch Video Generation for 5-Shot Storyboards
 app.post('/api/video/task/batch', async (req, res) => {
   try {
-    const { projectId, shots = [], model, seconds = 3 } = req.body;
-    if (!Array.isArray(shots) || shots.length === 0) {
-      return res.status(400).json({ error: 'No shots provided for batch generation' });
+    const validation = validateVideoBatchInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error, code: validation.code });
     }
-    if (shots.length > 10) {
-      return res.status(400).json({ error: 'At most 10 shots are allowed per batch' });
-    }
-    if (shots.some(shot => !shot || typeof shot !== 'object')) {
-      return res.status(400).json({ error: 'Every shot must be an object' });
-    }
+    const { projectId } = req.body;
+    const { shots, model: sandbaseVideoModel, cost } = validation.value;
 
-    const sandbaseVideoModel = model || "kwaivgi/kling-video/3.0/omni/pro/image-to-video";
+    const reservation = enforceGenerationQuota(req, res, cost);
+    if (!reservation) return;
+
     console.log(`\n[Sandbase API] >>> Submitting Batch Video Tasks (${shots.length} shots) for Project: ${projectId || 'default'}`);
 
     const submitPromises = shots.map(async (shot, idx) => {
-      const duration = Math.round(shot.seconds || seconds) || 3;
+      const duration = shot.seconds;
       const sandbasePayload = {
         model: sandbaseVideoModel,
         image: shot.imageSrc,
@@ -1391,7 +1467,12 @@ app.post('/api/video/task/batch', async (req, res) => {
       }
     });
 
-    const results = await Promise.all(submitPromises);
+    let results;
+    try {
+      results = await Promise.all(submitPromises);
+    } finally {
+      reservation.release();
+    }
     res.status(200).json({ tasks: results });
   } catch (err) {
     console.error('Batch video task submission failed:', err);
@@ -1569,10 +1650,14 @@ app.post('/api/canvas/state/:projectId', (req, res) => {
 // 2.1 Google image inpainting with an explicit black/white mask.
 app.post('/api/ai/inpaint', async (req, res) => {
   try {
-    const { imageUrl, maskUrl, prompt, strength = 0.75, aspectRatio = '1:1' } = req.body;
-    if (!imageUrl || !maskUrl || !String(prompt || '').trim()) {
-      return res.status(400).json({ error: 'imageUrl, maskUrl and prompt are required' });
+    const validation = validateInpaintInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error, code: validation.code });
     }
+    const { imageUrl, maskUrl, prompt, strength = 0.75, aspectRatio = '1:1' } = validation.value;
+
+    const reservation = enforceGenerationQuota(req, res, 1);
+    if (!reservation) return;
 
     const images = [
       await resolveLocalAssetToBase64(imageUrl),
@@ -1592,10 +1677,15 @@ app.post('/api/ai/inpaint', async (req, res) => {
       enable_image_search: false
     };
 
-    const taskId = await submitSandbaseTask(sandbasePayload, {
-      userId: req.authUser?.id,
-      requestKey: req.get('X-Idempotency-Key')
-    });
+    let taskId;
+    try {
+      taskId = await submitSandbaseTask(sandbasePayload, {
+        userId: req.authUser?.id,
+        requestKey: req.get('X-Idempotency-Key')
+      });
+    } finally {
+      reservation.release();
+    }
     registerTask(taskId, { type: 'inpaint', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
     const poller = async () => {
       try {
@@ -1622,8 +1712,14 @@ app.post('/api/ai/inpaint', async (req, res) => {
 
 app.post('/api/ai/upscale', async (req, res) => {
   try {
-    const { imageUrl, scaleFactor = '2x', mode = 'fashion', denoise = 30, sharpen = 50, aspectRatio = '1:1' } = req.body;
-    if (!imageUrl) return res.status(400).json({ error: 'imageUrl is required' });
+    const validation = validateUpscaleInput(req.body);
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error, code: validation.code });
+    }
+    const { imageUrl, scaleFactor = '2x', mode = 'fashion', denoise = 30, sharpen = 50, aspectRatio = '1:1' } = validation.value;
+
+    const reservation = enforceGenerationQuota(req, res, 1);
+    if (!reservation) return;
 
     const sourceImage = await resolveLocalAssetToBase64(imageUrl);
     const resolution = scaleFactor === '4x' ? '4K' : '2K';
@@ -1645,10 +1741,15 @@ app.post('/api/ai/upscale', async (req, res) => {
       enable_image_search: false
     };
 
-    const taskId = await submitSandbaseTask(sandbasePayload, {
-      userId: req.authUser?.id,
-      requestKey: req.get('X-Idempotency-Key')
-    });
+    let taskId;
+    try {
+      taskId = await submitSandbaseTask(sandbasePayload, {
+        userId: req.authUser?.id,
+        requestKey: req.get('X-Idempotency-Key')
+      });
+    } finally {
+      reservation.release();
+    }
     registerTask(taskId, { type: 'upscale', prompt: textPrompt, userId: req.authUser?.id, status: 'processing' });
     const poller = async () => {
       try {
