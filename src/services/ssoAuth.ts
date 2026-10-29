@@ -183,9 +183,13 @@ export async function refreshSsoUser(session: StoredSsoSession): Promise<AppUser
 }
 
 export async function logoutSso(): Promise<void> {
+  const session = loadSsoSession();
   clearSsoSession();
   try {
-    await requestWithTimeout(ssoEndpoint('/logout'), { method: 'POST' }, 3_000);
+    await requestWithTimeout(ssoEndpoint('/logout'), {
+      method: 'POST',
+      headers: session ? { Authorization: `Bearer ${session.token}` } : {}
+    }, 3_000);
   } catch {
     // The local session is already gone; a failed server notification is harmless.
   }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import express from 'express';
-import { readSsoConfig, signSessionToken } from './sso.js';
+import { readSsoConfig, revokeSessionToken, signSessionToken } from './sso.js';
 import { createApiAuthMiddleware } from './auth.js';
 
 const ssoEnv = {
@@ -93,6 +93,24 @@ test('API auth verifies a Supabase access token when configured', async () => {
     assert.equal(body.user.provider, 'supabase');
     assert.equal(requests.length, 1);
     assert.equal(requests[0].url, 'https://supabase.test/auth/v1/user');
+  } finally {
+    await server.close();
+  }
+});
+
+test('API auth rejects a session revoked by logout', async () => {
+  const config = readSsoConfig(ssoEnv);
+  const session = signSessionToken(
+    { id: 'u_revoked', email: 'revoked@example.com', provider: 'dingtalk' },
+    { secret: config.sessionSecret, ttlSeconds: 3600 }
+  );
+  revokeSessionToken(session.token, { secret: config.sessionSecret });
+  const server = await startServer(createProtectedApp({ env: ssoEnv }));
+  try {
+    const rejected = await fetch(`${server.origin}/api/protected`, {
+      headers: { Authorization: `Bearer ${session.token}` }
+    });
+    assert.equal(rejected.status, 401);
   } finally {
     await server.close();
   }

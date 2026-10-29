@@ -49,6 +49,46 @@ test('session JWTs verify and reject tampering', () => {
   }), null);
 });
 
+test('logout revokes the presented session token immediately', async () => {
+  const env = makeConfigEnv();
+  const config = readSsoConfig(env);
+  const session = signSessionToken(
+    { id: 'u_logout', email: 'logout@example.com', provider: 'dingtalk' },
+    { secret: config.sessionSecret, ttlSeconds: 3600 }
+  );
+  const app = express();
+  app.use(express.json());
+  app.use('/api/auth/sso', createSsoRouter({ env }));
+  const server = await startServer(app);
+
+  try {
+    const before = await fetch(`${server.origin}/api/auth/sso/session`, {
+      headers: { Authorization: `Bearer ${session.token}` }
+    });
+    assert.equal(before.status, 200);
+
+    const logout = await fetch(`${server.origin}/api/auth/sso/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.token}` }
+    });
+    assert.equal(logout.status, 204);
+
+    const after = await fetch(`${server.origin}/api/auth/sso/session`, {
+      headers: { Authorization: `Bearer ${session.token}` }
+    });
+    assert.equal(after.status, 401);
+    assert.equal(verifySessionToken(session.token, { secret: config.sessionSecret }), null);
+
+    const invalidLogout = await fetch(`${server.origin}/api/auth/sso/logout`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer not-a-token' }
+    });
+    assert.equal(invalidLogout.status, 204);
+  } finally {
+    await server.close();
+  }
+});
+
 test('config is disabled until the client credentials are supplied', () => {
   assert.equal(readSsoConfig({}).configured, false);
   assert.equal(readSsoConfig(makeConfigEnv()).configured, true);

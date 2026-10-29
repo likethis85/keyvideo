@@ -19,6 +19,33 @@ const DEFAULT_ALLOWED_RETURN_ORIGINS = [
 
 const nowSeconds = (now) => Math.floor(now() / 1000);
 
+// Logged-out session IDs are kept until their token would have expired. The map
+// has a hard cap so an attacker cannot grow it without bound by logging out
+// repeatedly with freshly minted tokens.
+const MAX_REVOKED_SESSIONS = Math.max(100, Number(process.env.SSO_REVOKED_SESSION_CAPACITY) || 10_000);
+const revokedSessions = new Map();
+
+const purgeRevokedSessions = (nowMs) => {
+  for (const [jti, expiresAt] of revokedSessions) {
+    if (expiresAt <= nowMs) revokedSessions.delete(jti);
+  }
+  for (const jti of revokedSessions.keys()) {
+    if (revokedSessions.size <= MAX_REVOKED_SESSIONS) break;
+    revokedSessions.delete(jti);
+  }
+};
+
+export const isSessionRevoked = (claims, nowMs = Date.now()) => {
+  if (!claims?.jti) return false;
+  const expiresAt = revokedSessions.get(claims.jti);
+  if (!expiresAt) return false;
+  if (expiresAt <= nowMs) {
+    revokedSessions.delete(claims.jti);
+    return false;
+  }
+  return true;
+};
+
 const safeEqual = (left, right) => {
   const a = Buffer.from(String(left));
   const b = Buffer.from(String(right));
@@ -134,7 +161,11 @@ export function signSessionToken(user, { secret, ttlSeconds = 8 * 60 * 60, now =
   };
 }
 
-export function verifySessionToken(token, { secret, now = Date.now } = {}) {
+export function verifySessionToken(token, {
+  secret,
+  now = Date.now,
+  checkRevocation = true
+} = {}) {
   if (!secret || typeof token !== 'string') return null;
   const parts = token.split('.');
   if (parts.length !== 3) return null;
@@ -155,7 +186,21 @@ export function verifySessionToken(token, { secret, now = Date.now } = {}) {
   const current = nowSeconds(now);
   if (!Number.isFinite(payload.exp) || payload.exp <= current) return null;
   if (Number.isFinite(payload.nbf) && payload.nbf > current + 30) return null;
+  if (checkRevocation && isSessionRevoked(payload, now())) return null;
   return payload;
+}
+
+/**
+ * Revokes a still-valid session token. Returns false when the token is invalid
+ * or already expired; callers should still respond 204 to avoid acting as a
+ * token-validity oracle.
+ */
+export function revokeSessionToken(token, { secret, now = Date.now } = {}) {
+  const claims = verifySessionToken(token, { secret, now, checkRevocation: false });
+  if (!claims || !claims.jti) return false;
+  revokedSessions.set(claims.jti, claims.exp * 1000);
+  purgeRevokedSessions(now());
+  return true;
 }
 
 const sessionUserFromClaims = (claims) => ({
@@ -373,7 +418,13 @@ export function createSsoRouter({
     return res.json({ user: sessionUserFromClaims(claims), expires_at: claims.exp * 1000 });
   });
 
-  router.post('/logout', (_req, res) => {
+  router.post('/logout', (req, res) => {
+    const header = req.get('authorization') || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    if (config.configured && token) {
+      revokeSessionToken(token, { secret: config.sessionSecret, now });
+    }
+    // Always 204: do not reveal whether the supplied token was valid.
     res.status(204).end();
   });
 
