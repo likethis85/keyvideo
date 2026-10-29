@@ -51,7 +51,7 @@
 - [ ] **把 Supabase 初始化脚本改为可追踪的迁移。** `src/utils/create_table.sql` 的建表虽使用 `IF NOT EXISTS`，但每次执行都会重复 `CREATE POLICY` 并失败；后续修改该文件也不会自动更新既有数据库。迁移到有序、可审计的 schema migrations，区分新装和升级步骤，并在空库与已初始化库上验证。
 - [x] **阻止发布工作流反复创建同一个版本。** 工作流改为只在推送 `v*` 标签时触发（移除 main/master 与手动触发），发布前校验标签名必须等于 `v` + `src-tauri/tauri.conf.json` 版本，`tauri-action` 的 `tagName` 改用实际推送标签而非固定 `app-v__VERSION__`，避免每次主分支推送生成重复发布；矩阵多架构仍上传到同一 draft release。
 - [ ] **收紧桌面 WebView 权限。** `src-tauri/tauri.conf.json` 设置 `csp: null` 且 asset protocol scope 为 `**/*`。按实际 API/资源需求配置 CSP 与最小文件访问范围，验证本地素材、远程后端、预览与导出仍可用。
-- [ ] **让本地保存失败可见。** `localDB.set` 失败时返回 `false`，多个保存调用只捕获异常或完全忽略返回值；浏览器配额不足或 SQLite 故障时 UI 仍可能显示成功。统一持久化结果语义，向用户提示失败并保留可重试状态，覆盖配额耗尽与存储不可用。
+- [ ] **让本地保存失败可见。** 部分完成：`localDB.set` 失败时会派发 `keyvideo:local-save-failed` 事件，`src/App.tsx` 监听后 10 秒节流提示“本地保存失败，请清理后重试”；返回值语义保持 `boolean`。仍未实现失败写入的待重试队列/自动重试，也未覆盖配额耗尽与存储不可用的自动化测试。
 - [ ] **避免跨账号复用前端生成请求。** `src/utils/aiGateway.ts` 的模块级 in-flight map 只按操作和 payload 去重；账号切换期间相同请求可能复用前一账号的 Promise。把身份/后端范围纳入去重作用域，并在登出时取消或清空旧请求。
 - [ ] **补全 API 集成与回归测试。** 当前前端测试集中在纯工具函数，后端测试集中在 SSO/auth 单元逻辑；关键路由、RLS/OSS 边界、幂等、图片代理、批量生成、持久化与导出流程缺少端到端覆盖。为本清单 P1 事项建立可注入上游服务的路由测试和关键前端状态测试。
 - [ ] **让 CI 覆盖后端、Rust 格式和依赖安全。** `.github/workflows/release.yml` 只运行前端 `npm test`，不运行 `backend/npm test`、`cargo fmt --check`、Rust 构建/测试或依赖审计。当前完整 npm 审计发现 8 个开发/构建依赖漏洞（7 高、1 中），生产依赖审计为 0；`cargo fmt --check` 在 `src-tauri/build.rs`、`src-tauri/src/lib.rs` 和 `src-tauri/src/main.rs` 失败，且当前环境没有 `cargo-audit`。修复格式、升级易受影响依赖并把前后端/Rust/审计检查加入独立 CI。

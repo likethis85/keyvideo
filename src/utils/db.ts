@@ -10,6 +10,8 @@ interface StoredValueRow {
   value: string;
 }
 
+export const LOCAL_SAVE_FAILED_EVENT = 'keyvideo:local-save-failed';
+
 export interface LocalVideoAsset {
   id: string;
   name: string;
@@ -175,8 +177,15 @@ class LocalDB {
     return null;
   }
 
+  private reportSaveFailure(key: string): void {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent(LOCAL_SAVE_FAILED_EVENT, { detail: { key } }));
+  }
+
   async set(key: string, val: unknown): Promise<boolean> {
-    return this.writeKey(this.scopedKey(key), val);
+    const saved = await this.writeKey(this.scopedKey(key), val);
+    if (!saved) this.reportSaveFailure(key);
+    return saved;
   }
 
   // SQLite Specific local video asset management (with IndexedDB fallback).

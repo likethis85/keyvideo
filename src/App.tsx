@@ -17,7 +17,7 @@ import { AppLoadingScreen } from './components/app/AppLoadingScreen';
 import { OnboardingWizard, type OnboardingResult } from './components/onboarding/OnboardingWizard';
 import type { AIProject, StoryboardItem } from './types/aiProject';
 import type { SidebarDrawerRef } from './components/sidebar/sidebarTypes';
-import { localDB } from './utils/db';
+import { localDB, LOCAL_SAVE_FAILED_EVENT } from './utils/db';
 import { supabase } from './utils/supabaseClient';
 import { AuthPage } from './components/AuthPage';
 import {
@@ -192,6 +192,20 @@ function App() {
     return () => {
       window.alert = originalAlert;
     };
+  }, []);
+
+  // Surface local persistence failures (quota exhaustion, SQLite/IndexedDB
+  // errors) instead of silently pretending the save succeeded.
+  useEffect(() => {
+    let lastNotice = 0;
+    const handleSaveFailure = () => {
+      const now = Date.now();
+      if (now - lastNotice < 10_000) return;
+      lastNotice = now;
+      toast.error('本地保存失败：设备存储空间可能不足，请清理后重试。');
+    };
+    window.addEventListener(LOCAL_SAVE_FAILED_EVENT, handleSaveFailure);
+    return () => window.removeEventListener(LOCAL_SAVE_FAILED_EVENT, handleSaveFailure);
   }, []);
 
   // 1. Ratio size setup: 1-1, 3-4, 9-16, 16-9
