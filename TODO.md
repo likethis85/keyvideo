@@ -11,7 +11,7 @@
 - [ ] **让长耗时生图接口可恢复。** `/api/ai/background` 同步等待最多 360 秒，而 `src/utils/aiGateway.ts` 客户端请求超时为 180 秒；该路由既不登记可查询的任务，也不支持异步轮询。客户端超时后用户拿不到结果，服务端可能仍继续消耗额度；改为统一的异步任务/状态接口，记录 userId 与 projectId，并覆盖断连、重启和恢复场景。
 - [ ] **明确云端素材列表的隐私边界。** `src/utils/create_table.sql` 给 `audio_assets`、`model_assets` 配置了 `TO public USING (true)` 的全表 SELECT，前端又用 `select('*')` 拉取记录；匿名访问者可枚举素材名称、URL 和 user_id。确认素材是否刻意作为公共素材库；私人资产改为按 `auth.uid() = user_id` 读取，公共素材单独建表/标记并回归匿名及跨账号访问。
 - [ ] **生产 API 全链路改为 HTTPS。** `.github/workflows/release.yml` 把桌面版 `VITE_BACKEND_URL` 编译为明文 HTTP IP；登录 Bearer token、提示词和素材请求可能被窃听或篡改。使用受信任域名和 TLS，拒绝生产环境的 HTTP 配置，并验证发布包中没有旧地址。
-- [ ] **把 OSS 对象删除权绑定到对象所有者。** `backend/server.js` 的删除接口只检查 bucket 与 `audio/` 前缀；任一登录用户只要拿到别人的对象 URL 就能删除。上传时使用用户隔离前缀并记录所有权，删除时校验当前用户；补充跨用户拒绝测试。`vite.config.ts` 的开发上传接口也要执行鉴权或只允许本机可信来源。
+- [x] **把 OSS 对象删除权绑定到对象所有者。** 已抽出 `backend/uploads.js`：上传写入 `audio/<sanitized-user-id>/...` 并带 `x-oss-meta-keyvideo-owner` 元数据；删除要求 URL 属于配置 bucket 且 key 位于当前用户前缀内，路径穿越/跨用户/遗留根目录对象一律 403，路由自身也会拒绝未认证请求。`backend/uploads.test.js` 覆盖自有删除、跨用户拒绝、遗留对象、错误 bucket、上传类型/大小限制与 owner 转义。`vite.config.ts` 的开发上传中间件待 P2 单独收紧。
 - [ ] **限制 AI 生成的可计费输入与额度。** `/api/video/task` 和批量路由接受未严格验证的秒数、提示词、图片数等输入；通用每分钟请求数不能有效限制单次批量费用。按模型校验时长、尺寸、提示词和素材数量，限制并发、每日额度及单次费用，返回明确的额度错误，并用边界测试证明无效请求不会调用上游。
 - [x] **收紧公开图片代理。** 已抽出 `backend/imageProxy.js`：仅允许 `https://media.sandbase.ai`，每一跳重定向先做 SSRF 校验与主机白名单检查（最多 3 跳），响应体流式读取并按字节上限中止，整条请求有总超时，按客户端 IP 分钟限流且限流表有硬上限。`backend/imageProxy.test.js` 覆盖私网重定向、逐跳校验、分块超大响应、响应头/响应体超时、非图片响应与限流。SSRF 与超时公共函数已移到 `backend/remoteUrl.js`。
 - [ ] **实现可撤销的 SSO 会话。** `backend/sso.js` 的 `/logout` 只返回 204，不验证或撤销 JWT；被盗 token 在过期前仍有效。加入服务端会话版本/撤销列表或可轮换短期会话，并测试登出后旧 token 立即失效。

@@ -11,6 +11,7 @@ import { createApiAuthMiddleware } from './auth.js';
 import { fetchWithTimeout, assertSafeRemoteUrl, safeFetchRemote } from './remoteUrl.js';
 import { createIdempotencyMiddleware, IDEMPOTENT_GENERATION_PATHS } from './idempotency.js';
 import { createImageProxyHandler } from './imageProxy.js';
+import { createUploadRouter } from './uploads.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,11 +24,6 @@ const host = process.env.HOST || '127.0.0.1';
 const DEFAULT_EXTERNAL_TIMEOUT_MS = Math.max(5, Number(process.env.EXTERNAL_REQUEST_TIMEOUT_SECONDS) || 30) * 1000;
 const LONG_EXTERNAL_TIMEOUT_MS = Math.max(30, Number(process.env.LONG_AI_REQUEST_TIMEOUT_SECONDS) || 180) * 1000;
 const MAX_JSON_MB = Math.max(1, Number(process.env.MAX_JSON_MB) || 50);
-const ALLOWED_UPLOAD_EXTENSIONS = new Set([
-  'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac',
-  'png', 'jpg', 'jpeg', 'webp', 'gif', 'avif',
-  'mp4', 'webm', 'mov'
-]);
 
 
 const requiredEnv = [
@@ -614,95 +610,12 @@ app.get('/api/ai/tasks/recent', (req, res) => {
 });
 
 
-// 1. Raw Binary Upload to Aliyun OSS (drop-in replacement for Vite configureServer proxy)
-app.post('/api/upload', (req, res) => {
-  const requestedName = String(req.query.name || 'file.mp3').slice(0, 200);
-  const fileExt = requestedName.split('.').pop()?.toLowerCase() || '';
-  if (!ALLOWED_UPLOAD_EXTENSIONS.has(fileExt)) {
-    return res.status(400).json({ error: 'File type is not allowed' });
-  }
-  const chunks = [];
-  const maxUploadBytes = Math.max(1, Number(process.env.MAX_UPLOAD_MB) || 100) * 1024 * 1024;
-  let receivedBytes = 0;
-  let uploadRejected = false;
-  
-  req.on('data', (chunk) => {
-    if (uploadRejected) return;
-    receivedBytes += chunk.length;
-    if (receivedBytes > maxUploadBytes) {
-      uploadRejected = true;
-      chunks.length = 0;
-      res.status(413).json({ error: 'Upload exceeds the configured size limit' });
-      return;
-    }
-    chunks.push(chunk);
-  });
-  req.on('end', async () => {
-    if (uploadRejected) return;
-    try {
-      if (chunks.length === 0) {
-        return res.status(400).json({ error: 'No file data received' });
-      }
-      
-      const buffer = Buffer.concat(chunks);
-      const client = new OSS({
-        region: process.env.OSS_REGION || 'oss-cn-shanghai',
-        accessKeyId: process.env.OSS_ACCESS_KEY_ID,
-        accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
-        bucket: process.env.OSS_BUCKET,
-        secure: true
-      });
+// Authenticated raw-binary OSS upload/delete (drop-in replacement for the Vite
+// configureServer proxy). Objects are namespaced per user and deletes are
+// owner-checked inside the router.
+app.use('/api', createUploadRouter());
 
-      const randomName = `${Date.now()}_${Math.random().toString(36).substring(2, 11)}.${fileExt}`;
-      const ossPath = `audio/${randomName}`;
-      const result = await client.put(ossPath, buffer);
-
-      res.status(200).json({ url: result.url });
-    } catch (err) {
-      console.error('Alibaba Cloud OSS upload failed:', err);
-      res.status(500).json({ error: err.message || 'Upload failed' });
-    }
-  });
-});
-
-// OSS File Delete Endpoint
-app.post('/api/upload/delete', async (req, res) => {
-  const { url } = req.body;
-  if (!url) {
-    return res.status(400).json({ error: 'Missing url parameter' });
-  }
-
-  try {
-    const client = new OSS({
-      region: process.env.OSS_REGION || 'oss-cn-shanghai',
-      accessKeyId: process.env.OSS_ACCESS_KEY_ID,
-      accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
-      bucket: process.env.OSS_BUCKET,
-      secure: true
-    });
-
-    // Only permit deletion from the configured bucket and managed upload prefix.
-    const urlObj = new URL(url);
-    const bucket = process.env.OSS_BUCKET;
-    const expectedHost = `${bucket}.${process.env.OSS_REGION || 'oss-cn-shanghai'}.aliyuncs.com`;
-    if (urlObj.protocol !== 'https:' || urlObj.hostname !== expectedHost) {
-      return res.status(400).json({ error: 'URL does not belong to the configured OSS bucket' });
-    }
-    const key = decodeURIComponent(urlObj.pathname.slice(1));
-    if (!key.startsWith('audio/') || key.includes('..')) {
-      return res.status(400).json({ error: 'Object is outside the managed upload prefix' });
-    }
-
-    await client.delete(key);
-    console.log(`Successfully deleted key ${key} from OSS`);
-    res.status(200).json({ success: true });
-  } catch (err) {
-    console.error('Alibaba Cloud OSS deletion failed:', err);
-    res.status(500).json({ error: err.message || 'Deletion failed' });
-  }
-});
-
-// 2. AI Mannequin Model Swap
+// AI Mannequin Model Swap
 app.post('/api/ai/mannequin', async (req, res) => {
   try {
     const { imageUrl, gender, region, ratio, customPrompt } = req.body;

@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test sso.test.js auth.test.js idempotency.test.js imageProxy.test.js",
+    "test": "node --test sso.test.js auth.test.js idempotency.test.js imageProxy.test.js uploads.test.js",
     "mcp": "node mcpServer.js"
   },
   "dependencies": {
