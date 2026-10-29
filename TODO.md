@@ -39,7 +39,7 @@
 - [ ] **让超时和大小限制覆盖完整响应体。** 前后端 `fetchWithTimeout` 在收到响应头后就清除 timer；`arrayBuffer()`、`json()` 或视频流读取可无限等待。图片/视频服务还应在分配大缓冲区前按流限制字节数；验证慢速或永不结束的响应最终会中止并释放连接。
 - [ ] **清理敏感日志。** `backend/server.js` 记录生成提示词、输入图像 URL 和结果 URL，其中可能包含签名参数或用户素材；同步失败与任务日志也需要避免暴露内容。改为结构化日志，仅记录请求 ID、用户 ID 哈希、耗时和错误类别，生产日志不得包含素材 URL、提示词、token 或密钥。
 - [ ] **约束开发服务器上传面。** `vite.config.ts` 的 OSS 中间件没有鉴权、大小/扩展限制，并返回通配 CORS；Vite 配置也启用了 `cors: true`。将代理限制为本机开发用途，增加上传限制和来源检查，默认不暴露局域网，并验证恶意网页无法借开发服务器消耗 OSS。
-- [ ] **严格限制进程内缓存与限流表容量。** `backend/auth.js` 的 Supabase token cache、`backend/server.js` 的幂等响应缓存和按用户限流表都只在超过阈值时清理过期项；如果阈值以上条目仍未过期，Map 仍会持续增长。为每个 Map 设硬上限、淘汰策略和指标，并验证大量有效 token/用户/幂等 key 不会使进程内存无界增长。
+- [x] **严格限制进程内缓存与限流表容量。** 抽出可测试的 `createTokenCache()`：Suppabase token 缓存按 TTL 过期并设硬上限（`AUTH_TOKEN_CACHE_MAX_ENTRIES`，默认 5000），更新已存在键不误删自身；按用户限流表新增 `API_RATE_BUCKET_CAPACITY`（默认 5000）并在清理过期项后按最旧顺序淘汰仍有效的桶；幂等缓存、SSO 撤销表与待处理 state/ticket 已有硬上限。`backend/auth.test.js` 覆盖过期、硬上限淘汰与同键刷新。未增加运行指标导出。
 - [ ] **统一 MCP 与 HTTP 的画布存储及访问范围。** `backend/server.js` 将画布存成 `<userId>:<projectId>`，`backend/mcpServer.js` 却只用 `projectId` 作为键；MCP 写入的数据对 HTTP API 不可见，MCP 也会读取 task history 中所有用户的提示词和结果 URL。共享一套带用户上下文的存取接口，明确 MCP 的授权边界，并验证两种入口读写同一工程且不能越权枚举。
 - [ ] **校验无限画布拓扑输入。** `/api/canvas/state/:projectId` 和 MCP `canvas_apply_ops` 接受节点/连线/视口对象后直接保存；未限制数量、字段尺寸、视口数值，也未校验连线端点。加入版本化 schema、节点/连线数量及元数据大小上限、数值边界和端点存在性检查，覆盖超大、畸形及悬空连线输入。
 - [ ] **修复 MCP JSON-RPC 错误响应。** `backend/mcpServer.js` 的行处理器在工具调用失败时总以 `id: null`、`-32700` 返回错误；客户端无法把错误关联到原请求，且该码只适用于解析错误。保留已解析请求 ID，区分 parse/invalid request/method/tool 错误，并加入并发请求与失败工具调用协议测试。

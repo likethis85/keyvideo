@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import express from 'express';
 import { readSsoConfig, revokeSessionToken, signSessionToken } from './sso.js';
-import { createApiAuthMiddleware } from './auth.js';
+import { createApiAuthMiddleware, createTokenCache } from './auth.js';
 
 const ssoEnv = {
   SSO_BASE_URL: 'https://sso.test',
@@ -29,6 +29,29 @@ const createProtectedApp = (options = {}) => {
   app.get('/api/ai/image-proxy', (_req, res) => res.json({ proxy: true }));
   return app;
 };
+
+test('verified token cache expires entries and enforces a hard cap', () => {
+  let timestamp = 1_000;
+  const cache = createTokenCache({ maxEntries: 2, ttlMs: 100, now: () => timestamp });
+
+  cache.set('a', { id: 'a' });
+  cache.set('b', { id: 'b' });
+  assert.equal(cache.size(), 2);
+  assert.deepEqual(cache.get('a'), { id: 'a' });
+
+  cache.set('c', { id: 'c' });
+  assert.equal(cache.size(), 2);
+  assert.equal(cache.get('a'), null);
+  assert.deepEqual(cache.get('c'), { id: 'c' });
+
+  cache.set('c', { id: 'c-updated' });
+  assert.equal(cache.size(), 2);
+  assert.deepEqual(cache.get('c'), { id: 'c-updated' });
+
+  timestamp += 101;
+  assert.equal(cache.get('b'), null);
+  assert.equal(cache.get('c'), null);
+});
 
 test('API auth rejects missing and invalid bearer tokens', async () => {
   const server = await startServer(createProtectedApp({ env: ssoEnv }));

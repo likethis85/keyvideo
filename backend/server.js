@@ -154,6 +154,7 @@ app.use('/api', createApiAuthMiddleware());
 // Keep authenticated API traffic bounded. Polling five video tasks every 3.5s
 // stays well below this; abusive loops are rejected with 429.
 const API_RATE_LIMIT_PER_MINUTE = Math.max(60, Number(process.env.API_RATE_LIMIT_PER_MINUTE) || 600);
+const API_RATE_BUCKET_CAPACITY = Math.max(100, Number(process.env.API_RATE_BUCKET_CAPACITY) || 5_000);
 const apiRateBuckets = new Map();
 app.use('/api', (req, res, next) => {
   const userId = req.authUser?.id;
@@ -169,9 +170,15 @@ app.use('/api', (req, res, next) => {
     res.set('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
     return res.status(429).json({ error: 'rate_limited', error_description: '请求过于频繁，请稍后重试' });
   }
-  if (apiRateBuckets.size > 5000) {
+  if (apiRateBuckets.size > API_RATE_BUCKET_CAPACITY) {
     for (const [key, value] of apiRateBuckets) {
       if (value.resetAt <= now) apiRateBuckets.delete(key);
+    }
+    // Hard cap: evict the oldest live buckets even if their minute has not
+    // elapsed, so a stream of distinct accounts cannot grow the map forever.
+    for (const key of apiRateBuckets.keys()) {
+      if (apiRateBuckets.size <= API_RATE_BUCKET_CAPACITY) break;
+      if (key !== userId) apiRateBuckets.delete(key);
     }
   }
   return next();

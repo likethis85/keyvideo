@@ -4,28 +4,57 @@ import { readSsoConfig, verifySessionToken } from './sso.js';
 const SUPABASE_CACHE_MS = 60 * 1000;
 const SUPABASE_TIMEOUT_MS = 8_000;
 
-const tokenCache = new Map();
-
 const tokenCacheKey = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
-const getCached = (key, now) => {
-  const entry = tokenCache.get(key);
-  if (!entry) return null;
-  if (entry.expiresAt <= now()) {
-    tokenCache.delete(key);
-    return null;
-  }
-  return entry.user;
+/**
+ * Bounded TTL cache for verified Supabase tokens.
+ *
+ * Entries are dropped when expired; when the hard cap is reached, expired
+ * entries are purged first and the oldest still-valid entries are evicted.
+ * This keeps memory bounded even under a stream of distinct valid tokens.
+ */
+export const createTokenCache = ({
+  maxEntries = Number(process.env.AUTH_TOKEN_CACHE_MAX_ENTRIES) || 5_000,
+  ttlMs = SUPABASE_CACHE_MS,
+  now = () => Date.now()
+} = {}) => {
+  const entries = new Map();
+  const capacity = Math.max(1, Number(maxEntries) || 5_000);
+  const ttl = Math.max(1, Number(ttlMs) || SUPABASE_CACHE_MS);
+
+  return {
+    get(key) {
+      const entry = entries.get(key);
+      if (!entry) return null;
+      if (entry.expiresAt <= now()) {
+        entries.delete(key);
+        return null;
+      }
+      return entry.user;
+    },
+    set(key, user) {
+      const timestamp = now();
+      entries.delete(key);
+      if (entries.size >= capacity) {
+        for (const [cacheKey, entry] of entries) {
+          if (entry.expiresAt <= timestamp) entries.delete(cacheKey);
+        }
+        for (const cacheKey of entries.keys()) {
+          if (entries.size < capacity) break;
+          entries.delete(cacheKey);
+        }
+      }
+      entries.set(key, { user, expiresAt: timestamp + ttl });
+    },
+    size: () => entries.size,
+    clear: () => entries.clear()
+  };
 };
 
-const setCached = (key, user, now) => {
-  if (tokenCache.size > 1000) {
-    for (const [cacheKey, entry] of tokenCache) {
-      if (entry.expiresAt <= now()) tokenCache.delete(cacheKey);
-    }
-  }
-  tokenCache.set(key, { user, expiresAt: now() + SUPABASE_CACHE_MS });
-};
+const tokenCache = createTokenCache();
+
+const getCached = (key) => tokenCache.get(key);
+const setCached = (key, user) => tokenCache.set(key, user);
 
 const verifySupabaseToken = async (token, { supabaseUrl, supabaseAnonKey, fetchImpl, now }) => {
   if (!supabaseUrl || !supabaseAnonKey || typeof fetchImpl !== 'function') return null;
