@@ -4,6 +4,7 @@ import type { AudioAsset, LocalVideoAsset, ModelAsset, SceneAsset } from '../typ
 import { localDB } from '../utils/db';
 import { uploadFileToOSS } from '../utils/ossClient';
 import { supabase } from '../utils/supabaseClient';
+import { getCanvasSafeImageUrl } from '../utils/aiGateway';
 
 function dataUrlToBlob(dataUrl: string): Blob {
   const [metadata, encoded = ''] = dataUrl.split(';base64,');
@@ -21,7 +22,7 @@ async function uploadImageSource(sourceUrl: string, filenamePrefix: string): Pro
   try {
     const blob = sourceUrl.startsWith('data:')
       ? dataUrlToBlob(sourceUrl)
-      : await fetch(sourceUrl).then(response => response.blob());
+      : await fetch(getCanvasSafeImageUrl(sourceUrl)).then(response => response.blob());
     const file = new File([blob], `${filenamePrefix}_${Date.now()}.png`, { type: blob.type || 'image/png' });
     return await uploadFileToOSS(file);
   } catch (error) {

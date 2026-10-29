@@ -564,14 +564,59 @@ const updateTaskStatus = (taskId, patch = {}) => {
   saveTaskStore();
 };
 
+const IMAGE_TASK_TYPES = new Set(['background', 'mannequin', 'tryon', 'inpaint', 'upscale']);
+const TASK_REFRESH_MIN_INTERVAL_MS = 3_000;
+const taskRefreshTimes = new Map();
+
+// After a restart (or a dropped client) the in-process poller is gone. When the
+// UI keeps polling our status endpoint, refresh the upstream state so the task
+// can still reach a terminal result instead of staying "processing" forever.
+const refreshProcessingImageTask = async (taskId) => {
+  const task = taskStore[taskId];
+  if (!task || !IMAGE_TASK_TYPES.has(task.type)) return;
+  if (task.status !== 'processing' && task.status !== 'pending') return;
+
+  const apiKey = process.env.SANDBASE_API_KEY || process.env.AIGATEWAY_TOKEN;
+  if (!apiKey) return;
+
+  const timestamp = Date.now();
+  if ((taskRefreshTimes.get(taskId) || 0) + TASK_REFRESH_MIN_INTERVAL_MS > timestamp) return;
+  taskRefreshTimes.set(taskId, timestamp);
+  if (taskRefreshTimes.size > 2_000) {
+    for (const key of taskRefreshTimes.keys()) {
+      taskRefreshTimes.delete(key);
+      if (taskRefreshTimes.size <= 1_500) break;
+    }
+  }
+
+  try {
+    const response = await fetchWithTimeout(`https://api.sandbase.ai/v1/run/${taskId}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` }
+    }, 8_000);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!data?.status) return;
+    const resultUrl = data.status === 'completed' ? extractTaskOutputUrl(data) : '';
+    updateTaskStatus(taskId, {
+      status: data.status,
+      error: data.error || null,
+      ...(resultUrl ? { resultUrl } : {})
+    });
+  } catch {
+    // Best-effort recovery; the next poll retries.
+  }
+};
+
 // API: Query status and result of a task owned by the current user
-app.get('/api/ai/task/:taskId', (req, res) => {
+app.get('/api/ai/task/:taskId', async (req, res) => {
   const { taskId } = req.params;
   const task = taskStore[taskId];
   if (!task || task.userId !== req.authUser?.id) {
     return res.status(404).json({ error: 'Task not found' });
   }
-  res.json(task);
+  await refreshProcessingImageTask(taskId);
+  res.json(taskStore[taskId]);
 });
 
 // API: Pull recent generated tasks history for the current user.
@@ -840,20 +885,46 @@ app.post('/api/ai/background', async (req, res) => {
       sandbasePayload.images = [refImageUrl];
     }
 
+    let taskId;
     try {
-      const taskId = await submitSandbaseTask(sandbasePayload, {
+      taskId = await submitSandbaseTask(sandbasePayload, {
         userId: req.authUser?.id,
         requestKey: req.get('X-Idempotency-Key')
       });
-      const resultImageUrl = await pollSandbaseTask(taskId);
-
-      // Convert to base64 to bypass browser CORS on frontend
-      const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
-
-      res.status(200).json({ url: base64DataUrl });
     } finally {
       reservation.release();
     }
+
+    registerTask(taskId, {
+      type: 'background',
+      prompt: backgroundPrompt,
+      projectId: typeof req.body.projectId === 'string' ? req.body.projectId : undefined,
+      userId: req.authUser?.id,
+      status: 'processing'
+    });
+
+    const poller = async () => {
+      try {
+        const resultImageUrl = await pollSandbaseTask(taskId);
+        updateTaskStatus(taskId, { status: 'completed', resultUrl: resultImageUrl });
+        return resultImageUrl;
+      } catch (pollErr) {
+        updateTaskStatus(taskId, { status: 'failed', error: pollErr.message });
+        throw pollErr;
+      }
+    };
+
+    if (req.query.async === 'true' || req.body.async === true) {
+      poller().catch(error => console.warn(`[Background Task ${taskId}] Background polling error:`, error.message));
+      return res.status(200).json({ taskId, status: 'processing' });
+    }
+
+    const resultImageUrl = await poller();
+
+    // Sync callers keep the legacy base64 response to bypass browser CORS.
+    const base64DataUrl = await fetchImageAsBase64(resultImageUrl);
+
+    res.status(200).json({ taskId, url: base64DataUrl });
   } catch (err) {
     console.error('Background generation failed:', err);
     res.status(500).json({ error: err.message || 'Background generation failed' });

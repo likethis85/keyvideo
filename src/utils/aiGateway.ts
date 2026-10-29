@@ -308,7 +308,9 @@ export const generateBackgroundImage = async (params: {
     return executeCustomApi(params);
   }
   return dedupeGenerationRequest('background', params, async (requestKey) => {
-    const data = await requestJson<{ url: string }>(`${getBackendUrl()}/api/ai/background`, {
+    // Submit asynchronously and poll: a synchronous request can outlive the
+    // client timeout while the provider keeps consuming paid credits.
+    const data = await requestJson<{ url?: string; taskId?: string }>(`${getBackendUrl()}/api/ai/background?async=true`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -317,7 +319,9 @@ export const generateBackgroundImage = async (params: {
       fallbackError: 'Background generation failed',
       idempotencyKey: requestKey
     });
-    return data.url;
+    if (data.url) return data.url;
+    if (data.taskId) return pollBackendTask(data.taskId, 360);
+    throw new Error('Unexpected response from background generation');
   });
 };
 

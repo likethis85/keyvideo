@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { SceneAsset } from '../types/assets';
-import { generateBackgroundImage } from '../utils/aiGateway';
+import { generateBackgroundImage, getCanvasSafeImageUrl } from '../utils/aiGateway';
 import { uploadFileToOSS } from '../utils/ossClient';
 import { supabase } from '../utils/supabaseClient';
 
@@ -20,7 +20,7 @@ Strict rule: There must be absolutely no text, writing, labels, titles, numbers,
 
 async function uploadGeneratedScene(sourceUrl: string): Promise<string> {
   try {
-    const blob = await fetch(sourceUrl).then(response => response.blob());
+    const blob = await fetch(getCanvasSafeImageUrl(sourceUrl)).then(response => response.blob());
     const file = new File([blob], `custom_scene_${Date.now()}.png`, { type: blob.type || 'image/png' });
     return await uploadFileToOSS(file);
   } catch (error) {
