@@ -24,6 +24,8 @@ interface TimelineProps {
   redoCount?: number;
   commitInstantHistory?: (newLayers: Layer[], actionDesc: string) => void;
   storyboards?: StoryboardItem[];
+  isCollapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -41,6 +43,8 @@ export const Timeline: React.FC<TimelineProps> = ({
   redoCount,
   commitInstantHistory,
   storyboards = [],
+  isCollapsed = false,
+  onToggleCollapsed,
 }) => {
   const rulerRef = React.useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -584,6 +588,24 @@ export const Timeline: React.FC<TimelineProps> = ({
     />
   );
 
+  if (isCollapsed) {
+    return (
+      <div className="timeline-collapsed-bar">
+        <button type="button" className="timeline-expand-btn" onClick={onToggleCollapsed}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 18h16M4 12h16M4 6h16" />
+          </svg>
+          展开时间轴
+        </button>
+        <span className="timeline-collapsed-meta">
+          {layers.filter(layer => layer.visible).length} 轨 · {totalDuration.toFixed(1)}s
+        </span>
+        <span className="timeline-collapsed-time">{currentTime.toFixed(2)}s / {totalDuration.toFixed(1)}s</span>
+        <div className="timeline-collapsed-hint">AI 创作时可随时展开，不挡预览</div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="timeline-panel"
@@ -655,6 +677,7 @@ export const Timeline: React.FC<TimelineProps> = ({
         totalDuration={totalDuration}
         timelineHeight={timelineHeight}
         onHeightChange={handleSetHeight}
+        onToggleCollapsed={onToggleCollapsed}
       />
 
       {/* Scrollable container for tracks & ruler */}

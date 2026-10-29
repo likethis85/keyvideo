@@ -3608,3 +3608,85 @@ body[data-theme="light"] {
   color: var(--text-muted);
   font-size: 8px;
 }
+/* Readability pass for the onboarding copy */
+.onboarding-step-meta { font-size: 10px; }
+.onboarding-panel > p { font-size: 16px; line-height: 1.75; }
+.onboarding-label-row small { font-size: 10px; }
+.onboarding-field-label { font-size: 12px; }
+.onboarding-hint { font-size: 14px; line-height: 1.7; }
+.onboarding-rail-copy p { font-size: 16px; line-height: 1.8; }
+.onboarding-step-item b { font-size: 13px; }
+.onboarding-step-item small { font-size: 12px; }
+.onboarding-rail-note { font-size: 13px; line-height: 1.7; }
+.onboarding-skip,
+.onboarding-back { font-size: 14px; }
+.onboarding-ratio small { font-size: 11px; }
+.onboarding-summary span,
+.onboarding-summary b { font-size: 12px; }
+.onboarding-template-name { font-size: 11px; }
+.onboarding-template-meta { font-size: 9px; }
+.onboarding-template-desc { font-size: 9.5px; line-height: 1.55; }
+/* Collapsible timeline */
+.timeline-collapsed-bar {
+  height: 44px;
+  flex: 0 0 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-surface-solid);
+  z-index: 10;
+  position: relative;
+}
+
+.timeline-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(0, 229, 255, 0.28);
+  background: rgba(0, 229, 255, 0.08);
+  color: #9af5ff;
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.timeline-expand-btn:hover {
+  background: rgba(0, 229, 255, 0.14);
+}
+
+.timeline-collapsed-meta {
+  color: var(--text-secondary);
+  font-size: 9px;
+}
+
+.timeline-collapsed-time {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+
+.timeline-collapsed-hint {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 8px;
+}
+
+.timeline-collapse-btn {
+  border: 1px solid var(--border-color);
+  background: var(--bg-element);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.timeline-collapse-btn:hover {
+  color: var(--accent-cyan);
+  border-color: var(--border-accent);
+}

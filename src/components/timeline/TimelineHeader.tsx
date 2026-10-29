@@ -16,6 +16,7 @@ interface TimelineHeaderProps {
   totalDuration?: number;
   timelineHeight?: number;
   onHeightChange?: (height: number) => void;
+  onToggleCollapsed?: () => void;
 }
 
 function HistoryButton({ direction, action, enabled, count }: {
@@ -49,7 +50,7 @@ export function TimelineHeader(props: TimelineHeaderProps) {
   return (
     <div className="timeline-header">
       <div className="timeline-header-main">
-        <span className="timeline-title">多轨剪辑时间轴</span>
+        <span className="timeline-title">时间轴</span>
         
         {/* Playhead Time Code Readout */}
         <div className="timeline-timecode-badge" title="当前播放头时间 / 项目总时长">
@@ -140,6 +141,17 @@ export function TimelineHeader(props: TimelineHeaderProps) {
               加高
             </button>
           </div>
+        )}
+
+        {props.onToggleCollapsed && (
+          <button
+            type="button"
+            className="timeline-collapse-btn"
+            onClick={props.onToggleCollapsed}
+            title="收起时间轴，给预览和 AI 创作留出空间"
+          >
+            ⌄ 收起
+          </button>
         )}
       </div>
 

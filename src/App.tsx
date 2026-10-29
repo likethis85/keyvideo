@@ -227,6 +227,7 @@ function App() {
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>('editor');
+  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(false);
 
   // AI Project Management States
   const [projects, setProjects] = useState<AIProject[]>([]);
@@ -774,6 +775,7 @@ function App() {
               onSelectTab={(tab) => {
                 setActiveTab(tab);
                 setIsDrawerCollapsed(false);
+                setIsTimelineCollapsed(tab === 'ai');
               }}
               onSelectWorkspace={() => setIsDrawerCollapsed(true)}
             />
@@ -855,6 +857,8 @@ function App() {
           redoCount={historyState.stack.length - 1 - historyState.index}
           commitInstantHistory={commitInstantHistory}
           storyboards={projects.find(p => p.id === activeProjectId)?.storyboards ?? []}
+          isCollapsed={isTimelineCollapsed}
+          onToggleCollapsed={() => setIsTimelineCollapsed(previous => !previous)}
         />
       )}
 
