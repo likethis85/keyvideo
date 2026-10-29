@@ -54,7 +54,7 @@
 - [ ] **让本地保存失败可见。** 部分完成：`localDB.set` 失败时会派发 `keyvideo:local-save-failed` 事件，`src/App.tsx` 监听后 10 秒节流提示“本地保存失败，请清理后重试”；返回值语义保持 `boolean`。仍未实现失败写入的待重试队列/自动重试，也未覆盖配额耗尽与存储不可用的自动化测试。
 - [ ] **避免跨账号复用前端生成请求。** `src/utils/aiGateway.ts` 的模块级 in-flight map 只按操作和 payload 去重；账号切换期间相同请求可能复用前一账号的 Promise。把身份/后端范围纳入去重作用域，并在登出时取消或清空旧请求。
 - [ ] **补全 API 集成与回归测试。** 当前前端测试集中在纯工具函数，后端测试集中在 SSO/auth 单元逻辑；关键路由、RLS/OSS 边界、幂等、图片代理、批量生成、持久化与导出流程缺少端到端覆盖。为本清单 P1 事项建立可注入上游服务的路由测试和关键前端状态测试。
-- [ ] **让 CI 覆盖后端、Rust 格式和依赖安全。** `.github/workflows/release.yml` 只运行前端 `npm test`，不运行 `backend/npm test`、`cargo fmt --check`、Rust 构建/测试或依赖审计。当前完整 npm 审计发现 8 个开发/构建依赖漏洞（7 高、1 中），生产依赖审计为 0；`cargo fmt --check` 在 `src-tauri/build.rs`、`src-tauri/src/lib.rs` 和 `src-tauri/src/main.rs` 失败，且当前环境没有 `cargo-audit`。修复格式、升级易受影响依赖并把前后端/Rust/审计检查加入独立 CI。
+- [ ] **让 CI 覆盖后端、Rust 格式和依赖安全。** 部分完成：新增 `.github/workflows/ci.yml`，在 push/PR 上分别运行前端 `npm test` 与 `backend/npm test`（Node 22，因为前端测试依赖 `--experimental-strip-types`），发布工作流也升级到 Node 22。仍未加入 `cargo fmt --check`、Rust 构建/测试、`cargo-audit` 与 npm 依赖审计，也未修复已知 Rust 格式问题。
 - [ ] **完善 README 与部署手册。** 根目录 `README.md` 仍是 Vite 模板，缺少真实安装、环境变量、Supabase/RLS 初始化、TLS/反向代理、Docker 持久化、桌面构建及故障排查说明。用 `.env.example` 和 CI 实际流程验证每条步骤。
 
 ## P3：清理与一致性
