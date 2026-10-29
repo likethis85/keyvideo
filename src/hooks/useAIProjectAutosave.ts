@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { AIProject } from '../types/aiProject';
 import { localDB } from '../utils/db';
+import { createProjectSyncScheduler } from '../utils/projectSyncScheduler';
 
 interface AIProjectAutosaveOptions {
   projects: AIProject[];
@@ -16,6 +17,16 @@ export function useAIProjectAutosave({
   syncProject
 }: AIProjectAutosaveOptions) {
   const syncProjectRef = useRef(syncProject);
+  const schedulerRef = useRef<ReturnType<typeof createProjectSyncScheduler<AIProject>> | null>(null);
+
+  useEffect(() => {
+    schedulerRef.current = createProjectSyncScheduler<AIProject>({
+      sync: project => syncProjectRef.current(project)
+    });
+    return () => {
+      schedulerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     syncProjectRef.current = syncProject;
@@ -26,7 +37,9 @@ export function useAIProjectAutosave({
 
     void localDB.set('ai_projects', projects).catch(error => console.warn(error));
     const timer = window.setTimeout(() => {
-      projects.forEach(project => void syncProjectRef.current(project));
+      const scheduler = schedulerRef.current;
+      if (!scheduler) return;
+      projects.forEach(project => scheduler.schedule(project));
     }, 1500);
 
     return () => window.clearTimeout(timer);

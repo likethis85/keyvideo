@@ -8,6 +8,7 @@ import { findStoryboardForLayer } from '../src/utils/storyboardLayerBinding.ts';
 import { mergeBatchVideosIntoTimeline } from '../src/utils/batchTimelineMerge.ts';
 import { DEFAULT_VIDEO_MODEL, isSupportedVideoModel, normalizeVideoModel } from '../src/config/videoModels.ts';
 import { normalizeCanvasState } from '../src/utils/canvasImport.ts';
+import { createProjectSyncScheduler } from '../src/utils/projectSyncScheduler.ts';
 import type { Layer } from '../src/components/VideoCanvas.tsx';
 import type { StoryboardItem } from '../src/types/aiProject.ts';
 
@@ -96,6 +97,45 @@ test('timeline media layers bind to storyboards by id before index', () => {
   assert.equal(missing, null);
 
   assert.equal(findStoryboardForLayer({ id: 'logo_1', properties: {} }, reordered), null);
+});
+
+test('project sync scheduler serializes per project and drops stale snapshots', async () => {
+  const calls: string[] = [];
+  let releaseFirst;
+  const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
+  let fail = false;
+
+  const scheduler = createProjectSyncScheduler<{ id: string; version: number }>({
+    sync: async (project) => {
+      calls.push(`${project.id}:${project.version}`);
+      if (project.id === 'a' && project.version === 1) await firstGate;
+      if (fail && project.id === 'a' && project.version === 4) throw new Error('offline');
+    },
+    fingerprint: project => `${project.id}:${project.version}`
+  });
+
+  scheduler.schedule({ id: 'a', version: 1 });
+  scheduler.schedule({ id: 'a', version: 2 });
+  scheduler.schedule({ id: 'a', version: 3 });
+  assert.deepEqual(calls, ['a:1']);
+
+  releaseFirst();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(calls, ['a:1', 'a:3']);
+  assert.equal(scheduler.hasPending('a'), false);
+
+  scheduler.schedule({ id: 'a', version: 3 });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(calls, ['a:1', 'a:3']);
+
+  fail = true;
+  scheduler.schedule({ id: 'a', version: 4 });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(calls, ['a:1', 'a:3', 'a:4']);
+  fail = false;
+  scheduler.schedule({ id: 'a', version: 4 });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(calls, ['a:1', 'a:3', 'a:4', 'a:4']);
 });
 
 test('imported canvas payloads are validated before replacing live state', () => {

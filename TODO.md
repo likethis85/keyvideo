@@ -29,7 +29,7 @@
 - [ ] **修复生成任务恢复与结果匹配。** `src/hooks/useGenerationTaskRecovery.ts` 的试衣轮询到最大次数后没有清除 active 标记或生成状态；视频轮询失败后保留 `videoTaskId`，projects 变化会立即再次轮询；跨工程去重只用 `storyboardId`，相同分镜 ID 会互相跳过。`src/hooks/useRecentStoryboardRecovery.ts` 又把所有非视频任务按返回顺序套到分镜上，任务数不足时重复第一张，可能用试衣图覆盖整组分镜。为终态任务停止自动轮询并允许有退避的显式重试，超时后复位 UI，按 project/task/shot ID 精确匹配，登出/卸载时取消轮询；测试失败、超时、多工程同 ID、混合任务和账号切换。
 - [x] **修复 MediaRecorder 导出取消和规格。** 兼容导出现在区分取消与完成，按目标画布尺寸渲染，遵守关闭音频选项，并按实际 MP4/WebM 容器命名、展示和释放资源。
 - [x] **让归档操作名实相符。** 当前明确命名为“本地归档”，将成片保存为可恢复的 Data URL，并检查本地写入结果；真实云端归档列表、下载和删除仍需单独接入云存储能力。
-- [ ] **让本地云端项目同步幂等、按变更运行并保持新旧顺序。** `src/hooks/useAIProjectAutosave.ts` 每次 projects 变化都会同步所有项目，其他 hooks 也会直接触发同步；`syncProjectToSupabase` 对临时/签名 URL 上传到 OSS，却不把稳定 URL 回写本地项目。并发上传/写入可能由较旧快照最后完成，覆盖新状态，同时重复上传并累积孤儿对象。按项目差异同步、缓存/持久化稳定资源 URL、对每个项目串行或用版本号防止旧写覆盖，并提供失败重试与清理策略。
+- [ ] **让本地云端项目同步幂等、按变更运行并保持新旧顺序。** 部分完成：新增 `src/utils/projectSyncScheduler.ts` 并在 `useAIProjectAutosave` 使用——按项目串行同步、只保留最新待同步快照、跳过未变化项目，失败后允许后续显式调度重试；`tests/core.test.ts` 覆盖串行、旧快照丢弃、重复跳过与失败重试。仍未做稳定资源 URL 回写本地项目、OSS 上传缓存/去重和孤儿对象清理，其他 hooks 的直接同步也未统一走该调度器。
 - [x] **批量导入视频时保留原时间轴素材。** 新增 `src/utils/batchTimelineMerge.ts`：只替换 `properties.storyboardId` 与本次完成分镜匹配的媒体层，图片、音频、字幕、其他视频均保留；新片段按分镜序号排序并追加在剩余媒体最后一帧之后，重复导入不会产生重复图层。`applyAllCompletedToTimeline` 改为调用该纯函数。`tests/core.test.ts` 覆盖混合图层保留、同分镜替换、追加位置与重复导入去重。
 
 ## P2：可靠性、运维与质量
