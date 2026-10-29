@@ -13,6 +13,7 @@ import { ProjectSelector } from './components/app/ProjectSelector';
 import { AspectRatioSelector } from './components/app/AspectRatioSelector';
 import { AppHeaderActions } from './components/app/AppHeaderActions';
 import { AppLoadingScreen } from './components/app/AppLoadingScreen';
+import { OnboardingWizard, type OnboardingResult } from './components/onboarding/OnboardingWizard';
 import type { AIProject, StoryboardItem } from './types/aiProject';
 import type { SidebarDrawerRef } from './components/sidebar/sidebarTypes';
 import { localDB } from './utils/db';
@@ -86,6 +87,7 @@ function App() {
   const [loadingSession, setLoadingSession] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [loadedLocalStateUserId, setLoadedLocalStateUserId] = useState<string | null>(null);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
   // Restore either an SSO session or the legacy Supabase session. The SSO ticket
   // (if present) is consumed exactly once through our backend.
@@ -164,6 +166,16 @@ function App() {
     for (const url of videoBlobUrls.values()) URL.revokeObjectURL(url);
     videoBlobUrls.clear();
   }, [authUser?.id]);
+
+  // Show the 3-step onboarding once per authenticated user.
+  useEffect(() => {
+    if (!authUser?.id || loadedLocalStateUserId !== authUser.id) return;
+    const key = `KEYVIDEO_ONBOARDING_DONE_V1_${authUser.id}`;
+    const timer = window.setTimeout(() => {
+      setIsOnboardingOpen(!localStorage.getItem(key));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [authUser?.id, loadedLocalStateUserId]);
 
   // Bridge window.alert to modern toast system
   useEffect(() => {
@@ -541,6 +553,43 @@ function App() {
     }
   };
 
+  const handleOnboardingComplete = (result: OnboardingResult) => {
+    const created = sidebarRef.current?.createProjectWithTemplate({
+      name: result.name,
+      masterPrompt: result.template.masterPrompt,
+      prompts: result.template.prompts
+    });
+
+    if (!created) {
+      const id = crypto.randomUUID?.() || `proj_${Date.now()}`;
+      const project = createAIProject({ id, name: result.name, withDefaultPrompts: true });
+      const projectWithTemplate: AIProject = {
+        ...project,
+        i2vMasterPrompt15s: result.template.masterPrompt,
+        i2vPrompts: { ...project.i2vPrompts, ...result.template.prompts }
+      };
+      setProjects(previous => [...previous, projectWithTemplate]);
+      setActiveProjectId(projectWithTemplate.id);
+    }
+
+    setRatio(result.ratio);
+    setViewMode('editor');
+    setActiveTab('media');
+    setIsDrawerCollapsed(false);
+    if (authUser?.id) {
+      localStorage.setItem(`KEYVIDEO_ONBOARDING_DONE_V1_${authUser.id}`, '1');
+    }
+    setIsOnboardingOpen(false);
+    toast.success(`项目「${result.name}」已创建，先去素材库导入素材`);
+  };
+
+  const handleOnboardingSkip = () => {
+    if (authUser?.id) {
+      localStorage.setItem(`KEYVIDEO_ONBOARDING_DONE_V1_${authUser.id}`, '1');
+    }
+    setIsOnboardingOpen(false);
+  };
+
   const handleStartRenameProject = () => {
     if (sidebarRef.current) {
       sidebarRef.current.startRenameProject();
@@ -672,6 +721,7 @@ function App() {
             setBackendUrlInput(localStorage.getItem('KEYVIDEO_BACKEND_URL') || import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001');
             setIsSettingsModalOpen(true);
           }}
+          onReplayOnboarding={() => setIsOnboardingOpen(true)}
           onToggleTheme={toggleTheme}
           onSetTheme={(newTheme) => {
             setTheme(newTheme);
@@ -805,6 +855,14 @@ function App() {
           redoCount={historyState.stack.length - 1 - historyState.index}
           commitInstantHistory={commitInstantHistory}
           storyboards={projects.find(p => p.id === activeProjectId)?.storyboards ?? []}
+        />
+      )}
+
+      {isOnboardingOpen && (
+        <OnboardingWizard
+          isOpen={isOnboardingOpen}
+          onSkip={handleOnboardingSkip}
+          onComplete={handleOnboardingComplete}
         />
       )}
 

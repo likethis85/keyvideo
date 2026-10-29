@@ -1,56 +1,96 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import {
+  SCRIPT_TEMPLATE_CATEGORIES,
+  SCRIPT_TEMPLATES,
+  type ScriptTemplate,
+  type ScriptTemplateCategory
+} from '../../config/scriptTemplates';
 
 interface TemplateTabProps {
-  applyTemplate: (type: 'beat' | 'split' | 'detail' | 'transition_demo') => void;
+  applyTemplate?: (type: 'beat' | 'split' | 'detail' | 'transition_demo') => void;
+  onUseTemplate?: (template: ScriptTemplate) => void;
 }
 
-export const TemplateTab: React.FC<TemplateTabProps> = ({ applyTemplate }) => {
+export const TemplateTab: React.FC<TemplateTabProps> = ({ onUseTemplate }) => {
+  const [category, setCategory] = useState<'all' | ScriptTemplateCategory>('all');
+
+  const visibleTemplates = useMemo(
+    () => category === 'all'
+      ? SCRIPT_TEMPLATES
+      : SCRIPT_TEMPLATES.filter(template => template.category === category),
+    [category]
+  );
+
   return (
     <>
-      <div className="drawer-header">
-        <div className="drawer-title">电商爆款视频模板</div>
-        <div className="drawer-subtitle">专为服装类目剪裁，替换素材即可出片</div>
-      </div>
-      <div className="drawer-content">
-        <div className="template-grid">
-          <div className="template-card" onClick={() => applyTemplate('beat')}>
-            <div className="template-thumb">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2">
-                <path d="M12 2v20M17 5v14M7 9v6M22 10v4M2 10v4" />
-              </svg>
-            </div>
-            <div className="template-name">时尚卡点卖点流</div>
-          </div>
-          <div className="template-card" onClick={() => applyTemplate('split')}>
-            <div className="template-thumb">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0284c7" strokeWidth="2.2">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <line x1="12" y1="3" x2="12" y2="21" />
-              </svg>
-            </div>
-            <div className="template-name">模特画报风</div>
-          </div>
-          <div className="template-card" onClick={() => applyTemplate('detail')}>
-            <div className="template-thumb">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2.2">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </div>
-            <div className="template-name">简约细节大图款</div>
-          </div>
-          <div className="template-card" onClick={() => applyTemplate('transition_demo')}>
-            <div className="template-thumb">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.2">
-                <path d="M17 1l4 4-4 4" />
-                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                <path d="M7 23l-4-4 4-4" />
-                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-              </svg>
-            </div>
-            <div className="template-name">多片段过渡演示</div>
-          </div>
+      <div className="drawer-header script-template-header">
+        <div className="drawer-title">脚本模板</div>
+        <div className="drawer-subtitle">
+          不是滤镜，是一整套「口播/分镜提示词 + 镜头结构 + 字幕节奏」。先选目标，再替换素材。
         </div>
+      </div>
+
+      <div className="drawer-content script-template-content">
+        <div className="script-template-categories">
+          {SCRIPT_TEMPLATE_CATEGORIES.map(item => (
+            <button
+              key={item.id}
+              className={`script-template-category ${category === item.id ? 'active' : ''}`}
+              onClick={() => setCategory(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="script-template-list">
+          {visibleTemplates.map(template => (
+            <article
+              key={template.id}
+              className="script-template-card"
+              style={{ '--template-accent': template.accent } as React.CSSProperties}
+            >
+              <div className="script-template-card-top">
+                <div className="script-template-icon">{template.icon}</div>
+                <div className="script-template-heading">
+                  <div className="script-template-name">{template.title}</div>
+                  <div className="script-template-subtitle">{template.subtitle}</div>
+                </div>
+                <div className="script-template-meta">{template.duration} · {template.shots}</div>
+              </div>
+
+              <p className="script-template-desc">{template.description}</p>
+
+              <div className="script-template-tags">
+                {template.tags.map(tag => <span key={tag}>{tag}</span>)}
+              </div>
+
+              <div className="script-template-sample">
+                <span>示例开场</span>
+                <p>{template.sample}</p>
+              </div>
+
+              <div className="script-template-footer">
+                <span>{template.prefill}</span>
+                <button
+                  type="button"
+                  className="script-template-use"
+                  onClick={() => onUseTemplate?.(template)}
+                >
+                  使用模板 →
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className="script-template-custom"
+          onClick={() => window.alert('自定义脚本模板即将开放：保存后可在项目里复用你自己的口播结构和镜头提示词。')}
+        >
+          ＋ 创建自己的脚本模板
+        </button>
       </div>
     </>
   );

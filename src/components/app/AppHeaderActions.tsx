@@ -6,6 +6,7 @@ interface Props {
   onAddLayer: () => void;
   onExport: () => void;
   onOpenSettings: () => void;
+  onReplayOnboarding?: () => void;
   onToggleTheme?: () => void;
   onSetTheme?: (theme: 'dark' | 'light') => void;
   onSignOut: () => void | Promise<void>;
@@ -134,6 +135,43 @@ export function AppHeaderActions(props: Props) {
               animation: 'fadeIn 0.15s ease-out'
             }}
           >
+            {/* Replay onboarding */}
+            {props.onReplayOnboarding && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsMenuOpen(false);
+                  props.onReplayOnboarding?.();
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary, #ffffff)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseOver={e => {
+                  e.currentTarget.style.background = 'var(--bg-element-hover, rgba(255,255,255,0.06))';
+                }}
+                onMouseOut={e => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <span style={{ fontSize: '15px' }}>🎬</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 500 }}>重看 3 步引导</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary, #9ca3af)' }}>新建项目 / 选脚本 / 导入素材</span>
+                </div>
+              </button>
+            )}
+
             {/* Group 1: Project Package Management */}
             <div
               style={{

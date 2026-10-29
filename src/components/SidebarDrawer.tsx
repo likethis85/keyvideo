@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+﻿import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { deleteFileFromOSS } from '../utils/ossClient';
 import { localDB } from '../utils/db';
 import { TemplateTab } from './sidebar/TemplateTab';
+import type { ScriptTemplate } from '../config/scriptTemplates';
 import { TextTab } from './sidebar/TextTab';
 import { StickerTab } from './sidebar/StickerTab';
 import { AudioTab } from './sidebar/AudioTab';
@@ -42,6 +43,7 @@ import { useOutfitResults } from '../hooks/useOutfitResults';
 import { useTryOnGeneration } from '../hooks/useTryOnGeneration';
 import { parseFiveShotPrompt, replaceSingleShotInMasterPrompt } from '../services/storyboardPromptParser';
 import { syncProjectToSupabase } from '../services/aiProjectSyncService';
+import { createAIProject } from '../utils/aiProjectFactory';
 import { useTimelineActions } from '../hooks/useTimelineActions';
 import { useProjectActions } from '../hooks/useProjectActions';
 import { useStoryboardPromptGeneration } from '../hooks/useStoryboardPromptGeneration';
@@ -140,6 +142,26 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     }, 250);
     return () => window.clearTimeout(timer);
   }, [activeProjectId, storyboards]);
+
+  const handleUseScriptTemplate = (template: ScriptTemplate) => {
+    const project = projects.find(item => item.id === activeProjectId);
+    if (!project) {
+      toast.error('当前没有可应用模板的项目，请先新建项目');
+      return;
+    }
+
+    setProjects(previous => previous.map(item => item.id === activeProjectId
+      ? {
+          ...item,
+          i2vMasterPrompt15s: template.masterPrompt,
+          i2vPrompts: { ...item.i2vPrompts, ...template.prompts }
+        }
+      : item));
+    setI2vMasterPrompt15s(template.masterPrompt);
+    setI2vPrompts(previous => ({ ...previous, ...template.prompts }));
+    setActiveTab('ai');
+    toast.success(`已应用「${template.title}」：主提示词与分镜提示词已预填`);
+  };
 
   const gatewayUrl = AI_GATEWAY_CONFIG.imageUrl;
   const gatewayVideoUrl = AI_GATEWAY_CONFIG.videoUrl;
@@ -283,6 +305,24 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
 
 
   useGenerationUnloadGuard(isOutfitImgGenerating || isStoryboardGenerating || isI2vGenerating);
+
+  const createProjectWithTemplate = useCallback((input: {
+    name: string;
+    masterPrompt: string;
+    prompts: { 'full-body': string; 'medium': string; 'close-up': string };
+  }) => {
+    const id = crypto.randomUUID?.() || `proj_${Date.now()}`;
+    const baseProject = createAIProject({ id, name: input.name, withDefaultPrompts: true });
+    const project = {
+      ...baseProject,
+      i2vMasterPrompt15s: input.masterPrompt,
+      i2vPrompts: { ...baseProject.i2vPrompts, ...input.prompts }
+    };
+    setProjects(previous => [...previous, project]);
+    applyProjectToEditor(project);
+    setActiveTab('media');
+    return project;
+  }, [setProjects, applyProjectToEditor, setActiveTab]);
 
   const selectedClothingLayer = layers.find(layer => layer.id === selectedLayerId);
   const fallbackClothingUrl = batchClothingUrl || (selectedClothingLayer?.type === 'media' ? selectedClothingLayer.properties.src || '' : '');
@@ -464,12 +504,14 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
   useImperativeHandle(ref, () => ({
     switchProject,
     createNewProject,
+    createProjectWithTemplate,
     startRenameProject,
     deleteProject,
     saveProjectName
   }), [
     switchProject,
     createNewProject,
+    createProjectWithTemplate,
     startRenameProject,
     deleteProject,
     saveProjectName
@@ -587,7 +629,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
 
       {/* 1. TEMPLATES PANEL */}
       {activeTab === 'template' && (
-        <TemplateTab applyTemplate={applyTemplate} />
+        <TemplateTab applyTemplate={applyTemplate} onUseTemplate={handleUseScriptTemplate} />
       )}
 
       {/* 2. MEDIA LIBRARY */}

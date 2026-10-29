@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { PROMPT_LIBRARY, PROMPT_CATEGORIES } from '../../config/promptLibraryData';
 import type { PromptItem } from '../../config/promptLibraryData';
 import { toast } from '../toastStore';
@@ -6,6 +6,7 @@ import type { Layer } from '../VideoCanvas';
 import {
   resolvePromptVariables,
   interpolatePromptVariables,
+  extractPromptPlaceholders,
   type PromptVariableContext
 } from '../../utils/promptVariableInterpolator';
 import {
@@ -31,6 +32,13 @@ interface PromptLibraryTabProps {
   onNavigateToStoryboard?: () => void;
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  camera: '镜头运镜',
+  lighting: '光影氛围',
+  copy: '文案钩子',
+  fabric: '面料版型'
+};
+
 export const PromptLibraryTab: React.FC<PromptLibraryTabProps> = ({
   onApplyPrompt,
   onAddTextLayer,
@@ -45,41 +53,44 @@ export const PromptLibraryTab: React.FC<PromptLibraryTabProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showVariableBar, setShowVariableBar] = useState(false);
   const [previewWithVariables, setPreviewWithVariables] = useState(true);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [injectModalItem, setInjectModalItem] = useState<PromptItem | null>(null);
 
-  // Extract resolved variables from active project state
   const variables = useMemo(() => resolvePromptVariables(variableContext), [variableContext]);
+  const variableMap = useMemo(
+    () => Object.fromEntries(variables.map(variable => [variable.key, variable.value])),
+    [variables]
+  );
 
   const filteredItems = PROMPT_LIBRARY.filter(item => {
-    const matchesCat = selectedCategory === 'all' || item.category === selectedCategory;
-    const matchesSearch =
-      !searchQuery.trim() ||
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      item.content.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCat && matchesSearch;
+    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch = !query
+      || item.title.toLowerCase().includes(query)
+      || item.description.toLowerCase().includes(query)
+      || item.tags.some(tag => tag.toLowerCase().includes(query))
+      || item.content.toLowerCase().includes(query);
+    return matchesCategory && matchesSearch;
   });
 
-  const handleCopy = (item: PromptItem) => {
-    const textToCopy = previewWithVariables && item.hasVariables
-      ? interpolatePromptVariables(item.content, variables)
-      : item.content;
-    navigator.clipboard.writeText(textToCopy);
+  const selectedItem = PROMPT_LIBRARY.find(item => item.id === selectedItemId) || null;
+
+  const finalText = (item: PromptItem) => previewWithVariables && item.hasVariables
+    ? interpolatePromptVariables(item.content, variableMap)
+    : item.content;
+
+  const copyItem = (item: PromptItem) => {
+    void navigator.clipboard.writeText(finalText(item));
     toast.success(`已复制「${item.title}」提示词`);
   };
 
-  const handleCreateTextLayer = (item: PromptItem) => {
-    const textToUse = previewWithVariables && item.hasVariables
-      ? interpolatePromptVariables(item.content, variables)
-      : item.content;
-
+  const createTextLayer = (item: PromptItem) => {
+    const text = finalText(item);
     if (onAddTextLayer) {
-      onAddTextLayer(textToUse);
+      onAddTextLayer(text);
       toast.success(`已新建文案图层：「${item.title}」`);
       return;
     }
-
     if (setLayers) {
       const id = `text_${Date.now()}`;
       const newLayer: Layer = {
@@ -94,7 +105,7 @@ export const PromptLibraryTab: React.FC<PromptLibraryTabProps> = ({
         scale: 1,
         opacity: 1,
         properties: {
-          text: textToUse,
+          text,
           fontSize: 28,
           color: '#ffffff',
           animation: 'fade',
@@ -102,430 +113,172 @@ export const PromptLibraryTab: React.FC<PromptLibraryTabProps> = ({
           shadow: true
         }
       };
-      setLayers(prev => [...prev, newLayer]);
-      if (setSelectedLayerId) setSelectedLayerId(id);
+      setLayers(previous => [...previous, newLayer]);
+      setSelectedLayerId?.(id);
       toast.success(`已在画板创建「${item.title}」文案图层`);
     }
   };
 
-  const handleOpenInjectModal = (item: PromptItem) => {
+  const openInject = (item: PromptItem) => {
     if (onInjectToStoryboard) {
       setInjectModalItem(item);
-    } else if (onApplyPrompt) {
-      const textToUse = previewWithVariables && item.hasVariables
-        ? interpolatePromptVariables(item.content, variables)
-        : item.content;
-      onApplyPrompt(textToUse);
-      toast.success(`已应用「${item.title}」至分镜设定`);
-    } else {
-      handleCopy(item);
+      return;
     }
+    if (onApplyPrompt) {
+      onApplyPrompt(finalText(item));
+      toast.success(`已应用「${item.title}」至分镜设定`);
+      return;
+    }
+    copyItem(item);
   };
 
   return (
     <>
-      {/* Standard App Drawer Header */}
-      <div className="drawer-header">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-          <div className="drawer-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>✨</span>
-            <span>电商灵感与提示词库</span>
+      <div className="drawer-header prompt-library-header">
+        <div className="prompt-title-row">
+          <div>
+            <div className="drawer-title">提示词库</div>
+            <div className="drawer-subtitle">可复用的镜头、光影与文案片段。变量会自动替换成当前项目信息，不再显示原始占位符。</div>
           </div>
           {onNavigateToStoryboard && (
-            <button
-              type="button"
-              onClick={onNavigateToStoryboard}
-              style={{
-                fontSize: '11px',
-                padding: '3px 8px',
-                borderRadius: '6px',
-                background: 'rgba(124, 58, 237, 0.15)',
-                border: '1px solid rgba(124, 58, 237, 0.4)',
-                color: '#c084fc',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-              title="跳转至 5 幕分镜故事板向导"
-            >
-              <span>🎬 分镜向导</span>
-              <span>→</span>
+            <button type="button" className="prompt-storyboard-link" onClick={onNavigateToStoryboard}>
+              分镜向导 →
             </button>
           )}
         </div>
-        <div className="drawer-subtitle">
-          沉淀镜头运镜、高级光影、前3秒吸睛钩子与面料质感，一键定向注入分镜。
-        </div>
       </div>
 
-      {/* Standard App Drawer Content */}
-      <div className="drawer-content" style={{ padding: '16px', gap: '10px' }}>
-        {/* Search Bar & Variable Preview Switch */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
+      <div className="drawer-content prompt-library-content">
+        <div className="prompt-search-row">
+          <div className="prompt-search">
+            <span>⌕</span>
             <input
-              type="text"
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="搜索运镜、光影、文案钩子..."
-              className="text-input"
-              style={{
-                width: '100%',
-                padding: '7px 12px 7px 32px',
-                borderRadius: '8px',
-                fontSize: '12px',
-                boxSizing: 'border-box'
-              }}
+              onChange={event => setSearchQuery(event.target.value)}
+              placeholder="搜索：推镜头 / 侧逆光 / 前 3 秒钩子"
             />
-            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', opacity: 0.6, fontSize: '12px' }}>
-              🔍
-            </span>
           </div>
-
-          {/* Toggle Dynamic Variable Bar */}
           <button
             type="button"
-            onClick={() => setShowVariableBar(prev => !prev)}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '8px',
-              border: showVariableBar ? '1px solid #00f2fe' : '1px solid var(--border-color)',
-              background: showVariableBar ? 'rgba(0, 242, 254, 0.12)' : 'var(--bg-element)',
-              color: showVariableBar ? '#00f2fe' : 'var(--text-secondary)',
-              fontSize: '11px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-            title="查看并管理当前项目解析变量（模特、品类、光影、运镜）"
+            className={`prompt-variable-toggle ${showVariableBar ? 'active' : ''}`}
+            onClick={() => setShowVariableBar(previous => !previous)}
           >
-            <span>⚡ 变量</span>
+            变量 {variables.length}
           </button>
         </div>
 
-        {/* Dynamic Variables Chips Drawer */}
         {showVariableBar && (
-          <div
-            style={{
-              padding: '10px 12px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, rgba(20, 24, 40, 0.95), rgba(15, 17, 28, 0.95))',
-              border: '1px solid rgba(0, 242, 254, 0.3)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              animation: 'fadeIn 0.2s ease'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span>⚡ 当前项目智能变量解析</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setPreviewWithVariables(prev => !prev)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: previewWithVariables ? '#c084fc' : '#94a3b8',
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                {previewWithVariables ? '● 词库显示已填充变量' : '○ 词库显示原始 {占位符}'}
+          <div className="prompt-variable-panel">
+            <div className="prompt-variable-head">
+              <b>当前项目变量</b>
+              <button type="button" onClick={() => setPreviewWithVariables(previous => !previous)}>
+                {previewWithVariables ? '已填充' : '原始占位符'}
               </button>
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-              {variables.map(v => (
-                <div
-                  key={v.key}
-                  style={{
-                    padding: '4px 6px',
-                    borderRadius: '5px',
-                    background: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '2px'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#94a3b8' }}>
-                    <span>{v.icon}</span>
-                    <span style={{ fontFamily: 'var(--mono, monospace)', color: '#00f2fe' }}>{`{${v.key}}`}</span>
-                    <span>({v.label})</span>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '10px',
-                      color: '#e2e8f0',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }}
-                    title={v.value}
-                  >
-                    {v.value}
-                  </div>
-                </div>
+            <div className="prompt-variable-chips">
+              {variables.map(variable => (
+                <span key={variable.key} className="prompt-variable-chip" title={variable.value}>
+                  <em>{variable.icon} {variable.label}</em>
+                  <b>{variable.value}</b>
+                </span>
               ))}
             </div>
           </div>
         )}
 
-        {/* Categories Filter Tabs */}
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '6px',
-            paddingBottom: '2px'
-          }}
-        >
-          {PROMPT_CATEGORIES.map(cat => {
-            const isActive = selectedCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setSelectedCategory(cat.id)}
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid',
-                  borderColor: isActive ? 'var(--accent-purple)' : 'var(--border-color)',
-                  background: isActive ? 'var(--accent-purple)' : 'var(--bg-element)',
-                  color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                  fontSize: '11px',
-                  fontWeight: isActive ? 600 : 500,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  boxShadow: isActive ? '0 2px 8px rgba(124, 58, 237, 0.3)' : 'none',
-                  transition: 'all 0.15s ease',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                <span>{cat.icon}</span>
-                <span>{cat.label}</span>
-              </button>
-            );
-          })}
+        <div className="prompt-category-chips">
+          {PROMPT_CATEGORIES.map(category => (
+            <button
+              key={category.id}
+              type="button"
+              className={selectedCategory === category.id ? 'active' : ''}
+              onClick={() => setSelectedCategory(category.id)}
+            >
+              {category.label}
+            </button>
+          ))}
         </div>
 
-        {/* Prompts Cards List */}
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '2px' }}>
-          {filteredItems.map(item => {
-            const displayContent = previewWithVariables && item.hasVariables
-              ? interpolatePromptVariables(item.content, variables)
-              : item.content;
-
-            return (
-              <div
-                key={item.id}
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  background: 'var(--bg-surface-solid, var(--card-bg))',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: 'var(--glass-shadow, 0 2px 8px rgba(0, 0, 0, 0.08))',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  transition: 'border-color 0.2s ease, transform 0.15s ease'
-                }}
-              >
-                {/* Header: Title & Recommended Target Badge */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: '1.4' }}>
-                    {item.title}
-                  </div>
-                  {item.hasVariables && (
-                    <span
-                      style={{
-                        fontSize: '9px',
-                        padding: '1px 5px',
-                        borderRadius: '4px',
-                        background: 'rgba(0, 242, 254, 0.12)',
-                        border: '1px solid rgba(0, 242, 254, 0.3)',
-                        color: '#00f2fe',
-                        fontWeight: 600,
-                        whiteSpace: 'nowrap'
-                      }}
-                      title="包含动态项目变量"
-                    >
-                      ⚡ 智能变量
-                    </span>
-                  )}
-                </div>
-
-                {/* Tags row */}
-                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                  {item.tags.map((tag, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        fontSize: '10px',
-                        padding: '2px 7px',
-                        borderRadius: '4px',
-                        background: 'rgba(138, 43, 226, 0.15)',
-                        color: 'var(--accent-purple, #a855f7)',
-                        border: '1px solid rgba(138, 43, 226, 0.3)',
-                        fontWeight: 500
-                      }}
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                  {item.recommendedShot && (
-                    <span
-                      style={{
-                        fontSize: '9px',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        color: 'var(--text-muted, #94a3b8)',
-                        border: '1px solid var(--border-color)',
-                        fontWeight: 500
-                      }}
-                    >
-                      🎯 建议：{item.recommendedShot.replace('shot-', '分镜')}
-                    </span>
-                  )}
-                </div>
-
-                {/* Chinese Description */}
-                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                  {item.description}
-                </p>
-
-                {/* Prompt Snippet Box */}
-                <div
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    background: 'var(--bg-element)',
-                    border: '1px solid var(--border-color)',
-                    fontSize: '11px',
-                    color: 'var(--text-primary)',
-                    fontFamily: 'var(--mono, monospace)',
-                    lineHeight: '1.5',
-                    maxHeight: '65px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    wordBreak: 'break-word'
-                  }}
-                  title={displayContent}
-                >
-                  {displayContent}
-                </div>
-
-                {/* Action buttons row */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: item.targetType === 'both' ? 'auto auto 1fr' : 'auto 1fr',
-                    gap: '6px',
-                    marginTop: '2px',
-                    alignItems: 'center'
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => handleCopy(item)}
-                    style={{
-                      padding: '4px 9px',
-                      fontSize: '11px',
-                      fontWeight: 500,
-                      margin: 0,
-                      height: '28px',
-                      whiteSpace: 'nowrap',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px'
-                    }}
-                    title="复制提示词文本到剪贴板"
-                  >
-                    <span>📋</span>
-                    <span>复制</span>
-                  </button>
-
-                  {item.targetType === 'both' && (
-                    <button
-                      type="button"
-                      onClick={() => handleCreateTextLayer(item)}
-                      style={{
-                        padding: '4px 9px',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(2, 132, 199, 0.35)',
-                        background: 'rgba(2, 132, 199, 0.12)',
-                        color: 'var(--accent-cyan, #0284c7)',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        height: '28px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px',
-                        transition: 'all 0.15s ease'
-                      }}
-                      onMouseOver={e => {
-                        e.currentTarget.style.background = 'rgba(2, 132, 199, 0.22)';
-                      }}
-                      onMouseOut={e => {
-                        e.currentTarget.style.background = 'rgba(2, 132, 199, 0.12)';
-                      }}
-                      title="添加此文案为画布卖点文字图层"
-                    >
-                      <span>📝</span>
-                      <span>文字层</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={() => handleOpenInjectModal(item)}
-                    style={{
-                      padding: '4px 10px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      margin: 0,
-                      height: '28px',
-                      whiteSpace: 'nowrap',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px',
-                      minWidth: 0,
-                      background: 'linear-gradient(135deg, #7c3aed 0%, #00f2fe 100%)',
-                      boxShadow: '0 2px 8px rgba(124, 58, 237, 0.3)'
-                    }}
-                    title="精准选择注入到具体分镜 (0-3s, 3-6s, 6-9s, 9-12s, 12-15s)"
-                  >
-                    <span>⚡</span>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      注入分镜
-                    </span>
-                  </button>
-                </div>
+        {selectedItem && (
+          <div className="prompt-detail-card">
+            <div className="prompt-detail-top">
+              <div>
+                <span className="prompt-detail-category">{CATEGORY_LABELS[selectedItem.category] || '提示词'}</span>
+                <h4>{selectedItem.title}</h4>
               </div>
+              <button type="button" className="prompt-detail-close" onClick={() => setSelectedItemId(null)}>✕</button>
+            </div>
+            <p>{selectedItem.description}</p>
+            <div className="prompt-detail-text">{finalText(selectedItem)}</div>
+            <div className="prompt-detail-chips">
+              {extractPromptPlaceholders(selectedItem.content).map(key => (
+                <span key={key} className={variableMap[key] ? 'resolved' : 'missing'}>
+                  {variableMap[key] ? `${key}：${variableMap[key]}` : `缺少变量：${key}`}
+                </span>
+              ))}
+            </div>
+            <div className="prompt-detail-actions">
+              <button type="button" onClick={() => copyItem(selectedItem)}>复制最终提示词</button>
+              <button type="button" className="primary" onClick={() => openInject(selectedItem)}>注入当前分镜</button>
+            </div>
+          </div>
+        )}
+
+        <div className="prompt-list">
+          {filteredItems.map(item => {
+            const placeholders = extractPromptPlaceholders(item.content);
+            return (
+              <article
+                key={item.id}
+                className={`prompt-card ${selectedItemId === item.id ? 'selected' : ''}`}
+                onClick={() => setSelectedItemId(item.id)}
+              >
+                <div className="prompt-card-head">
+                  <div>
+                    <b>{item.title}</b>
+                    {item.recommendedShot && <span className="prompt-shot-badge">分镜 {item.recommendedShot.replace('shot-', '')}</span>}
+                  </div>
+                  <span className="prompt-category">{CATEGORY_LABELS[item.category]}</span>
+                </div>
+                <p>{item.description}</p>
+                <div className="prompt-tags">
+                  {item.tags.map(tag => <span key={tag}>{tag}</span>)}
+                </div>
+                <div className="prompt-card-footer">
+                  <div className="prompt-card-vars">
+                    {placeholders.length > 0 && (
+                      <span className={placeholders.every(key => variableMap[key]) ? 'ready' : 'warn'}>
+                        {placeholders.every(key => variableMap[key]) ? '● 变量已就绪' : '⚠ 缺少变量'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="prompt-card-actions">
+                    <button type="button" onClick={event => { event.stopPropagation(); copyItem(item); }}>复制</button>
+                    <button type="button" className="primary" onClick={event => { event.stopPropagation(); openInject(item); }}>注入</button>
+                  </div>
+                </div>
+                {item.targetType === 'both' && (
+                  <button
+                    type="button"
+                    className="prompt-text-layer"
+                    onClick={event => { event.stopPropagation(); createTextLayer(item); }}
+                  >
+                    ＋ 建文案图层
+                  </button>
+                )}
+              </article>
             );
           })}
         </div>
+
+        {filteredItems.length === 0 && (
+          <div className="prompt-empty">
+            <b>没有匹配的提示词</b>
+            <span>换个关键词，或切回「全部」分类。</span>
+          </div>
+        )}
       </div>
 
-      {/* Directed Injection Modal */}
       {injectModalItem && (
         <PromptInjectModal
           isOpen={!!injectModalItem}
@@ -534,9 +287,7 @@ export const PromptLibraryTab: React.FC<PromptLibraryTabProps> = ({
           variableContext={variableContext}
           currentMasterPrompt={currentMasterPrompt}
           onConfirmInject={params => {
-            if (onInjectToStoryboard) {
-              onInjectToStoryboard(params);
-            }
+            if (onInjectToStoryboard) onInjectToStoryboard(params);
           }}
         />
       )}
