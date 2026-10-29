@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 import express from 'express';
+import { createFileExpiringStore } from './expiringStore.js';
 
 // The SSO login page itself is valid for 15 minutes, so keep the state slightly
 // longer than that to avoid rejecting a legitimate completed login.
@@ -278,8 +280,17 @@ export function createSsoRouter({
   now = Date.now
 } = {}) {
   const config = readSsoConfig(env);
-  const stateStore = createExpiringStore(STATE_TTL_MS, now);
-  const ticketStore = createExpiringStore(TICKET_TTL_MS, now);
+  // When a data directory is configured (containers set DATA_DIR), persist
+  // state/tickets to disk so callbacks survive restarts and can be handled by
+  // another instance sharing the volume. Local dev/tests keep them in memory.
+  const stateDirectory = env.SSO_STATE_DIR
+    || (env.DATA_DIR ? path.join(env.DATA_DIR, 'sso-state') : '');
+  const stateStore = stateDirectory
+    ? createFileExpiringStore(STATE_TTL_MS, now, { directory: stateDirectory, maxEntries: MAX_PENDING_ENTRIES })
+    : createExpiringStore(STATE_TTL_MS, now);
+  const ticketStore = stateDirectory
+    ? createFileExpiringStore(TICKET_TTL_MS, now, { directory: stateDirectory, maxEntries: MAX_PENDING_ENTRIES })
+    : createExpiringStore(TICKET_TTL_MS, now);
   const router = express.Router();
 
   router.use((_req, res, next) => {

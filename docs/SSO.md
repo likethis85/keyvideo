@@ -51,6 +51,9 @@ SSO_POST_LOGIN_REDIRECT=https://www.marius.com.cn/videos/
 - `SSO_SESSION_TTL_SECONDS`：KeyVideo 会话有效期，默认 8 小时。
 - `ALLOWED_ORIGINS`：需要包含前端实际域名，否则浏览器调用
   `/api/auth/sso/*` 会被 CORS 拒绝。
+- `SSO_STATE_DIR`：state/ticket 的共享目录。未设置但设置了 `DATA_DIR` 时默认
+  使用 `$DATA_DIR/sso-state`；多实例部署需挂载同一卷，否则请保持单实例或会话
+  粘性。
 
 配置完成后重启后端即可，前端不需要重新构建，也不会接触 `client_secret`。
 
