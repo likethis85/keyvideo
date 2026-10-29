@@ -35,3 +35,6 @@ backend/tasks_history.json.bak
 backend/tasks_history.json.tmp.*
 backend/canvas_state.json
 backend/canvas_state.json.tmp.*
+
+# OpenCode local state (Ralph loop)
+.opencode/
