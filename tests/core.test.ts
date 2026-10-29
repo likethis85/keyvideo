@@ -9,6 +9,7 @@ import { mergeBatchVideosIntoTimeline } from '../src/utils/batchTimelineMerge.ts
 import { DEFAULT_VIDEO_MODEL, isSupportedVideoModel, normalizeVideoModel } from '../src/config/videoModels.ts';
 import { normalizeCanvasState } from '../src/utils/canvasImport.ts';
 import { createProjectSyncScheduler } from '../src/utils/projectSyncScheduler.ts';
+import { buildRequestKey } from '../src/utils/requestIdentity.ts';
 import type { Layer } from '../src/components/VideoCanvas.tsx';
 import type { StoryboardItem } from '../src/types/aiProject.ts';
 
@@ -97,6 +98,19 @@ test('timeline media layers bind to storyboards by id before index', () => {
   assert.equal(missing, null);
 
   assert.equal(findStoryboardForLayer({ id: 'logo_1', properties: {} }, reordered), null);
+});
+
+test('request dedup keys include the identity and payload', () => {
+  const payload = { prompt: 'walk', imageSrc: 'data:image/png;base64,AAA' };
+  const accountA = buildRequestKey('background', payload, 'sso:a');
+  const accountB = buildRequestKey('background', payload, 'sso:b');
+  const same = buildRequestKey('background', payload, 'sso:a');
+  const changed = buildRequestKey('background', { ...payload, prompt: 'run' }, 'sso:a');
+
+  assert.equal(accountA, same);
+  assert.notEqual(accountA, accountB);
+  assert.notEqual(accountA, changed);
+  assert.equal(buildRequestKey('background', payload), buildRequestKey('background', payload));
 });
 
 test('project sync scheduler serializes per project and drops stale snapshots', async () => {

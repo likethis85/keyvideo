@@ -52,7 +52,7 @@
 - [x] **阻止发布工作流反复创建同一个版本。** 工作流改为只在推送 `v*` 标签时触发（移除 main/master 与手动触发），发布前校验标签名必须等于 `v` + `src-tauri/tauri.conf.json` 版本，`tauri-action` 的 `tagName` 改用实际推送标签而非固定 `app-v__VERSION__`，避免每次主分支推送生成重复发布；矩阵多架构仍上传到同一 draft release。
 - [ ] **收紧桌面 WebView 权限。** `src-tauri/tauri.conf.json` 设置 `csp: null` 且 asset protocol scope 为 `**/*`。按实际 API/资源需求配置 CSP 与最小文件访问范围，验证本地素材、远程后端、预览与导出仍可用。
 - [ ] **让本地保存失败可见。** 部分完成：`localDB.set` 失败时会派发 `keyvideo:local-save-failed` 事件，`src/App.tsx` 监听后 10 秒节流提示“本地保存失败，请清理后重试”；返回值语义保持 `boolean`。仍未实现失败写入的待重试队列/自动重试，也未覆盖配额耗尽与存储不可用的自动化测试。
-- [ ] **避免跨账号复用前端生成请求。** `src/utils/aiGateway.ts` 的模块级 in-flight map 只按操作和 payload 去重；账号切换期间相同请求可能复用前一账号的 Promise。把身份/后端范围纳入去重作用域，并在登出时取消或清空旧请求。
+- [x] **避免跨账号复用前端生成请求。** 新增 `src/utils/requestIdentity.ts`：去重键包含操作、payload 与当前身份指纹（SSO token 或 Supabase access token 的 FNV 哈希，未登录为 `anon`），token 本身不进入键；`aiGateway` 的 in-flight 去重改用该键，账号切换后不会复用上一账号的 Promise，旧请求完成后自行清理。`tests/core.test.ts` 覆盖同身份复用、跨身份隔离与 payload 变化。未实现登出时主动取消进行中的网络请求。
 - [ ] **补全 API 集成与回归测试。** 当前前端测试集中在纯工具函数，后端测试集中在 SSO/auth 单元逻辑；关键路由、RLS/OSS 边界、幂等、图片代理、批量生成、持久化与导出流程缺少端到端覆盖。为本清单 P1 事项建立可注入上游服务的路由测试和关键前端状态测试。
 - [ ] **让 CI 覆盖后端、Rust 格式和依赖安全。** 部分完成：新增 `.github/workflows/ci.yml`，在 push/PR 上分别运行前端 `npm test` 与 `backend/npm test`（Node 22，因为前端测试依赖 `--experimental-strip-types`），发布工作流也升级到 Node 22。仍未加入 `cargo fmt --check`、Rust 构建/测试、`cargo-audit` 与 npm 依赖审计，也未修复已知 Rust 格式问题。
 - [x] **完善 README 与部署手册。** 根目录 `README.md` 已重写为真实手册：环境要求、前后端安装与启动、`.env.example` 关键变量、SSO 链接、Supabase 建表与两个迁移顺序、素材私有/公开标记、HTTPS/反向代理、Docker 持久卷与非 root/健康检查、桌面标签发布、测试命令与常见问题。Docker 与真实 Supabase 迁移未在本环境执行，步骤以现有 compose/Dockerfile/CI 配置为准。

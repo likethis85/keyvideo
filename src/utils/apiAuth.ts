@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { SSO_SESSION_STORAGE_KEY } from './requestIdentity';
 
-export const SSO_SESSION_STORAGE_KEY = 'KEYVIDEO_SSO_SESSION_V1';
+export { SSO_SESSION_STORAGE_KEY };
 
 interface StoredSsoToken {
   token?: unknown;

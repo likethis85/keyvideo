@@ -1,6 +1,7 @@
 import { runPollingTask } from './aiTaskStateMachine';
 import { getCustomApiConfig, executeCustomApi } from './customApiRunner';
 import { getApiAuthHeaders } from './apiAuth';
+import { buildRequestKey, getSyncAuthFingerprint } from './requestIdentity';
 
 export const getBackendUrl = (): string => {
   const localUrl = localStorage.getItem('KEYVIDEO_BACKEND_URL');
@@ -44,22 +45,12 @@ const inFlightGenerationRequests = new Map<string, Promise<unknown>>();
 
 const wait = (milliseconds: number) => new Promise<void>(resolve => setTimeout(resolve, milliseconds));
 
-const buildRequestKey = (scope: string, payload: unknown): string => {
-  const serialized = JSON.stringify(payload);
-  let hash = 2166136261;
-  for (let index = 0; index < serialized.length; index += 1) {
-    hash ^= serialized.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `${scope}:${serialized.length}:${(hash >>> 0).toString(16)}`;
-};
-
 const dedupeGenerationRequest = <T>(
   scope: string,
   payload: unknown,
   operation: (requestKey: string) => Promise<T>
 ): Promise<T> => {
-  const key = buildRequestKey(scope, payload);
+  const key = buildRequestKey(scope, payload, getSyncAuthFingerprint());
   const existing = inFlightGenerationRequests.get(key) as Promise<T> | undefined;
   if (existing) return existing;
 
