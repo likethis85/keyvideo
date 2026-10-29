@@ -19,7 +19,7 @@
 - [ ] **修复 `model_assets` 的更新 RLS。** `src/utils/create_table.sql` 没有 `model_assets` 的 UPDATE policy，但前端会重命名和重新生成场景并更新该表；当前仅本地列表变化，云端更新会失败且可能遗留 OSS 对象。添加限制为 `auth.uid() = user_id` 的 UPDATE policy，并回归重命名、场景重生成及跨用户拒绝。
 - [ ] **统一 SSO 与 Supabase 云资产的身份路径。** SSO 用户没有 Supabase session；模型/场景走本地库，但 BGM 上传仍先写 OSS 再以 `user_id = null` 插入受 RLS 保护的 `audio_assets`，最终失败并遗留文件。明确 SSO 用户的本地/云端支持范围，实现一致的本地保存或服务端身份桥接，并在失败时清理已上传对象、在界面准确说明存储位置。
 - [ ] **让 SSO 登录状态存储支持生产实例拓扑。** `backend/sso.js` 的 OAuth state 和一次性 ticket 都只存在当前 Node 进程内；回调/兑换被负载均衡到另一实例，或部署重启发生在登录中途时，state/ticket 会丢失。使用带 TTL 的共享存储，或强制并验证会话粘性与部署行为，并覆盖跨实例回调、重启和过期测试。
-- [ ] **按用户隔离 Tauri 本地视频素材。** `src/utils/db.ts` 的 `local_video_assets` SQLite 表读写没有 user ID，而键值表已经按用户 scope；同一桌面安装切换账号会看到并能删除彼此的视频素材。增加所有者列与迁移，所有查询、更新、删除均带当前用户条件。
+- [x] **按用户隔离 Tauri 本地视频素材。** `local_video_assets` 新增 `owner_id` 列与索引；初始化时通过 `PRAGMA table_info` 检测并为旧表补列，旧版无主记录由首个打开且有权限的账号一次性认领。`getLocalVideos`、`saveLocalVideo`、`deleteLocalVideo` 均按当前 scope 过滤（未登录用 `owner_id IS NULL`），保存时拒绝覆盖其他账号的同 ID 记录，删除返回真实 `rowsAffected`。浏览器 IndexedDB 回退继续沿用 scope 键。已通过 `tsc` 与 ESLint；运行时迁移需在 Tauri 桌面环境验证。
 - [x] **按工程保存时间轴状态。** `src/App.tsx` 已将时间轴图层、画幅和分镜缓存迁移到工程 ID 命名空间，并对旧账号级键执行一次兼容迁移；切换工程时先加载目标工程状态再允许自动保存。
 - [ ] **按工程隔离分镜恢复缓存。** `src/App.tsx` 将 `ai_storyboards` 按账号全局保存，却在重载时间轴时按 `media_i2v_<index>_` 从该列表恢复视频 Blob；切换工程、异步保存交错或相同分镜序号时可能把另一工程的视频恢复到当前工程。改为以工程 ID 保存并按 storyboard ID 匹配，覆盖快速切换和重载恢复。
 - [ ] **让账号切换使旧异步任务失效并固定存储所有者。** `src/hooks/useProjectLifecycle.ts` 的工程加载没有清理/身份代次校验，迟到的结果仍会调用父级 setter；`src/hooks/useAssetLibrary.ts` 虽阻止卸载后的 UI 更新，却仍会把迟到的云端素材结果写入 `localDB`。而 `src/utils/db.ts` 的 `setScope` 修改全局 scope，异步操作在各次 `get`/`set` 调用时才解析键；账号切换期间，旧账号响应可能污染新账号本地缓存或覆盖新账号工程状态。为异步加载绑定身份快照、切换时取消/忽略过期结果，并确保写入沿用发起时的 owner；覆盖快速 A→B 切换、响应乱序、登出及云端素材缓存场景。

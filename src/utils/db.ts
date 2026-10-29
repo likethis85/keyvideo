@@ -26,8 +26,16 @@ if (isTauri) {
       
       // Initialize tables
       await db.execute('CREATE TABLE IF NOT EXISTS keyvalue_store (key TEXT PRIMARY KEY, value TEXT)');
-      await db.execute('CREATE TABLE IF NOT EXISTS local_video_assets (id TEXT PRIMARY KEY, name TEXT, src TEXT, desc TEXT, duration REAL)');
-      
+      await db.execute('CREATE TABLE IF NOT EXISTS local_video_assets (id TEXT PRIMARY KEY, name TEXT, src TEXT, desc TEXT, duration REAL, owner_id TEXT)');
+
+      // Tables created by older versions have no owner column. Add it in place
+      // so existing rows can be claimed by the account that opens them first.
+      const columns = await db.select<Array<{ name: string }>>('PRAGMA table_info(local_video_assets)');
+      if (!columns.some(column => column.name === 'owner_id')) {
+        await db.execute('ALTER TABLE local_video_assets ADD COLUMN owner_id TEXT');
+      }
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_local_video_assets_owner ON local_video_assets(owner_id)');
+
       console.log('SQLite database initialized successfully via Tauri.');
       return db;
     } catch (err) {
@@ -171,14 +179,39 @@ class LocalDB {
     return this.writeKey(this.scopedKey(key), val);
   }
 
-  // SQLite Specific local video asset management (with IndexedDB fallback)
+  // SQLite Specific local video asset management (with IndexedDB fallback).
+  // Every row is owned by the current scope (or NULL before any account is
+  // selected), so switching accounts can never list or delete another user's
+  // imported videos.
+  private async claimLegacyVideoRows(db: Database): Promise<void> {
+    if (!this.scope || !this.canReadLegacyData()) return;
+    try {
+      const rows = await db.select<Array<{ count: number }>>(
+        'SELECT COUNT(*) as count FROM local_video_assets WHERE owner_id IS NULL'
+      );
+      if (Number(rows?.[0]?.count) > 0) {
+        await db.execute('UPDATE local_video_assets SET owner_id = ? WHERE owner_id IS NULL', [this.scope]);
+      }
+    } catch (e) {
+      console.warn('Failed to claim legacy local videos:', e);
+    }
+  }
+
   async getLocalVideos(): Promise<LocalVideoAsset[]> {
     if (isTauri) {
       try {
         const db = await sqliteDbPromise;
         if (db) {
-          const rows = await db.select<LocalVideoAsset[]>('SELECT * FROM local_video_assets');
-          return rows;
+          await this.claimLegacyVideoRows(db);
+          if (this.scope) {
+            return await db.select<LocalVideoAsset[]>(
+              'SELECT * FROM local_video_assets WHERE owner_id = ? ORDER BY rowid DESC',
+              [this.scope]
+            );
+          }
+          return await db.select<LocalVideoAsset[]>(
+            'SELECT * FROM local_video_assets WHERE owner_id IS NULL ORDER BY rowid DESC'
+          );
         }
       } catch (e) {
         console.error('SQLite getLocalVideos failed:', e);
@@ -194,9 +227,17 @@ class LocalDB {
       try {
         const db = await sqliteDbPromise;
         if (db) {
+          const existing = await db.select<Array<{ owner_id: string | null }>>(
+            'SELECT owner_id FROM local_video_assets WHERE id = ?',
+            [video.id]
+          );
+          if (existing.length > 0 && (existing[0].owner_id || null) !== this.scope) {
+            console.warn('Refusing to overwrite a local video owned by another account.');
+            return false;
+          }
           await db.execute(
-            'INSERT OR REPLACE INTO local_video_assets (id, name, src, desc, duration) VALUES (?, ?, ?, ?, ?)',
-            [video.id, video.name, video.src, video.desc, video.duration || 0]
+            'INSERT OR REPLACE INTO local_video_assets (id, name, src, desc, duration, owner_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [video.id, video.name, video.src, video.desc, video.duration || 0, this.scope]
           );
           return true;
         }
@@ -215,8 +256,10 @@ class LocalDB {
       try {
         const db = await sqliteDbPromise;
         if (db) {
-          await db.execute('DELETE FROM local_video_assets WHERE id = ?', [id]);
-          return true;
+          const result = this.scope
+            ? await db.execute('DELETE FROM local_video_assets WHERE id = ? AND owner_id = ?', [id, this.scope])
+            : await db.execute('DELETE FROM local_video_assets WHERE id = ? AND owner_id IS NULL', [id]);
+          return Number(result?.rowsAffected || 0) > 0;
         }
       } catch (e) {
         console.error('SQLite deleteLocalVideo failed:', e);
