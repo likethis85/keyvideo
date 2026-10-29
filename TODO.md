@@ -34,7 +34,7 @@
 
 ## P2：可靠性、运维与质量
 
-- [ ] **让任务历史上限按用户并保护运行任务。** `backend/server.js` 的持久任务存储只保留全局最近 100 条；其他用户的新请求可能挤掉尚在运行的任务，后台轮询和恢复会失去记录。为活跃任务保留独立索引，历史按用户分区并设置可配置保留策略，覆盖并发用户和长任务场景。
+- [x] **让任务历史上限按用户并保护运行任务。** 抽出 `backend/taskHistory.js` 的 `compactTaskStore()`：`pending`/`processing` 任务始终保留（另有 1000 条安全上限），已完成/失败任务按用户配额（`TASK_HISTORY_MAX_PER_USER`，默认 100）与全局总量（`TASK_HISTORY_MAX_TOTAL`，默认 500）保留最新记录，单账号无法挤掉其他账号的运行任务；`server.js` 的持久化改用该函数。`backend/taskHistory.test.js` 覆盖活跃任务保留、按用户配额、全局上限与不修改输入。
 - [ ] **持久化部署数据并保护画布文件。** 部分完成：新增 `DATA_DIR`（默认代码目录，容器为 `/app/data`），任务历史与画布状态均写入该目录；`docker-compose.yml` 使用命名卷 `keyvideo-data` 持久化并配置健康检查；Dockerfile 改为 `npm ci --omit=dev`、`USER node`、`/app/data` 归属 node。任务历史已有临时文件 + 备份 + rename 原子写入；画布 JSON 仍为直接覆盖，恢复演练/画布原子写入尚未完成。
 - [x] **让超时和大小限制覆盖完整响应体。** 后端新增 `readBodyWithTimeout()`（body 读取超时后 `body.cancel()`），并替换图片转 base64、Sandbase 轮询、视频轮询/状态、聊天补全等 `response.json()/arrayBuffer()`；同时修复 `remoteUrl.js` 未定义的默认超时常量。前端 `http.ts` 增加同类 body 超时读取，`aiGateway` 的 JSON/文本/视频 Blob 读取均受控。`backend/remoteUrl.test.js` 与 `tests/core.test.ts` 覆盖永不结束 body 的取消与正常读取。图片代理的字节上限此前已实现。
 - [ ] **清理敏感日志。** 部分完成：已移除视频提交时的提示词/输入图片 URL、轮询结果 URL、storyboard 图片 URL 等直接内容日志；生成提交只记录模型与时长。尚未引入统一结构化日志（请求 ID、用户 ID 哈希、耗时、错误类别），其余 `console.error` 仍可能透出上游错误文本。

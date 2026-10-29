@@ -13,6 +13,7 @@ import { createIdempotencyMiddleware, IDEMPOTENT_GENERATION_PATHS } from './idem
 import { createImageProxyHandler } from './imageProxy.js';
 import { createUploadRouter } from './uploads.js';
 import { submitSandbaseTask } from './sandbaseSubmit.js';
+import { compactTaskStore as compactTaskHistory } from './taskHistory.js';
 import {
   createGenerationQuota,
   validateVideoTaskInput,
@@ -457,12 +458,13 @@ const sanitizeTaskRecord = (record = {}) => ({
 });
 
 const compactTaskStore = () => {
-  const keys = Object.keys(taskStore)
-    .sort((a, b) => (taskStore[b].createdAt || 0) - (taskStore[a].createdAt || 0))
-    .slice(0, 100);
-  const compacted = {};
-  keys.forEach(key => { compacted[key] = sanitizeTaskRecord(taskStore[key]); });
-  return compacted;
+  const compacted = compactTaskHistory(taskStore, {
+    perUserLimit: Number(process.env.TASK_HISTORY_MAX_PER_USER) || undefined,
+    totalLimit: Number(process.env.TASK_HISTORY_MAX_TOTAL) || undefined
+  });
+  return Object.fromEntries(
+    Object.entries(compacted).map(([key, value]) => [key, sanitizeTaskRecord(value)])
+  );
 };
 
 const TASKS_FILE = path.join(DATA_DIR, 'tasks_history.json');
