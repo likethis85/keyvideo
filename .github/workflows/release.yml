@@ -44,11 +44,29 @@ jobs:
       - name: verify frontend
         run: npm test
 
+      - name: verify production backend uses HTTPS
+        shell: bash
+        env:
+          BACKEND_URL: ${{ vars.VITE_BACKEND_URL }}
+        run: |
+          if [[ -z "${BACKEND_URL}" ]]; then
+            echo "::error::Repository variable VITE_BACKEND_URL is required for production builds."
+            exit 1
+          fi
+          if [[ "${BACKEND_URL}" != https://* ]]; then
+            echo "::error::VITE_BACKEND_URL must use HTTPS (got: ${BACKEND_URL})."
+            exit 1
+          fi
+          if grep -RIn --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git "203.205.89.231" src src-tauri 2>/dev/null; then
+            echo "::error::A hard-coded HTTP backend address remains in the release sources."
+            exit 1
+          fi
+
       - name: build tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_BACKEND_URL: http://203.205.89.231:3001
+          VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL }}
         with:
           tagName: app-v__VERSION__
           releaseName: 'KeyVideo v__VERSION__'
