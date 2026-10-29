@@ -13,7 +13,7 @@
 - [ ] **生产 API 全链路改为 HTTPS。** `.github/workflows/release.yml` 把桌面版 `VITE_BACKEND_URL` 编译为明文 HTTP IP；登录 Bearer token、提示词和素材请求可能被窃听或篡改。使用受信任域名和 TLS，拒绝生产环境的 HTTP 配置，并验证发布包中没有旧地址。
 - [ ] **把 OSS 对象删除权绑定到对象所有者。** `backend/server.js` 的删除接口只检查 bucket 与 `audio/` 前缀；任一登录用户只要拿到别人的对象 URL 就能删除。上传时使用用户隔离前缀并记录所有权，删除时校验当前用户；补充跨用户拒绝测试。`vite.config.ts` 的开发上传接口也要执行鉴权或只允许本机可信来源。
 - [ ] **限制 AI 生成的可计费输入与额度。** `/api/video/task` 和批量路由接受未严格验证的秒数、提示词、图片数等输入；通用每分钟请求数不能有效限制单次批量费用。按模型校验时长、尺寸、提示词和素材数量，限制并发、每日额度及单次费用，返回明确的额度错误，并用边界测试证明无效请求不会调用上游。
-- [ ] **收紧公开图片代理。** `backend/auth.js` 为 `<img>` 放行 `/api/ai/image-proxy`，但 `backend/server.js` 使用会自动跟随重定向的 fetch，跳转目标没有重新过 SSRF 校验；该路由还没有用户/IP 级限流，响应体先完整读入内存再检查大小。逐跳校验目标、限制重定向数与流式字节数，补全请求体超时及限流，并测试私网重定向、超大分块响应和滥用请求。
+- [x] **收紧公开图片代理。** 已抽出 `backend/imageProxy.js`：仅允许 `https://media.sandbase.ai`，每一跳重定向先做 SSRF 校验与主机白名单检查（最多 3 跳），响应体流式读取并按字节上限中止，整条请求有总超时，按客户端 IP 分钟限流且限流表有硬上限。`backend/imageProxy.test.js` 覆盖私网重定向、逐跳校验、分块超大响应、响应头/响应体超时、非图片响应与限流。SSRF 与超时公共函数已移到 `backend/remoteUrl.js`。
 - [ ] **实现可撤销的 SSO 会话。** `backend/sso.js` 的 `/logout` 只返回 204，不验证或撤销 JWT；被盗 token 在过期前仍有效。加入服务端会话版本/撤销列表或可轮换短期会话，并测试登出后旧 token 立即失效。
 - [ ] **为每位云端用户生成唯一默认工程 ID。** `src/utils/aiProjectFactory.ts` 使用固定零 UUID，而 `ai_video_projects.id` 是全局主键；第二个 Supabase 用户无法以相同 ID 创建自己的默认工程。迁移已有默认工程并按账号生成 ID，验证两个账号都能创建、更新和删除默认工程。
 - [ ] **修复 `model_assets` 的更新 RLS。** `src/utils/create_table.sql` 没有 `model_assets` 的 UPDATE policy，但前端会重命名和重新生成场景并更新该表；当前仅本地列表变化，云端更新会失败且可能遗留 OSS 对象。添加限制为 `auth.uid() = user_id` 的 UPDATE policy，并回归重命名、场景重生成及跨用户拒绝。

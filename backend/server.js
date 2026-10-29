@@ -4,13 +4,13 @@ import dotenv from 'dotenv';
 import OSS from 'ali-oss';
 import fs from 'fs';
 import path from 'path';
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'url';
 import { createSsoRouter } from './sso.js';
 import { createApiAuthMiddleware } from './auth.js';
+import { fetchWithTimeout, assertSafeRemoteUrl, safeFetchRemote } from './remoteUrl.js';
 import { createIdempotencyMiddleware, IDEMPOTENT_GENERATION_PATHS } from './idempotency.js';
+import { createImageProxyHandler } from './imageProxy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,93 +29,6 @@ const ALLOWED_UPLOAD_EXTENSIONS = new Set([
   'mp4', 'webm', 'mov'
 ]);
 
-const fetchWithTimeout = async (url, options = {}, timeoutMs = DEFAULT_EXTERNAL_TIMEOUT_MS) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  timeout.unref?.();
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      throw new Error(`External request timed out after ${Math.round(timeoutMs / 1000)}s`, { cause: error });
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
-const isPrivateIpv4 = (address) => {
-  const parts = address.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return true;
-  const [a, b] = parts;
-  return a === 0
-    || a === 10
-    || a === 127
-    || (a === 100 && b >= 64 && b <= 127)
-    || (a === 169 && b === 254)
-    || (a === 172 && b >= 16 && b <= 31)
-    || (a === 192 && b === 168)
-    || a >= 224;
-};
-
-const isPrivateAddress = (address) => {
-  const normalized = String(address).toLowerCase().split('%')[0];
-  const version = isIP(normalized);
-  if (version === 4) return isPrivateIpv4(normalized);
-  if (version !== 6) return true;
-  if (normalized === '::' || normalized === '::1') return true;
-  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
-  if (/^fe[89ab]/.test(normalized)) return true;
-  if (normalized.startsWith('ff')) return true;
-  if (normalized.startsWith('::ffff:')) return isPrivateIpv4(normalized.slice(7));
-  return false;
-};
-
-const assertSafeRemoteUrl = async (value) => {
-  let url;
-  try {
-    url = value instanceof URL ? value : new URL(String(value));
-  } catch {
-    throw new Error('Invalid remote URL');
-  }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw new Error('Only HTTP(S) remote URLs are allowed');
-  }
-  if (url.username || url.password) throw new Error('Remote URL must not contain credentials');
-  const hostname = url.hostname.toLowerCase();
-  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')
-    || hostname.endsWith('.internal') || hostname.endsWith('.lan') || hostname === '[::1]') {
-    throw new Error('Remote URL host is not allowed');
-  }
-  const literalVersion = isIP(hostname.replace(/^\[|\]$/g, ''));
-  if (literalVersion && isPrivateAddress(hostname.replace(/^\[|\]$/g, ''))) {
-    throw new Error('Remote URL host is not allowed');
-  }
-  if (!literalVersion) {
-    const addresses = await lookup(hostname, { all: true, verbatim: true });
-    if (!addresses.length || addresses.some(entry => isPrivateAddress(entry.address))) {
-      throw new Error('Remote URL host is not allowed');
-    }
-  }
-  return url;
-};
-
-const safeFetchRemote = async (value, options = {}, timeoutMs = 60_000) => {
-  let current = value instanceof URL ? value : new URL(String(value));
-  for (let redirects = 0; redirects <= 3; redirects += 1) {
-    await assertSafeRemoteUrl(current);
-    const response = await fetchWithTimeout(current.toString(), { ...options, redirect: 'manual' }, timeoutMs);
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get('location');
-      if (!location) return response;
-      current = new URL(location, current);
-      continue;
-    }
-    return response;
-  }
-  throw new Error('Too many remote redirects');
-};
 
 const requiredEnv = [
   'OSS_ACCESS_KEY_ID',
@@ -1878,27 +1791,10 @@ app.post('/api/ai/upscale', async (req, res) => {
   }
 });
 
-app.get('/api/ai/image-proxy', async (req, res) => {
-  try {
-    const sourceUrl = new URL(String(req.query.url || ''));
-    if (sourceUrl.protocol !== 'https:' || sourceUrl.hostname !== 'media.sandbase.ai') {
-      return res.status(400).json({ error: 'Only Sandbase generated-image URLs can be proxied' });
-    }
-    const response = await fetchWithTimeout(sourceUrl.toString(), {}, 60_000);
-    if (!response.ok) return res.status(502).json({ error: `Image provider returned ${response.status}` });
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.startsWith('image/')) return res.status(502).json({ error: 'Upstream response is not an image' });
-    const contentLength = Number(response.headers.get('content-length') || 0);
-    if (contentLength > MAX_LOCAL_IMAGE_BYTES) return res.status(413).json({ error: 'Image exceeds the size limit' });
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length > MAX_LOCAL_IMAGE_BYTES) return res.status(413).json({ error: 'Image exceeds the size limit' });
-    res.set('Content-Type', contentType);
-    res.set('Cache-Control', 'private, max-age=3600');
-    return res.send(buffer);
-  } catch (err) {
-    return res.status(400).json({ error: err.message || 'Invalid image URL' });
-  }
-});
+app.get('/api/ai/image-proxy', createImageProxyHandler({
+  maxBytes: MAX_LOCAL_IMAGE_BYTES,
+  rateLimitPerMinute: Math.max(10, Number(process.env.IMAGE_PROXY_RATE_LIMIT_PER_MINUTE) || 300)
+}));
 
 app.listen(port, host, () => {
   console.log(`KeyVideo backend microservice running on http://${host}:${port}`);
