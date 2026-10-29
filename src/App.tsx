@@ -1,8 +1,9 @@
-import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { Layer } from './components/VideoCanvas';
 import { BackendSettingsModal } from './components/app/BackendSettingsModal';
 import { AICopilotDrawer } from './components/app/AICopilotDrawer';
+import { AICopilotLauncher } from './components/app/AICopilotLauncher';
 import { CustomApiScriptModal } from './components/app/CustomApiScriptModal';
 import { ProjectsModal } from './components/sidebar/ProjectsModal';
 import { createAIProject } from './utils/aiProjectFactory';
@@ -43,20 +44,21 @@ import {
 import type { HistoryState } from './utils/historyManager';
 import { createDefaultLayers } from './config/defaultLayers';
 import { ViewModeSwitch } from './components/app/ViewModeSwitch';
+import { StudioBrand } from './components/app/StudioBrand';
+import { StudioInspector } from './components/app/StudioInspector';
 import type { WorkspaceViewMode } from './components/app/ViewModeSwitch';
 import type { CanvasNodeData, CanvasConnection, CanvasViewport } from './types/canvas';
 import { generateCanvasPipeline, saveCanvasTopologyToLocalDB, convertAiProjectToCanvas } from './utils/canvasBridge';
 import { splitLayerInList } from './services/timelineSplitService';
+import { projectStorageKey } from './utils/projectStorage';
 import './App.css';
+import './studio.css';
 
 const SidebarDrawer = lazy(() => import('./components/SidebarDrawer').then((module) => ({
   default: module.SidebarDrawer
 })));
 const VideoCanvas = lazy(() => import('./components/VideoCanvas').then((module) => ({
   default: module.VideoCanvas
-})));
-const PropertyInspector = lazy(() => import('./components/PropertyInspector').then((module) => ({
-  default: module.PropertyInspector
 })));
 const Timeline = lazy(() => import('./components/Timeline').then((module) => ({
   default: module.Timeline
@@ -87,6 +89,8 @@ function App() {
   const [loadingSession, setLoadingSession] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [loadedLocalStateUserId, setLoadedLocalStateUserId] = useState<string | null>(null);
+  const [loadedEditorProjectId, setLoadedEditorProjectId] = useState<string | null>(null);
+  const legacyTimelineProjectIdRef = useRef<string | null>(null);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
   // Restore either an SSO session or the legacy Supabase session. The SSO ticket
@@ -227,7 +231,13 @@ function App() {
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>('editor');
-  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(false);
+  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(true);
+
+  // Keep the timeline collapsed for library tools and open it for AI creation.
+  const handleActiveTabChange = useCallback((tab: EditorToolTab) => {
+    setActiveTab(tab);
+    setIsTimelineCollapsed(tab !== 'ai');
+  }, [setActiveTab, setIsTimelineCollapsed]);
 
   // AI Project Management States
   const [projects, setProjects] = useState<AIProject[]>([]);
@@ -243,6 +253,11 @@ function App() {
   );
   const sidebarRef = useRef<SidebarDrawerRef | null>(null);
   const canvasAutoLayoutRef = useRef<(() => void) | null>(null);
+  const canvasActionsRef = useRef<{
+    importProject: () => void;
+    fitViewport: () => void;
+    runPipeline: () => void;
+  } | null>(null);
 
   // Theme state ('dark' | 'light')
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -277,19 +292,28 @@ function App() {
 
 
 
-  // Load saved state from database on mount
+  // Load saved state from database on mount. Timeline state is project-scoped;
+  // the old account-wide keys are read once for a backwards-compatible migration.
   useEffect(() => {
     const userId = authUser?.id;
     if (!userId) return;
 
     let cancelled = false;
     const loadState = async () => {
-      const savedRatio = await localDB.get('keyvideo_ratio') as AspectRatio | null;
+      const storedActiveProjectId = await localDB.get('ai_active_project_id');
+      const storedProjects = await localDB.get<AIProject[]>('ai_projects');
+      const projectId = typeof storedActiveProjectId === 'string' && storedProjects?.some(project => project.id === storedActiveProjectId)
+        ? storedActiveProjectId
+        : Array.isArray(storedProjects) && storedProjects.length > 0 ? storedProjects[0].id : null;
+      const scopedRatio = projectId ? await localDB.get(projectStorageKey(projectId, 'ratio')) as AspectRatio | null : null;
+      const scopedLayers = projectId ? await localDB.get(projectStorageKey(projectId, 'layers')) as Layer[] | null : null;
+      const scopedStoryboards = projectId ? await localDB.get(projectStorageKey(projectId, 'storyboards')) as StoryboardItem[] | null : null;
+      const savedRatio = scopedRatio ?? (projectId ? await localDB.get('keyvideo_ratio') as AspectRatio | null : null);
       if (cancelled) return;
       setRatio(savedRatio && ['1-1', '3-4', '9-16', '16-9'].includes(savedRatio) ? savedRatio : '9-16');
 
-      const savedLayers = await localDB.get('keyvideo_layers') as Layer[] | null;
-      const savedStoryboards = await localDB.get('ai_storyboards') as StoryboardItem[] | null;
+      const savedLayers = scopedLayers ?? (projectId ? await localDB.get('keyvideo_layers') as Layer[] | null : null);
+      const savedStoryboards = scopedStoryboards ?? (projectId ? await localDB.get('ai_storyboards') as StoryboardItem[] | null : null);
       if (cancelled) return;
 
       let initialLayers = createDefaultLayers();
@@ -334,6 +358,17 @@ function App() {
 
       setLayers(initialLayers);
       setHistoryState(createInitialHistory(initialLayers, '加载工程模板'));
+      setLoadedEditorProjectId(projectId);
+      legacyTimelineProjectIdRef.current = projectId && (!scopedLayers || !scopedRatio) ? projectId : null;
+      if (projectId && !scopedLayers && Array.isArray(savedLayers)) {
+        await localDB.set(projectStorageKey(projectId, 'layers'), savedLayers);
+      }
+      if (projectId && !scopedRatio && savedRatio) {
+        await localDB.set(projectStorageKey(projectId, 'ratio'), savedRatio);
+      }
+      if (projectId && !scopedStoryboards && Array.isArray(savedStoryboards)) {
+        await localDB.set(projectStorageKey(projectId, 'storyboards'), savedStoryboards);
+      }
       setLoadedLocalStateUserId(userId);
     };
 
@@ -343,18 +378,53 @@ function App() {
     };
   }, [authUser?.id]);
 
-  // Save layers and ratio to localDB only after the authenticated storage scope is known.
+  // A project switch must load its own timeline before autosave is allowed to
+  // run, otherwise the previous project's layers can overwrite the new one.
   useEffect(() => {
-    if (!authUser?.id || loadedLocalStateUserId !== authUser.id) return;
+    if (!authUser?.id || loadedLocalStateUserId !== authUser.id || !activeProjectId) return;
+    if (loadedEditorProjectId === activeProjectId) return;
+
+    let cancelled = false;
+    const loadProjectEditorState = async () => {
+      const scopedLayers = await localDB.get<Layer[]>(projectStorageKey(activeProjectId, 'layers'));
+      const scopedRatio = await localDB.get<AspectRatio>(projectStorageKey(activeProjectId, 'ratio'));
+      if (cancelled) return;
+
+      const canMigrateLegacy = legacyTimelineProjectIdRef.current === activeProjectId;
+      const legacyLayers = canMigrateLegacy && !scopedLayers ? await localDB.get<Layer[]>('keyvideo_layers') : null;
+      const legacyRatio = canMigrateLegacy && !scopedRatio ? await localDB.get<AspectRatio>('keyvideo_ratio') : null;
+      const nextLayers = Array.isArray(scopedLayers) ? scopedLayers : Array.isArray(legacyLayers) ? legacyLayers : createDefaultLayers();
+      const nextRatio = (scopedRatio || legacyRatio) && ['1-1', '3-4', '9-16', '16-9'].includes((scopedRatio || legacyRatio) as string)
+        ? (scopedRatio || legacyRatio) as AspectRatio
+        : '9-16';
+
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setSelectedLayerId(null);
+      setLayers(nextLayers);
+      setRatio(nextRatio);
+      setHistoryState(createInitialHistory(nextLayers, '切换工程并加载时间轴'));
+      setLoadedEditorProjectId(activeProjectId);
+      if (!scopedLayers && legacyLayers) await localDB.set(projectStorageKey(activeProjectId, 'layers'), legacyLayers);
+      if (!scopedRatio && legacyRatio) await localDB.set(projectStorageKey(activeProjectId, 'ratio'), legacyRatio);
+    };
+
+    void loadProjectEditorState();
+    return () => { cancelled = true; };
+  }, [activeProjectId, authUser?.id, loadedEditorProjectId, loadedLocalStateUserId]);
+
+  // Save layers and ratio to the active project only after its state is loaded.
+  useEffect(() => {
+    if (!authUser?.id || loadedLocalStateUserId !== authUser.id || !activeProjectId || loadedEditorProjectId !== activeProjectId) return;
     if (layers.length > 0 && historyState.index >= 0) {
-      localDB.set('keyvideo_layers', layers);
+      void localDB.set(projectStorageKey(activeProjectId, 'layers'), layers);
     }
-  }, [authUser?.id, loadedLocalStateUserId, layers, historyState.index]);
+  }, [activeProjectId, authUser?.id, loadedEditorProjectId, loadedLocalStateUserId, layers, historyState.index]);
 
   useEffect(() => {
-    if (!authUser?.id || loadedLocalStateUserId !== authUser.id) return;
-    localDB.set('keyvideo_ratio', ratio);
-  }, [authUser?.id, loadedLocalStateUserId, ratio]);
+    if (!authUser?.id || loadedLocalStateUserId !== authUser.id || !activeProjectId || loadedEditorProjectId !== activeProjectId) return;
+    void localDB.set(projectStorageKey(activeProjectId, 'ratio'), ratio);
+  }, [activeProjectId, authUser?.id, loadedEditorProjectId, loadedLocalStateUserId, ratio]);
 
   // Track continuous layer modifications with a 400ms debounce
   useEffect(() => {
@@ -575,7 +645,7 @@ function App() {
 
     setRatio(result.ratio);
     setViewMode('editor');
-    setActiveTab('media');
+    handleActiveTabChange('media');
     setIsDrawerCollapsed(false);
     if (authUser?.id) {
       localStorage.setItem(`KEYVIDEO_ONBOARDING_DONE_V1_${authUser.id}`, '1');
@@ -641,7 +711,9 @@ function App() {
 
   const isLibraryWorkspace = viewMode === 'editor'
     && !isDrawerCollapsed
-    && (activeTab === 'template' || activeTab === 'media' || activeTab === 'prompt');
+    && (activeTab === 'template' || activeTab === 'media' || activeTab === 'prompt' || activeTab === 'text' || activeTab === 'audio');
+  const activeProject = projects.find(project => project.id === activeProjectId);
+  const libraryTitle = activeTab === 'template' ? '脚本模板' : activeTab === 'media' ? '素材库' : activeTab === 'text' ? '文本工作台' : activeTab === 'audio' ? '音乐工作台' : '提示词库';
 
   const renderTimeline = (fullPage = false) => (
     <Timeline
@@ -679,9 +751,11 @@ function App() {
 
   return (
     <Suspense fallback={<AppLoadingScreen />}>
+      <div className={`studio-app ${isLibraryWorkspace ? 'studio-library' : `studio-${viewMode}`} ${isFullscreen ? 'studio-fullscreen' : ''}`}>
       {/* Header bar */}
       <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, gap: '10px' }}>
+        {!isLibraryWorkspace && <button className="studio-home" onClick={() => { setViewMode('editor'); setIsDrawerCollapsed(true); }} aria-label="KeyVideo 工作台"><StudioBrand /></button>}
+        {isLibraryWorkspace ? <div className="studio-breadcrumb"><button onClick={() => setIsDrawerCollapsed(true)}>工作台</button><span>/</span><b>{libraryTitle}</b></div> : <div className="studio-project-context">
           <ProjectSelector
             projects={projects}
             activeProjectId={activeProjectId}
@@ -697,21 +771,36 @@ function App() {
             onDeleteProject={handleDeleteProject}
             onOpenDashboard={() => setIsProjectsModalOpen(true)}
           />
-        </div>
+          <span className="studio-project-view">
+            <span className="studio-context-divider">/</span>
+            <span>{viewMode === 'canvas' ? '无限画布' : viewMode === 'timeline' ? '时间轴' : '剪辑工作台'}</span>
+          </span>
+        </div>}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          <ViewModeSwitch mode={viewMode} onChange={setViewMode} />
-          {viewMode === 'editor' && (
-            <AspectRatioSelector
-              ratio={ratio}
-              onRatioChange={handleRatioChange}
-              onSmartReflow={handleSmartReflow}
-            />
-          )}
-        </div>
+        {!isLibraryWorkspace && viewMode === 'editor' && <div className="studio-header-history" aria-label="历史操作">
+          <button className="studio-button history-button" disabled={historyState.index <= 0} onClick={undo} title="撤销最近一次编辑（Ctrl/⌘ + Z）">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" /><path d="M4 9h9a7 7 0 1 1 0 14h-2" /></svg><span>撤销</span>
+          </button>
+          <button className="studio-button history-button" disabled={historyState.index >= historyState.stack.length - 1} onClick={redo} title="重做刚刚撤销的编辑（Ctrl/⌘ + Y）">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5" /><path d="M20 9h-9a7 7 0 1 0 0 14h2" /></svg><span>重做</span>
+          </button>
+        </div>}
 
         <AppHeaderActions
+          variant={isLibraryWorkspace ? 'library' : viewMode}
           theme={theme}
+          onOpenProjects={isLibraryWorkspace && activeTab !== 'template' ? undefined : () => setIsProjectsModalOpen(true)}
+          onPreview={() => { setViewMode('editor'); setIsDrawerCollapsed(true); setIsFullscreen(true); }}
+           onCanvasAction={action => {
+             const handlers = canvasActionsRef.current;
+             if (!handlers) {
+               toast.info('画布尚未准备好，请稍后再试');
+               return;
+             }
+             if (action === 'import') handlers.importProject();
+             if (action === 'fit') handlers.fitViewport();
+             if (action === 'run') handlers.runPipeline();
+           }}
           userEmail={authUser.email || authUser.displayName || authUser.id}
           onAddLayer={addDefaultTextLayer}
           onExport={triggerExport}
@@ -724,7 +813,17 @@ function App() {
               connections: CanvasConnection[];
               viewport?: CanvasViewport;
             }>(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`);
-            exportProjectPackage({ project: curProj, ratio, layers, infiniteCanvas: canvasData || undefined });
+            exportProjectPackage({
+              project: curProj,
+              ratio,
+              layers,
+              infiniteCanvas: canvasData || undefined,
+              storyboards: curProj?.storyboards,
+              modelOutfitImgUrl: curProj?.modelOutfitImgUrl,
+              referenceOutfitUrls: curProj?.referenceOutfitUrls,
+              modelScene: curProj?.modelScene,
+              customPrompt: curProj?.i2vMasterPrompt15s
+            });
             toast.success('已导出当前工程包（包含时间轴与无限画布数据）！');
           }}
           onImportProjectPackage={async (file) => {
@@ -735,6 +834,20 @@ function App() {
               }
               if (pkg.canvas?.ratio) {
                 setRatio(pkg.canvas.ratio);
+              }
+              if (pkg.aiState) {
+                setProjects(previous => previous.map(project => project.id === activeProjectId ? {
+                  ...project,
+                  name: pkg.project?.name || project.name,
+                  storyboards: pkg.aiState?.storyboards || project.storyboards,
+                  modelOutfitImgUrl: pkg.aiState?.modelOutfitImgUrl ?? project.modelOutfitImgUrl,
+                  modelOutfitImgUrls: pkg.aiState?.modelOutfitImgUrl ? [pkg.aiState.modelOutfitImgUrl] : project.modelOutfitImgUrls,
+                  referenceOutfitUrl: pkg.aiState?.referenceOutfitUrls?.[0] || project.referenceOutfitUrl,
+                  referenceOutfitUrls: pkg.aiState?.referenceOutfitUrls || project.referenceOutfitUrls,
+                  modelScene: pkg.aiState?.modelScene || project.modelScene,
+                  i2vMasterPrompt15s: pkg.aiState?.customPrompt || project.i2vMasterPrompt15s
+                } : project));
+                window.setTimeout(() => sidebarRef.current?.switchProject(activeProjectId), 0);
               }
               if (pkg.infiniteCanvas) {
                 await localDB.set(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`, pkg.infiniteCanvas);
@@ -767,46 +880,37 @@ function App() {
         />
      </header>
 
+      {!isLibraryWorkspace && viewMode !== 'canvas' && <div className="studio-modebar">
+        <div className="studio-mode-label"><span>编辑模式</span><b>{viewMode === 'timeline' ? '时间轴' : '剪辑工作台'}</b></div>
+        <ViewModeSwitch mode={viewMode} onChange={mode => { setViewMode(mode); setIsDrawerCollapsed(true); }} />
+        {viewMode === 'editor' && <AspectRatioSelector ratio={ratio} onRatioChange={handleRatioChange} onSmartReflow={handleSmartReflow} />}
+         <div className="studio-mode-meta" aria-label="项目状态">
+           <span className="studio-save-status"><i aria-hidden="true" />已自动保存</span>
+           <span className="studio-meta-divider" aria-hidden="true" />
+           <span>片段 <b>{layers.filter(layer => layer.type === 'media').length}</b></span>
+           <span>时长 <b>{Math.max(0, ...layers.map(layer => layer.end)).toFixed(1)}s</b></span>
+         </div>
+      </div>}
+
       {/* Editor Body Workspace */}
       <div className={`editor-container ${isLibraryWorkspace ? 'library-workspace' : ''}`}>
         {viewMode === 'timeline' ? (
           <div className="canvas-workspace-shell timeline-workspace">
-            <ToolNavigation
-              activeTab={activeTab}
-              isDrawerCollapsed={true}
-              onSelectTab={(tab) => {
-                setViewMode('editor');
-                setActiveTab(tab);
-                setIsDrawerCollapsed(false);
-              }}
-              onSelectWorkspace={() => { setViewMode('editor'); setIsDrawerCollapsed(true); }}
-            />
             <div className="timeline-fullpage-shell">
               <div className="timeline-fullpage-main">
                 {renderTimeline(true)}
               </div>
-              <PropertyInspector
+              <StudioInspector
+                mode="timeline"
                 layers={layers}
                 setLayers={setLayers}
                 selectedLayerId={selectedLayerId}
                 setSelectedLayerId={setSelectedLayerId}
-                isCollapsed={false}
-                onToggleCollapse={() => undefined}
               />
             </div>
           </div>
         ) : viewMode === 'canvas' ? (
           <div className="canvas-workspace-shell">
-            <ToolNavigation
-              activeTab={activeTab}
-              isDrawerCollapsed={true}
-              onSelectTab={(tab) => {
-                setViewMode('editor');
-                setActiveTab(tab);
-                setIsDrawerCollapsed(false);
-              }}
-              onSelectWorkspace={() => { setViewMode('editor'); setIsDrawerCollapsed(true); }}
-            />
             <Suspense fallback={<AppLoadingScreen />}>
               <InfiniteCanvas
                 projectId={activeProjectId}
@@ -816,6 +920,16 @@ function App() {
                 setLayers={setLayers}
                 commitHistory={commitInstantHistory}
                 onRegisterAutoLayout={(fn) => { canvasAutoLayoutRef.current = fn; }}
+                onRegisterActions={(actions) => { canvasActionsRef.current = actions; }}
+                onOpenEditor={() => {
+                  setViewMode('editor');
+                  setIsDrawerCollapsed(true);
+                  setIsTimelineCollapsed(false);
+                }}
+                onOpenTimeline={() => {
+                  setViewMode('timeline');
+                  setIsDrawerCollapsed(true);
+                }}
               />
             </Suspense>
           </div>
@@ -825,9 +939,9 @@ function App() {
               activeTab={activeTab}
               isDrawerCollapsed={isDrawerCollapsed}
               onSelectTab={(tab) => {
-                setActiveTab(tab);
+                handleActiveTabChange(tab);
                 setIsDrawerCollapsed(false);
-                setIsTimelineCollapsed(tab === 'ai');
+                setIsTimelineCollapsed(tab !== 'ai');
               }}
               onSelectWorkspace={() => setIsDrawerCollapsed(true)}
             />
@@ -835,11 +949,15 @@ function App() {
             <SidebarDrawer
               ref={sidebarRef}
               activeTab={activeTab}
-              setActiveTab={setActiveTab}
+              setActiveTab={handleActiveTabChange}
               layers={layers}
               setLayers={setLayers}
               selectedLayerId={selectedLayerId}
               setSelectedLayerId={setSelectedLayerId}
+              currentTime={currentTime}
+              setCurrentTime={setCurrentTime}
+              isPlaying={isPlaying}
+              setIsPlaying={setIsPlaying}
               setModelSwapRunning={setModelSwapRunning}
               ratio={ratio}
               session={authUser.id}
@@ -882,7 +1000,8 @@ function App() {
             )}
 
             {!isLibraryWorkspace && (
-              <PropertyInspector
+              <StudioInspector
+                mode="editor"
                 layers={layers}
                 setLayers={setLayers}
                 selectedLayerId={selectedLayerId}
@@ -897,6 +1016,14 @@ function App() {
 
       {/* Bottom timeline track scrubbers (Hidden during fullscreen preview or canvas mode) */}
       {!isFullscreen && viewMode === 'editor' && !isLibraryWorkspace && renderTimeline(false)}
+      {!isLibraryWorkspace && <footer className="studio-statusbar">
+        <span className="studio-status-ok"><i aria-hidden="true" />服务正常</span>
+        <span className="studio-status-summary"><b>{Math.max(0, ...layers.map(layer => layer.end)).toFixed(1)}s</b><span>·</span><b>{layers.filter(layer => layer.visible).length}</b> 个图层</span>
+        <span className="studio-status-right"><strong>{activeProject?.name || '当前工程'}</strong><span>拖动片段调整节奏</span></span>
+      </footer>}
+      </div>
+
+      {!isFullscreen && !isCopilotOpen && <AICopilotLauncher onClick={() => setIsCopilotOpen(true)} />}
 
       {isOnboardingOpen && (
         <OnboardingWizard
@@ -978,7 +1105,17 @@ function App() {
             connections: CanvasConnection[];
             viewport?: CanvasViewport;
           }>(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`);
-          exportProjectPackage({ project: curProj, ratio, layers, infiniteCanvas: canvasData || undefined });
+          exportProjectPackage({
+            project: curProj,
+            ratio,
+            layers,
+            infiniteCanvas: canvasData || undefined,
+            storyboards: curProj?.storyboards,
+            modelOutfitImgUrl: curProj?.modelOutfitImgUrl,
+            referenceOutfitUrls: curProj?.referenceOutfitUrls,
+            modelScene: curProj?.modelScene,
+            customPrompt: curProj?.i2vMasterPrompt15s
+          });
           toast.success('已成功导出完整工程包 (.keyvideo.json)！');
         }}
         onImportPackage={async (pkg) => {
@@ -988,6 +1125,20 @@ function App() {
             }
             if (pkg.canvas?.ratio) {
               setRatio(pkg.canvas.ratio);
+            }
+            if (pkg.aiState) {
+              setProjects(previous => previous.map(project => project.id === activeProjectId ? {
+                ...project,
+                name: pkg.project?.name || project.name,
+                storyboards: pkg.aiState?.storyboards || project.storyboards,
+                modelOutfitImgUrl: pkg.aiState?.modelOutfitImgUrl ?? project.modelOutfitImgUrl,
+                modelOutfitImgUrls: pkg.aiState?.modelOutfitImgUrl ? [pkg.aiState.modelOutfitImgUrl] : project.modelOutfitImgUrls,
+                referenceOutfitUrl: pkg.aiState?.referenceOutfitUrls?.[0] || project.referenceOutfitUrl,
+                referenceOutfitUrls: pkg.aiState?.referenceOutfitUrls || project.referenceOutfitUrls,
+                modelScene: pkg.aiState?.modelScene || project.modelScene,
+                i2vMasterPrompt15s: pkg.aiState?.customPrompt || project.i2vMasterPrompt15s
+              } : project));
+              window.setTimeout(() => sidebarRef.current?.switchProject(activeProjectId), 0);
             }
             if (pkg.infiniteCanvas) {
               await localDB.set(`KEYVIDEO_CANVAS_DATA_${activeProjectId || 'default'}`, pkg.infiniteCanvas);

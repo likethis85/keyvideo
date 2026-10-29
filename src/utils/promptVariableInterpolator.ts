@@ -57,19 +57,19 @@ const APPAREL_MAP: Record<string, { clothing: string; fabric: string; action: st
 };
 
 const CAMERA_MAP: Record<string, string> = {
-  cinematic_dolly: '缓慢平移微推 (Slow Cinematic Dolly In)',
-  orbit_360: '360°平滑轨道环绕运镜 (Smooth 360 Orbit)',
-  macro_rack: '微距浅景深虚化变焦 (Macro Rack Focus)',
-  low_angle: '仰角跟拍凸显修长比例 (Low Angle Catwalk Tracking)',
-  default: '平稳电影级运镜 (Smooth Cinematic Motion)'
+  cinematic_dolly: '缓慢平移微推',
+  orbit_360: '360°平滑轨道环绕运镜',
+  macro_rack: '微距浅景深虚化变焦',
+  low_angle: '仰角跟拍，凸显修长比例',
+  default: '平稳电影级运镜'
 };
 
 const LIGHTING_MAP: Record<string, string> = {
-  editorial_soft: '高端商业影棚柔光箱漫反射无阴影 (Studio Softbox)',
-  golden_hour: '落日黄金时刻温暖逆光与自然光晕 (Golden Hour Sun Flare)',
-  wabi_sabi: '极简建筑空间天然直射硬朗几何光影 (Architectural Geometry)',
-  cyber_night: '潮酷都市夜景湿润地面霓虹倒影 (Moody Cyber Neon Glow)',
-  default: '自然清透立体通透布光 (Clean Neutral Lighting)'
+  editorial_soft: '高端商业影棚柔光箱漫反射，无明显阴影',
+  golden_hour: '落日黄金时刻温暖逆光与自然光晕',
+  wabi_sabi: '极简建筑空间天然直射，硬朗几何光影',
+  cyber_night: '潮酷都市夜景，湿润地面映出霓虹倒影',
+  default: '自然清透、立体通透的布光'
 };
 
 /**
@@ -85,7 +85,7 @@ export function resolvePromptVariables(ctx: PromptVariableContext = {}): PromptV
   const apparelInfo = APPAREL_MAP[ctx.apparelStyle || 'general'] || APPAREL_MAP.general;
   const cameraText = CAMERA_MAP[ctx.cameraStyle || 'cinematic_dolly'] || CAMERA_MAP.default;
   const lightingText = ctx.modelScene || LIGHTING_MAP[ctx.lightingMood || 'editorial_soft'] || LIGHTING_MAP.default;
-  const speedText = ctx.useSlowMotion ? '60FPS 升格丝滑慢动作' : '电影级从容自然帧率';
+  const speedText = ctx.useSlowMotion ? '每秒 60 帧升格慢动作' : '电影级从容自然帧率';
 
   const baseVars: PromptVariableDef[] = [
     { key: 'model', label: '模特特征', icon: '👤', value: modelText, category: 'model' },

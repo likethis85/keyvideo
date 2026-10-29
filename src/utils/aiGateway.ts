@@ -135,6 +135,24 @@ const requestJson = async <T>(
   throw lastError instanceof Error ? lastError : new Error(options.fallbackError);
 };
 
+export const generateVideoCopy = async (params: {
+  brief: string;
+  product?: string;
+  platform?: string;
+  tone?: string;
+  goal?: string;
+}): Promise<string[]> => {
+  const data = await requestJson<{ text: string }>(`${getBackendUrl()}/api/ai/text-copy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  }, {
+    timeoutMs: LONG_AI_REQUEST_TIMEOUT_MS,
+    fallbackError: 'AI 文案生成失败'
+  });
+  return data.text.split(/\r?\n/).map(line => line.replace(/^\s*(?:[-*•]|\d+[.、)]|[“"'])\s*/, '').replace(/[”"']\s*$/, '').trim()).filter(Boolean).slice(0, 8);
+};
+
 // Helper: Poll backend task status until completed
 export const pollBackendTask = async (taskId: string, maxSeconds = 180): Promise<string> => {
   const result = await runPollingTask<string>({

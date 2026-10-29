@@ -1,6 +1,6 @@
 export interface PromptItem {
   id: string;
-  category: 'camera' | 'lighting' | 'copy' | 'fabric';
+  category: 'camera' | 'lighting' | 'copy' | 'fabric' | 'story' | 'style';
   title: string;
   tags: string[];
   content: string;
@@ -32,7 +32,9 @@ export const PROMPT_CATEGORIES = [
   { id: 'camera', label: '镜头运镜', icon: '🎥' },
   { id: 'lighting', label: '光影氛围', icon: '💡' },
   { id: 'copy', label: '文案钩子', icon: '✍️' },
-  { id: 'fabric', label: '面料版型', icon: '👗' }
+  { id: 'fabric', label: '面料版型', icon: '👗' },
+  { id: 'story', label: '节奏结构', icon: '🧩' },
+  { id: 'style', label: '色彩风格', icon: '🎨' }
 ] as const;
 
 export const PROMPT_LIBRARY: PromptItem[] = [
@@ -42,7 +44,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'camera',
     title: '特写微推（突出细节）',
     tags: ['推镜头', '细节特写', '高级感'],
-    content: 'Slow cinematic push-in towards {model}, emphasizing {fabric} texture and premium craftsmanship, buttery smooth tracking',
+    content: '缓慢电影级向前推近镜头，聚焦{model}的{fabric}面料纹理与精湛工艺，运镜丝滑平稳',
     description: '镜头平缓推近模特，聚焦服装面料质感与精细做工。',
     targetType: 'prompt',
     recommendedShot: 'shot-2',
@@ -53,7 +55,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'camera',
     title: '360° 环绕走秀',
     tags: ['环绕', '走秀姿态', '动态全貌'],
-    content: 'Smooth 360-degree orbit rotation around {model} walking confidently, dynamic runway perspective showcasing {clothing}, fluid cinematic motion',
+    content: '围绕自信行走的{model}进行360度平滑环绕，采用动态秀场视角展示{clothing}，电影级运动流畅自然',
     description: '环绕模特流畅旋转，全方位展示服装前后剪裁与上身效果。',
     targetType: 'prompt',
     recommendedShot: 'shot-3',
@@ -64,7 +66,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'camera',
     title: '慢动作灵动卡点',
     tags: ['慢动作', '飘逸动感', '卡点节拍'],
-    content: 'High framerate slow-motion capture at {speed}, {model} turning gracefully, dynamic breeze flowing through the {clothing} hemline',
+    content: '以{speed}进行高帧率慢动作拍摄，{model}优雅转身，微风吹动{clothing}下摆，呈现灵动飘逸效果',
     description: '升格慢动作捕捉转身瞬间，衣摆随微风灵动摇曳。',
     targetType: 'prompt',
     recommendedShot: 'shot-4',
@@ -75,7 +77,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'camera',
     title: '仰拍气场跟拍',
     tags: ['低角度', '修长身材', '超模气场'],
-    content: 'Cinematic low-angle tracking shot moving forward alongside {model}, lengthening legs, confident fashion editorial catwalk wearing {clothing}',
+    content: '电影级低角度跟拍，与{model}并行向前移动，拉长腿部比例，呈现穿着{clothing}的自信时尚走秀气场',
     description: '低视角向前跟拍，凸显修长腿部比例与超模出街气场。',
     targetType: 'prompt',
     recommendedShot: 'shot-1',
@@ -86,7 +88,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'camera',
     title: '微距材质浅景深',
     tags: ['微距', '浅景深', '面料肌理'],
-    content: 'Macro close-up rack focus on {clothing} seams and {fabric} weave, creamy background bokeh, studio editorial detail',
+    content: '微距特写并进行焦点转移，对准{clothing}缝线与{fabric}织纹，奶油般背景虚化，呈现影棚级细节质感',
     description: '焦点从背景变焦拉到面料缝线，虚化自然细腻。',
     targetType: 'prompt',
     recommendedShot: 'shot-2',
@@ -99,7 +101,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'lighting',
     title: '高端大牌影棚柔光',
     tags: ['商业影棚', '高级柔光', '无暇底色'],
-    content: 'High-end commercial photo studio lighting, large softbox diffused illumination, subtle rim light highlighting {clothing} silhouette, clean neutral background',
+    content: '高端商业影棚布光，大型柔光箱漫射照明，细腻轮廓光勾勒{clothing}剪影，干净中性背景',
     description: '经典商业摄影柔光箱布光，立体轮廓光勾勒服装层次。',
     targetType: 'prompt',
     recommendedShot: 'all',
@@ -110,7 +112,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'lighting',
     title: '落日金辉度假风',
     tags: ['黄金时刻', '户外阳光', '温暖惬意'],
-    content: 'Golden hour sunset backlight, warm cinematic lens flares, soft ocean breeze, natural sunny holiday mood reflecting on {fabric}',
+    content: '落日黄金时刻逆光，温暖电影级镜头光晕，柔和海风与明亮假日氛围映照{fabric}',
     description: '傍晚落日逆光，温暖金色光晕营造舒适度假生活感。',
     targetType: 'prompt',
     recommendedShot: 'all',
@@ -121,7 +123,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'lighting',
     title: '极简性冷淡建筑光影',
     tags: ['极简主义', '建筑几何', '高级冷淡'],
-    content: 'Minimalist wabi-sabi architectural background, crisp natural directional sunlight, soft geometric architectural shadows highlighting {clothing}',
+    content: '极简侘寂建筑背景，清晰自然的定向日光，柔和几何建筑阴影凸显{clothing}',
     description: '极简清水混凝土建筑环境，硬朗几何阴影凸显现代艺术感。',
     targetType: 'prompt',
     recommendedShot: 'shot-5',
@@ -132,7 +134,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'lighting',
     title: '夜色街头潮酷霓虹',
     tags: ['街头夜景', '霓虹光效', '潮流都市'],
-    content: 'Vibrant city night street background, wet asphalt reflecting colorful neon glows, moody atmospheric rim light on {model} and {clothing}',
+    content: '充满活力的都市夜街背景，湿润路面倒映彩色霓虹，氛围轮廓光映照{model}与{clothing}',
     description: '潮牌出街首选，湿润地面倒影配合霓虹氛围灯。',
     targetType: 'prompt',
     recommendedShot: 'all',
@@ -188,7 +190,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'fabric',
     title: '法式垂坠丝光感',
     tags: ['垂感', '丝光流光', '亲肤顺滑'],
-    content: 'Silky flowing drape with subtle pearlescent sheen, fluid movement, premium fluid textile, wrinkle-resistant luxury touch',
+    content: '丝质流动垂坠感，细腻珍珠微光，动作自然流畅，高级流动纺织面料，触感奢华且抗皱',
     description: '极具法式优雅的流动垂坠感，微光面料。',
     targetType: 'prompt',
     recommendedShot: 'shot-2'
@@ -198,7 +200,7 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'fabric',
     title: '立体挺括重磅西装剪裁',
     tags: ['立体版型', '挺括肩线', '利落干练'],
-    content: 'Crisp heavyweight tailored silhouette, structured shoulder line, clean sharp lapels, immaculate fit, premium wool blend feel',
+    content: '清晰挺括的重磅剪裁轮廓，结构化肩线，利落平驳领，版型精致无瑕，呈现高级羊毛混纺质感',
     description: '立体挺括轮廓，修饰身型，尽显专业高级质感。',
     targetType: 'prompt',
     recommendedShot: 'shot-4'
@@ -208,10 +210,87 @@ export const PROMPT_LIBRARY: PromptItem[] = [
     category: 'fabric',
     title: '自然棉麻微肌理',
     tags: ['棉麻质地', '自然透气', '文艺舒缓'],
-    content: 'Textured breathable linen-cotton weave, authentic tactile organic slub surface, soft earthy tones, airy relaxed silhouette',
+    content: '具有真实触感的透气棉麻织纹，自然有机粗节肌理，柔和大地色调，轻盈松弛的廓形',
     description: '天然棉麻微纹理，透气轻盈，充满松弛感。',
     targetType: 'prompt',
     recommendedShot: 'shot-2'
+  },
+  {
+    id: 'story_hook_reveal',
+    category: 'story',
+    title: '悬念揭示：先给局部再亮相',
+    tags: ['悬念开场', '节奏递进', '新品发布'],
+    content: '前1秒只展示{clothing}的局部材质与轮廓，保持信息不完整；随后镜头快速拉远并切换全身画面，让{model}完成一次自然转身，最后用一句简短卖点完成亮相。',
+    description: '先隐藏关键信息制造好奇，再用完整亮相完成记忆点建立。',
+    targetType: 'prompt',
+    recommendedShot: 'shot-1',
+    hasVariables: true
+  },
+  {
+    id: 'story_three_proof',
+    category: 'story',
+    title: '三段证据：卖点逐个被看见',
+    tags: ['卖点拆解', '证据镜头', '转化节奏'],
+    content: '围绕{clothing}依次展示三个可被看见的证据：版型轮廓、{fabric}纹理和实际动作表现；每个证据只保留一个清晰动作，镜头之间使用干净硬切，结尾回到人物整体状态。',
+    description: '把抽象卖点拆成三个可以被镜头证明的具体细节。',
+    targetType: 'prompt',
+    recommendedShot: 'shot-2',
+    hasVariables: true
+  },
+  {
+    id: 'story_before_after',
+    category: 'story',
+    title: '前后对比：一眼看懂变化',
+    tags: ['前后对比', '同机位', '效果展示'],
+    content: '使用固定机位和相同构图，先展示未搭配状态，再通过一次自然转身或遮挡转场切换到{model}穿着{clothing}的完整效果；保持光线和背景一致，让变化集中在服装与整体比例上。',
+    description: '用同机位对比降低理解成本，适合穿搭改造和效果证明。',
+    targetType: 'prompt',
+    recommendedShot: 'shot-3',
+    hasVariables: true
+  },
+  {
+    id: 'style_editorial_monochrome',
+    category: 'style',
+    title: '杂志黑白：高级对比质感',
+    tags: ['黑白影像', '杂志感', '高对比'],
+    content: '采用克制的黑白摄影风格，保留{clothing}的轮廓、褶皱和{fabric}纹理，用硬朗侧光制造清晰明暗分界，画面简洁留白，呈现时装杂志内页质感。',
+    description: '用黑白和明暗关系突出剪裁，不依赖复杂背景。',
+    targetType: 'prompt',
+    recommendedShot: 'all',
+    hasVariables: true
+  },
+  {
+    id: 'style_pastel_commerce',
+    category: 'style',
+    title: '柔和彩色：轻盈电商氛围',
+    tags: ['低饱和', '柔和彩色', '电商主图'],
+    content: '使用低饱和奶油色背景与柔和漫射光，围绕{clothing}建立干净的商业画面；色彩统一、阴影轻薄，人物动作自然，突出{fabric}的触感与亲和力。',
+    description: '适合电商展示和日常穿搭，画面轻松且信息清晰。',
+    targetType: 'prompt',
+    recommendedShot: 'all',
+    hasVariables: true
+  },
+  {
+    id: 'copy_comment_question',
+    category: 'copy',
+    title: '评论互动：把选择题抛给观众',
+    tags: ['评论引导', '互动提问', '社区传播'],
+    content: '你会选择{clothing}的通勤穿法，还是周末休闲穿法？把两种搭配并列展示，最后邀请观众在评论区留下选择。',
+    description: '把单向介绍变成明确问题，帮助视频获得互动和停留。',
+    targetType: 'both',
+    recommendedShot: 'shot-5',
+    hasVariables: true
+  },
+  {
+    id: 'camera_handheld_follow',
+    category: 'camera',
+    title: '手持跟拍：真实街头呼吸感',
+    tags: ['手持跟拍', '真实感', '街头氛围'],
+    content: '使用轻微手持跟拍，镜头与{model}保持自然距离，捕捉走路、回头和整理{clothing}的真实动作；保留少量环境声，避免过度稳定和过度磨皮。',
+    description: '比精致棚拍更有生活感，适合街头、通勤和短视频原生内容。',
+    targetType: 'prompt',
+    recommendedShot: 'shot-3',
+    hasVariables: true
   }
 ];
 

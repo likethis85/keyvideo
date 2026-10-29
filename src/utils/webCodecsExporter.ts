@@ -26,6 +26,8 @@ export interface ExportResultInfo {
   sizeBytes: number;
   width: number;
   height: number;
+  mimeType?: string;
+  fileExtension?: 'mp4' | 'webm';
 }
 
 export interface WebCodecsExportOptions {

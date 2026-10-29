@@ -18,6 +18,8 @@ interface Props {
   onDelete: (layer: Layer) => void;
   onSplitLayer?: (layer: Layer) => void;
   onTransitionChange?: (layerId: string, transitionType: TransitionType, duration?: number) => void;
+  rowHeight?: number;
+  showDuration?: boolean;
 }
 
 export function TimelineTrackBlocks(props: Props) {
@@ -56,7 +58,7 @@ export function TimelineTrackBlocks(props: Props) {
     if (lane < 0) { lane = laneEnds.length; laneEnds.push(layer.end); } else laneEnds[lane] = layer.end;
     blockLanes[layer.id] = lane;
   });
-  const rowHeight = 38;
+  const rowHeight = props.rowHeight ?? 38;
 
   return (
     <div className="track-lane-container" style={{ height: Math.max(1, laneEnds.length) * rowHeight }}>
@@ -82,6 +84,11 @@ export function TimelineTrackBlocks(props: Props) {
               paddingInline: active ? 12 : 10,
               cursor: props.draggingLayerId === layer.id ? 'grabbing' : 'grab',
               opacity: layer.visible ? 1 : 0.45,
+              backgroundImage: layer.type === 'media' && (layer.properties.poster || layer.properties.src)
+                ? `linear-gradient(90deg, rgba(7,12,20,.16), rgba(7,12,20,.6)), url(${layer.properties.poster || layer.properties.src})`
+                : undefined,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
             }}
             title="↔️ 按住鼠标左右拖拽可调换视频分镜次序"
             onMouseDown={event => props.onBlockMouseDown(event, layer)}
@@ -125,6 +132,7 @@ export function TimelineTrackBlocks(props: Props) {
               {layer.type === 'sticker' && !layer.name.startsWith('🏷️') && '🏷️'}
               {layer.name}
             </span>
+            {props.showDuration && <span className="timeline-block-duration">{(layer.end - layer.start).toFixed(1)}s</span>}
 
             {/* Hover Actions: Quick Split, Quick Transition, Toggle Visibility, Delete */}
             <div className="block-hover-actions" onClick={event => event.stopPropagation()}>

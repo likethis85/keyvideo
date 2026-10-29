@@ -77,12 +77,14 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
 
   return (
     <div
+      className="studio-ai-copilot"
       style={{
         position: 'fixed',
         top: '56px',
         right: 0,
         bottom: 0,
-        width: '380px',
+        width: '420px',
+        maxWidth: 'min(420px, 100vw)',
         background: 'var(--modal-bg, var(--bg-surface, #ffffff))',
         backdropFilter: 'blur(20px)',
         borderLeft: '1px solid var(--border-color)',
@@ -106,15 +108,16 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '18px' }}>🤖</span>
-          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>AI 剪辑助理 (Copilot)</h3>
+          <span className="studio-ai-copilot-mark" aria-hidden="true">🤖</span>
+          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 750, color: 'var(--text-primary)' }}>AI 剪辑助理</h3>
           <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '10px', background: 'var(--accent-purple-glow, rgba(124, 58, 237, 0.15))', color: 'var(--accent-purple)', fontWeight: 600 }}>
             Agent 就绪
           </span>
         </div>
         <button
           onClick={onClose}
-          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer', padding: '0 4px' }}
+          aria-label="关闭 AI 剪辑助理"
+          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '22px', cursor: 'pointer', padding: '0 4px' }}
         >
           ✕
         </button>
@@ -140,7 +143,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
                 background: msg.sender === 'user' ? 'var(--accent-purple, #7c3aed)' : 'var(--bg-element)',
                 border: msg.sender === 'user' ? 'none' : '1px solid var(--border-color)',
                 color: msg.sender === 'user' ? '#ffffff' : 'var(--text-primary)',
-                fontSize: '12px',
+                fontSize: '13px',
                 lineHeight: '1.5',
                 whiteSpace: 'pre-wrap'
               }}
@@ -188,7 +191,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
               border: '1px solid var(--border-color)',
               background: 'var(--bg-surface, #ffffff)',
               color: 'var(--text-secondary)',
-              fontSize: '11px',
+              fontSize: '12px',
               whiteSpace: 'nowrap',
               cursor: 'pointer',
               transition: 'all 0.15s ease'
@@ -219,7 +222,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
             border: '1px solid var(--border-color)',
             background: 'var(--bg-element)',
             color: 'var(--text-primary)',
-            fontSize: '12px',
+            fontSize: '13px',
             outline: 'none'
           }}
         />
@@ -232,7 +235,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
             background: 'var(--accent-purple, #7c3aed)',
             border: 'none',
             color: '#fff',
-            fontSize: '12px',
+            fontSize: '13px',
             fontWeight: 600,
             cursor: 'pointer'
           }}

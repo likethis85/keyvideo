@@ -1,6 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AIProject } from '../SidebarDrawer';
 
+function ProjectIcon({ name }: { name: 'folder' | 'search' | 'plus' | 'dashboard' | 'check' | 'close' | 'spark' | 'video' }) {
+  const paths = {
+    folder: <><path d="M3 6.5h7l2 2h9v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M3 9h18" /></>,
+    search: <><circle cx="10.8" cy="10.8" r="6.3" /><path d="m16 16 4.5 4.5" /></>,
+    plus: <><path d="M12 5v14M5 12h14" /></>,
+    dashboard: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+    check: <><path d="m5 12 4 4L19 6" /></>,
+    close: <><path d="m6 6 12 12M18 6 6 18" /></>,
+    spark: <><path d="m12 3 1.4 5.1L18 10l-4.6 1.9L12 17l-1.4-5.1L6 10l4.6-1.9L12 3Z" /><path d="m19 16 .6 2.4L22 19l-2.4.6L19 22l-.6-2.4L16 19l2.4-.6L19 16Z" /></>,
+    video: <><rect x="3" y="5" width="13" height="14" rx="2" /><path d="m16 10 5-3v10l-5-3" /><path d="m8 9 4 3-4 3V9Z" /></>
+  };
+  return <svg className="project-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+}
+
+function ChevronIcon() {
+  return <svg className="project-chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>;
+}
+
 interface ProjectSelectorProps {
   projects: AIProject[];
   activeProjectId: string;
@@ -18,9 +36,9 @@ interface ProjectSelectorProps {
 }
 
 function ProjectStatus({ project }: { project: AIProject }) {
-  if (project.isI2vGenerating) return <span className="project-status project-status-video">⚡ 生视频中</span>;
-  if (project.isOutfitImgGenerating) return <span className="project-status project-status-outfit">✨ 生穿搭中</span>;
-  if (project.i2vStep === 'video_generated') return <span className="project-status project-status-done">✓ 已生视频</span>;
+  if (project.isI2vGenerating) return <span className="project-status project-status-video"><ProjectIcon name="video" /> 生视频中</span>;
+  if (project.isOutfitImgGenerating) return <span className="project-status project-status-outfit"><ProjectIcon name="spark" /> 生穿搭中</span>;
+  if (project.i2vStep === 'video_generated') return <span className="project-status project-status-done"><ProjectIcon name="check" /> 已生视频</span>;
   return null;
 }
 
@@ -74,14 +92,14 @@ export function ProjectSelector(props: ProjectSelectorProps) {
           onClick={() => { setIsOpen(open => !open); setQuery(''); }}
           title="点击展开/搜索项目列表"
         >
-          <span className="project-folder-icon">▰</span>
+          <span className="project-folder-icon" aria-hidden="true"><ProjectIcon name="folder" /></span>
           <span className="project-selector-name">{activeProject?.name || '默认项目'}</span>
-          <span className={`project-chevron ${isOpen ? 'open' : ''}`}>⌄</span>
+          <span className={`project-chevron ${isOpen ? 'open' : ''}`}><ChevronIcon /></span>
         </button>
 
         {isOpen && (
           <div className="glass-panel project-selector-menu">
-            <div className="project-search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={`在 ${props.projects.length} 个项目中快速搜索...`} autoFocus />{query && <button onClick={() => setQuery('')}>×</button>}</div>
+            <div className="project-search"><ProjectIcon name="search" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={`在 ${props.projects.length} 个项目中快速搜索...`} autoFocus />{query && <button aria-label="清除搜索" onClick={() => setQuery('')}><ProjectIcon name="close" /></button>}</div>
             <div className="project-list">
               {filteredProjects.length === 0 ? (
                 <div className="project-empty">未找到与「{query}」相关的项目</div>
@@ -89,25 +107,31 @@ export function ProjectSelector(props: ProjectSelectorProps) {
                 const active = project.id === props.activeProjectId;
                 return (
                   <button key={project.id} className={`project-list-item ${active ? 'active' : ''}`} onClick={() => closeAnd(() => props.onSwitchProject(project.id))}>
-                    <span className="project-list-name"><span>{active ? '✓' : '•'}</span><span title={project.name}>{project.name}</span></span>
+                    <span className="project-list-name"><span className="project-list-mark"><ProjectIcon name={active ? 'check' : 'folder'} /></span><span title={project.name}>{project.name}</span></span>
                     <ProjectStatus project={project} />
                   </button>
                 );
               })}
             </div>
             <div className="project-menu-footer">
-              <button onClick={() => closeAnd(props.onCreateProject)}>＋ 新建项目</button>
-              <button onClick={() => closeAnd(props.onOpenDashboard)}>▦ 大屏看板 ({props.projects.length})</button>
+              <button onClick={() => closeAnd(props.onCreateProject)}><ProjectIcon name="plus" /> 新建项目</button>
+              <button onClick={() => closeAnd(props.onOpenDashboard)}><ProjectIcon name="dashboard" /> 大屏看板 <b>{props.projects.length}</b></button>
             </div>
           </div>
         )}
       </div>
 
       <span className="project-actions-divider" />
-      <button className={`project-create-button ${props.theme}`} onClick={props.onCreateProject}>＋ <span>新建项目</span></button>
-      <button className="icon-btn-micro project-action" onClick={props.onStartRename} title="重命名项目">✎</button>
-      {props.projects.length > 1 && <button className="icon-btn-micro project-action delete" onClick={() => props.onDeleteProject(props.activeProjectId)} title="删除当前项目">♲</button>}
-      <button className="icon-btn-micro project-action dashboard" onClick={props.onOpenDashboard} title="项目管理大屏看板">▦</button>
+      <button className={`project-create-button ${props.theme}`} onClick={props.onCreateProject} title="创建一个新的剪辑项目"><span className="project-create-icon"><ProjectIcon name="plus" /></span><span>新建项目</span></button>
+      <button className="icon-btn-micro project-action project-action-labeled" onClick={props.onStartRename} title="重命名当前项目">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg><span>重命名</span>
+      </button>
+      {props.projects.length > 1 && <button className="icon-btn-micro project-action project-action-labeled delete" onClick={() => props.onDeleteProject(props.activeProjectId)} title="删除当前项目">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6m4-6v6" /><path d="m6 7 1 13h10l1-13M9 7V4h6v3" /></svg><span>删除</span>
+      </button>}
+      <button className="icon-btn-micro project-action project-action-labeled dashboard" onClick={props.onOpenDashboard} title="打开项目管理看板">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg><span>项目</span>
+      </button>
     </div>
   );
 }

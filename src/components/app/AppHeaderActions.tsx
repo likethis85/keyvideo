@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Props {
   theme: 'dark' | 'light';
   userEmail?: string;
+  variant?: 'library' | 'editor' | 'timeline' | 'canvas';
   onAddLayer: () => void;
   onExport: () => void;
+  onPreview?: () => void;
   onOpenSettings: () => void;
   onReplayOnboarding?: () => void;
   onToggleTheme?: () => void;
@@ -14,486 +17,79 @@ interface Props {
   onOpenCustomApiModal?: () => void;
   onExportProjectPackage?: () => void;
   onImportProjectPackage?: (file: File) => void;
+  onOpenProjects?: () => void;
+  onCanvasAction?: (action: 'import' | 'fit' | 'run') => void;
 }
-
 export function AppHeaderActions(props: Props) {
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-  const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const variant = props.variant ?? 'editor';
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (userMenuOpen && !userMenuRef.current?.contains(target)) {
-        setUserMenuOpen(false);
-      }
-      if (settingsMenuOpen && !settingsMenuRef.current?.contains(target)) {
-        setSettingsMenuOpen(false);
-      }
+    const outside = (event: MouseEvent) => { if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false); };
+    const keyboard = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMenuOpen(false); setShortcutsOpen(false); } };
+    document.addEventListener('mousedown', outside);
+    window.addEventListener('keydown', keyboard);
+    return () => { document.removeEventListener('mousedown', outside); window.removeEventListener('keydown', keyboard); };
+  }, []);
+
+  const action = (fn?: () => void) => { setMenuOpen(false); fn?.(); };
+  const icon = (name: 'preview' | 'shortcut' | 'export' | 'import' | 'fit' | 'run' | 'recent' | 'settings') => {
+    const paths: Record<typeof name, ReactNode> = {
+      preview: <><path d="M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></>,
+      shortcut: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 9h2m3 0h2m3 0h0M7 13h6m3 0h1" /></>,
+      export: <><path d="M12 16V3" /><path d="m7 8 5-5 5 5" /><path d="M4 14v5h16v-5" /></>,
+      import: <><path d="M12 3v13" /><path d="m7 11 5 5 5-5" /><path d="M4 19h16" /></>,
+      fit: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 4v4H5m10-4v4h4M9 20v-4H5m10 4v-4h4" /></>,
+      run: <><path d="m8 5 11 7-11 7V5Z" /></>,
+      recent: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7v5l3 2" /></>,
+      settings: <><path d="M12 3.8 14 3l1.25 2.25 2.35.65 2.2-1.05 1.55 1.55-1.05 2.2.65 2.35 2.25 1.25-.8 2-2.5.2-1.45 1.95.25 2.5-2 1-1.8-1.75-2.35.65-1.45 2.05h-2l-1.25-2.25-2.35-.65-2.2 1.05-1.55-1.55 1.05-2.2-.65-2.35L2.8 12l.8-2 2.5-.2 1.45-1.95-.25-2.5 2-1 1.8 1.75 2.35-.65L12 3.8Z" /><circle cx="12" cy="12" r="3.2" /></>
     };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setUserMenuOpen(false);
-        setSettingsMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [userMenuOpen, settingsMenuOpen]);
-
-  return (
-    <div className="header-actions">
-      {/* Hidden file input for importing project packages */}
-      {props.onImportProjectPackage && (
-        <input
-          type="file"
-          ref={fileInputRef}
-          accept=".json,.keyvideo.json"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) props.onImportProjectPackage?.(file);
-            e.target.value = '';
-          }}
-        />
-      )}
-
-      {/* Primary Action Buttons */}
-      <button className="btn-secondary" onClick={props.onAddLayer}>
-        ＋ <span className="action-btn-text">添加图层</span>
+    return <svg className="studio-button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+  };
+  return <div className="header-actions studio-header-actions">
+    <input ref={fileInputRef} hidden type="file" accept=".json,.keyvideo.json" onChange={event => {
+      const file = event.target.files?.[0];
+      if (file) props.onImportProjectPackage?.(file);
+      event.target.value = '';
+    }} />
+    {variant === 'library' ? props.onOpenProjects && <button className="studio-button header-action-button" onClick={props.onOpenProjects} title="打开最近项目与项目管理">{icon('recent')}<span>最近项目</span></button>
+      : variant === 'canvas' ? <>
+        <button className="studio-button header-action-button" onClick={() => props.onCanvasAction?.('import')} title="导入工程包或画布数据">{icon('import')}<span>导入</span></button>
+        <button className="studio-button header-action-button" onClick={() => props.onCanvasAction?.('fit')} title="将所有节点缩放到可见范围">{icon('fit')}<span>适应画布</span></button>
+        <button className="studio-button header-action-button primary" onClick={() => props.onCanvasAction?.('run')} title="按当前连线顺序运行全部节点">{icon('run')}<span>运行全部</span></button>
+      </> : <>
+        <button className="studio-button header-action-button" onClick={props.onPreview} title="全屏预览当前成片">{icon('preview')}<span>预览</span></button>
+        <button className="studio-button header-action-button" onClick={() => setShortcutsOpen(true)} title="查看剪辑快捷键">{icon('shortcut')}<span>快捷键</span></button>
+        <button className={`studio-button header-action-button ${variant === 'editor' ? 'primary' : ''}`} onClick={props.onExport} title="打开视频导出设置">{icon('export')}<span>导出</span></button>
+      </>}
+    {props.onOpenSettings && <button className="studio-button header-action-button header-settings-button" onClick={props.onOpenSettings} title="打开系统设置">{icon('settings')}<span>设置</span></button>}
+    <div className="header-user-menu" ref={menuRef}>
+      <button className="header-user-avatar" aria-label="账号与设置" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)} title={props.userEmail}>
+        {(props.userEmail || 'K')[0].toUpperCase()}
       </button>
-
-      <button className="btn-primary" onClick={props.onExport}>
-        ⇩ <span className="action-btn-text">一键导出</span>
-      </button>
-
-      {/* AI Copilot shortcut */}
-      {props.onToggleCopilot && (
-        <button
-          className="btn-secondary header-action-button"
-          onClick={props.onToggleCopilot}
-          title="唤出 AI 剪辑助理"
-        >
-          🤖 <span className="action-btn-text">AI 助理</span>
-        </button>
-      )}
-
-      {/* Settings Dropdown Menu: includes 导入工程, 导出工程, 服务配置, API 脚本 */}
-      <div style={{ position: 'relative' }} ref={settingsMenuRef}>
-        <button
-          className={`btn-secondary header-action-button ${settingsMenuOpen ? 'active' : ''}`}
-          onClick={() => setSettingsMenuOpen(open => !open)}
-          title="系统与工程设置"
-          style={{
-            borderColor: settingsMenuOpen ? 'var(--accent-purple, #8a2be2)' : undefined,
-            background: settingsMenuOpen ? 'var(--bg-element-hover, rgba(255,255,255,0.08))' : undefined,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-        >
-          ⚙️ <span className="action-btn-text">设置</span>
-          <span
-            style={{
-              fontSize: '10px',
-              opacity: 0.7,
-              display: 'inline-block',
-              transform: settingsMenuOpen ? 'rotate(180deg)' : 'none',
-              transition: 'transform 0.2s ease'
-            }}
-          >
-            ▾
-          </span>
-        </button>
-
-        {settingsMenuOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 'calc(100% + 8px)',
-              right: 0,
-              width: '230px',
-              background: 'var(--modal-bg, #14151f)',
-              border: '1px solid var(--border-color, rgba(255, 255, 255, 0.12))',
-              borderRadius: '12px',
-              boxShadow: '0 16px 36px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-color, rgba(255, 255, 255, 0.05))',
-              padding: '6px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '2px',
-              zIndex: 1000,
-              backdropFilter: 'blur(16px)',
-              WebkitBackdropFilter: 'blur(16px)',
-              animation: 'fadeIn 0.15s ease-out'
-            }}
-          >
-            {/* Replay onboarding */}
-            {props.onReplayOnboarding && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsMenuOpen(false);
-                  props.onReplayOnboarding?.();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  width: '100%',
-                  padding: '8px 10px',
-                  borderRadius: '8px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary, #ffffff)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease'
-                }}
-                onMouseOver={e => {
-                  e.currentTarget.style.background = 'var(--bg-element-hover, rgba(255,255,255,0.06))';
-                }}
-                onMouseOut={e => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <span style={{ fontSize: '15px' }}>🎬</span>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500 }}>重看 3 步引导</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary, #9ca3af)' }}>新建项目 / 选脚本 / 导入素材</span>
-                </div>
-              </button>
-            )}
-
-            {/* Group 1: Project Package Management */}
-            <div
-              style={{
-                padding: '6px 10px 4px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--text-muted, #6b7280)',
-                letterSpacing: '0.04em'
-              }}
-            >
-              工程文件管理
-            </div>
-
-            {props.onImportProjectPackage && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsMenuOpen(false);
-                  fileInputRef.current?.click();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  width: '100%',
-                  padding: '8px 10px',
-                  borderRadius: '8px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary, #ffffff)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease'
-                }}
-                onMouseOver={e => {
-                  e.currentTarget.style.background = 'var(--bg-element-hover, rgba(255,255,255,0.06))';
-                }}
-                onMouseOut={e => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <span style={{ fontSize: '15px' }}>📥</span>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500 }}>导入工程</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary, #9ca3af)' }}>载入 .keyvideo.json</span>
-                </div>
-              </button>
-            )}
-
-            {props.onExportProjectPackage && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsMenuOpen(false);
-                  props.onExportProjectPackage?.();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  width: '100%',
-                  padding: '8px 10px',
-                  borderRadius: '8px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary, #ffffff)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease'
-                }}
-                onMouseOver={e => {
-                  e.currentTarget.style.background = 'var(--bg-element-hover, rgba(255,255,255,0.06))';
-                }}
-                onMouseOut={e => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <span style={{ fontSize: '15px' }}>📦</span>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500 }}>导出工程</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary, #9ca3af)' }}>导出离线源工程包</span>
-                </div>
-              </button>
-            )}
-
-            {/* Subtle Divider */}
-            <div
-              style={{
-                height: '1px',
-                background: 'var(--border-color, rgba(255,255,255,0.08))',
-                margin: '4px 6px'
-              }}
-            />
-
-            {/* Group 2: System and API Config */}
-            <div
-              style={{
-                padding: '6px 10px 4px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--text-muted, #6b7280)',
-                letterSpacing: '0.04em'
-              }}
-            >
-              服务与接口配置
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSettingsMenuOpen(false);
-                props.onOpenSettings();
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: '8px',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-primary, #ffffff)',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 0.15s ease'
-              }}
-              onMouseOver={e => {
-                e.currentTarget.style.background = 'var(--bg-element-hover, rgba(255,255,255,0.06))';
-              }}
-              onMouseOut={e => {
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <span style={{ fontSize: '15px' }}>⚙️</span>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '13px', fontWeight: 500 }}>系统设置与服务</span>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary, #9ca3af)' }}>主题外观、后端服务与连通性</span>
-              </div>
-            </button>
-
-            {props.onOpenCustomApiModal && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsMenuOpen(false);
-                  props.onOpenCustomApiModal?.();
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  width: '100%',
-                  padding: '8px 10px',
-                  borderRadius: '8px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary, #ffffff)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease'
-                }}
-                onMouseOver={e => {
-                  e.currentTarget.style.background = 'var(--bg-element-hover, rgba(255,255,255,0.06))';
-                }}
-                onMouseOut={e => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <span style={{ fontSize: '15px' }}>⚡</span>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500 }}>API 脚本</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary, #9ca3af)' }}>自定义模型调度与脚本 (BYOK)</span>
-                </div>
-              </button>
-            )}
-
-            {/* Subtle Divider */}
-            <div
-              style={{
-                height: '1px',
-                background: 'var(--border-color, rgba(255,255,255,0.08))',
-                margin: '4px 6px'
-              }}
-            />
-
-            {/* Group 3: Appearance & Theme */}
-            <div
-              style={{
-                padding: '6px 10px 4px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'var(--text-muted, #6b7280)',
-                letterSpacing: '0.04em',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}
-            >
-              <span>外观主题</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted, #9ca3af)' }}>
-                {props.theme === 'dark' ? '暗黑科技' : '现代明亮'}
-              </span>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '6px',
-                padding: '2px 6px 4px'
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  if (props.onSetTheme) {
-                    props.onSetTheme('dark');
-                  } else if (props.theme !== 'dark') {
-                    props.onToggleTheme?.();
-                  }
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  padding: '7px 8px',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  fontWeight: props.theme === 'dark' ? 600 : 400,
-                  cursor: 'pointer',
-                  border: props.theme === 'dark'
-                    ? '1px solid var(--accent-purple, #8a2be2)'
-                    : '1px solid var(--border-color, rgba(255, 255, 255, 0.08))',
-                  background: props.theme === 'dark'
-                    ? 'rgba(138, 43, 226, 0.18)'
-                    : 'var(--bg-element, rgba(255, 255, 255, 0.04))',
-                  color: props.theme === 'dark'
-                    ? 'var(--accent-purple, #c084fc)'
-                    : 'var(--text-secondary, #9ca3af)',
-                  transition: 'all 0.15s ease'
-                }}
-                title="切换到暗黑主题"
-              >
-                <span>🌙</span>
-                <span>深色</span>
-                {props.theme === 'dark' && <span style={{ fontSize: '10px', marginLeft: '2px' }}>✓</span>}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (props.onSetTheme) {
-                    props.onSetTheme('light');
-                  } else if (props.theme !== 'light') {
-                    props.onToggleTheme?.();
-                  }
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  padding: '7px 8px',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  fontWeight: props.theme === 'light' ? 600 : 400,
-                  cursor: 'pointer',
-                  border: props.theme === 'light'
-                    ? '1px solid var(--accent-cyan, #0284c7)'
-                    : '1px solid var(--border-color, rgba(255, 255, 255, 0.08))',
-                  background: props.theme === 'light'
-                    ? 'rgba(2, 132, 199, 0.15)'
-                    : 'var(--bg-element, rgba(255, 255, 255, 0.04))',
-                  color: props.theme === 'light'
-                    ? 'var(--accent-cyan, #0284c7)'
-                    : 'var(--text-secondary, #9ca3af)',
-                  transition: 'all 0.15s ease'
-                }}
-                title="切换到浅色主题"
-              >
-                <span>☀️</span>
-                <span>浅色</span>
-                {props.theme === 'light' && <span style={{ fontSize: '10px', marginLeft: '2px' }}>✓</span>}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* User Account Popover */}
-      {props.userEmail && (
-        <>
-          <span className="header-action-divider" />
-          <div className="header-user-menu" ref={userMenuRef}>
-            <button
-              className="header-user-avatar"
-              onClick={() => setUserMenuOpen(open => !open)}
-              title={props.userEmail}
-            >
-              {props.userEmail[0]?.toUpperCase()}
-            </button>
-            {userMenuOpen && (
-              <div className="header-user-popover">
-                <div>
-                  <small>当前登录</small>
-                  <span title={props.userEmail}>{props.userEmail}</span>
-                </div>
-                <button
-                  onClick={async () => {
-                    setUserMenuOpen(false);
-                    if (confirm('确定要退出登录吗？')) await props.onSignOut();
-                  }}
-                >
-                  🚪 退出登录
-                </button>
-              </div>
-            )}
-          </div>
-        </>
-      )}
+      {menuOpen && <div className="studio-account-menu">
+        <div className="studio-account-label"><small>当前账号</small><strong>{props.userEmail}</strong></div>
+        {props.onOpenProjects && <button onClick={() => action(props.onOpenProjects)}>▦ 项目管理</button>}
+        <button onClick={() => action(props.onAddLayer)}>＋ 添加文本图层</button>
+        <button onClick={() => action(() => fileInputRef.current?.click())}>⇣ 导入工程</button>
+        <button onClick={() => action(props.onExportProjectPackage)}>↥ 导出工程包</button>
+        <hr />
+        <button onClick={() => action(props.onOpenCustomApiModal)}>⌘ 自定义接口</button>
+        <button onClick={() => action(props.onReplayOnboarding)}>◷ 重新查看新手引导</button>
+        <button onClick={() => action(() => props.onSetTheme?.(props.theme === 'dark' ? 'light' : 'dark'))}>{props.theme === 'dark' ? '☀ 浅色外观' : '☾ 深色外观'}</button>
+        <hr /><button className="danger" onClick={() => { setMenuOpen(false); if (confirm('确定要退出登录吗？')) void props.onSignOut(); }}>↪ 退出登录</button>
+      </div>}
     </div>
-  );
+    {shortcutsOpen && createPortal(<div className="studio-modal-backdrop" onMouseDown={() => setShortcutsOpen(false)}>
+      <section className="studio-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onMouseDown={event => event.stopPropagation()}>
+        <header><h2 id="shortcut-title">编辑快捷键</h2><button aria-label="关闭快捷键" onClick={() => setShortcutsOpen(false)}>×</button></header>
+        <p>让每一次剪辑，都更顺手。</p>
+        {([['播放 / 暂停', 'Space'], ['上一帧 / 下一帧', '← / →'], ['撤销', 'Ctrl / ⌘ + Z'], ['重做', 'Ctrl / ⌘ + Y'], ['分割选中片段', 'Ctrl / ⌘ + B'], ['删除选中图层', 'Delete'], ['退出预览', 'Esc']] as const).map(([label, key]) => <div className="studio-shortcut-row" key={label}><span>{label}</span><kbd>{key}</kbd></div>)}
+        <button className="studio-button primary" autoFocus onClick={() => setShortcutsOpen(false)}>知道了</button>
+      </section>
+    </div>, document.body)}
+  </div>;
 }

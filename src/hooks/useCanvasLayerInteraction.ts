@@ -15,6 +15,16 @@ interface Options {
   getMediaLayerSize: (layer: Layer, customScale?: number) => { w: number; h: number };
 }
 
+const getTextBounds = (layer: Layer, width: number) => {
+  const fontSize = (layer.properties.fontSize || 32) * (width / 540);
+  const lines = (layer.properties.text || '').split(/\r?\n/);
+  const longestLine = Math.max(1, ...lines.map(line => Array.from(line).length));
+  return {
+    width: Math.min(width * 0.9, Math.max(120, longestLine * fontSize * 0.92)),
+    height: Math.max(40, lines.length * fontSize * 1.35)
+  };
+};
+
 export function useCanvasLayerInteraction(options: Options) {
   const { canvasRef, layers, setLayers, selectedLayerId, setSelectedLayerId, width, height, currentTime, getMediaLayerSize } = options;
 
@@ -56,8 +66,9 @@ export function useCanvasLayerInteraction(options: Options) {
             boxW = activeW;
             boxH = activeH;
           } else if (activeLayer.type === 'text') {
-            boxW = 240;
-            boxH = 40;
+            const bounds = getTextBounds(activeLayer, width);
+            boxW = bounds.width * activeLayer.scale;
+            boxH = bounds.height * activeLayer.scale;
           } else if (activeLayer.type === 'sticker') {
             boxW = 160;
             boxH = 50;
@@ -115,8 +126,9 @@ export function useCanvasLayerInteraction(options: Options) {
             logicalClickY <= pxY + boxH / 2
           );
         } else if (layer.type === 'text') {
-          const boxW = 240 * layer.scale;
-          const boxH = 40 * layer.scale;
+          const bounds = getTextBounds(layer, width);
+          const boxW = bounds.width * layer.scale;
+          const boxH = bounds.height * layer.scale;
           isInside = (
             logicalClickX >= pxX - boxW / 2 &&
             logicalClickX <= pxX + boxW / 2 &&
@@ -188,8 +200,9 @@ export function useCanvasLayerInteraction(options: Options) {
             boxW = activeW;
             boxH = activeH;
           } else if (activeLayer.type === 'text') {
-            boxW = 240;
-            boxH = 40;
+            const bounds = getTextBounds(activeLayer, width);
+            boxW = bounds.width * initialScaleRef.current;
+            boxH = bounds.height * initialScaleRef.current;
           } else if (activeLayer.type === 'sticker') {
             boxW = 160;
             boxH = 50;

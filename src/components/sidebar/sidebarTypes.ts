@@ -24,6 +24,10 @@ export interface SidebarDrawerProps {
   setLayers: React.Dispatch<React.SetStateAction<Layer[]>>;
   selectedLayerId: string | null;
   setSelectedLayerId: (id: string | null) => void;
+  currentTime: number;
+  setCurrentTime: React.Dispatch<React.SetStateAction<number>>;
+  isPlaying: boolean;
+  setIsPlaying: (playing: boolean) => void;
   setModelSwapRunning: (running: boolean) => void;
   ratio: '1-1' | '3-4' | '9-16' | '16-9';
   session?: unknown;

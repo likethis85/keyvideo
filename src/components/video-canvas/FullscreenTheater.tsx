@@ -11,9 +11,11 @@ interface FullscreenTheaterProps {
   duration: number;
   isPlaying: boolean;
   isLooping: boolean;
+  playbackRate: number;
   setCurrentTime: Dispatch<SetStateAction<number>>;
   setIsPlaying: (playing: boolean) => void;
   setIsLooping: (looping: boolean) => void;
+  setPlaybackRate: (rate: number) => void;
   drawFrame: (context: CanvasRenderingContext2D, time: number) => void;
   onClose: () => void;
 }
@@ -46,9 +48,11 @@ export function FullscreenTheater(props: FullscreenTheaterProps) {
         duration={props.duration}
         isPlaying={props.isPlaying}
         isLooping={props.isLooping}
+        playbackRate={props.playbackRate}
         onTimeChange={props.setCurrentTime}
         onPlayingChange={props.setIsPlaying}
         onLoopingChange={props.setIsLooping}
+        onPlaybackRateChange={props.setPlaybackRate}
         theater
       />
     </div>,

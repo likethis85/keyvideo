@@ -9,6 +9,7 @@ interface VideoExportOptions {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   audioCtxRef: MutableRefObject<AudioContext | null>;
   audioDestinationRef: MutableRefObject<MediaStreamAudioDestinationNode | null>;
+  exportAudioGainRef: MutableRefObject<number>;
   videosCacheRef: MutableRefObject<Record<string, HTMLVideoElement>>;
   isOfflineExportingRef: MutableRefObject<boolean>;
   layers: Layer[];
@@ -28,7 +29,7 @@ interface VideoExportOptions {
 
 export function useVideoExport(options: VideoExportOptions) {
   const {
-    canvasRef, audioCtxRef, audioDestinationRef, videosCacheRef, isOfflineExportingRef, layers,
+    canvasRef, audioCtxRef, audioDestinationRef, exportAudioGainRef, videosCacheRef, isOfflineExportingRef, layers,
     width, height, exporting, drawFrame, setCurrentTime, setIsPlaying, setExporting,
     setExportProgress, setExportLogs, setExportFps, setExportEngine
   } = options;
@@ -43,6 +44,11 @@ export function useVideoExport(options: VideoExportOptions) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelRequestedRef = useRef(false);
+
+  const revokeExportUrl = (result: (ExportResultInfo & { url: string }) | null) => {
+    if (result?.url) URL.revokeObjectURL(result.url);
+  };
 
   // Fallback MediaRecorder implementation
   const exportWithMediaRecorder = (
@@ -51,42 +57,52 @@ export function useVideoExport(options: VideoExportOptions) {
     targetFps = 30,
     targetBitrate = 8_500_000,
     exportW = width,
-    exportH = height
+    exportH = height,
+    includeAudio = true,
+    rangeStart = 0
   ) => {
-    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-      audioCtxRef.current.resume();
-    }
-
-    const canvasStream = canvas.captureStream(targetFps);
-    const mixedStream = new MediaStream();
-    canvasStream.getVideoTracks().forEach(track => mixedStream.addTrack(track));
-
-    if (audioDestinationRef.current) {
-      const audioTracks = audioDestinationRef.current.stream.getAudioTracks();
-      audioTracks.forEach(track => mixedStream.addTrack(track));
-    }
-
-    const formatCandidates = [
-      { mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', extension: 'mp4' },
-      { mimeType: 'video/mp4', extension: 'mp4' },
-      { mimeType: 'video/webm;codecs=vp9,opus', extension: 'webm' },
-      { mimeType: 'video/webm;codecs=vp8,opus', extension: 'webm' },
-      { mimeType: 'video/webm', extension: 'webm' }
-    ];
-    const selectedFormat = formatCandidates.find(candidate => MediaRecorder.isTypeSupported(candidate.mimeType));
-    const recorderOptions: MediaRecorderOptions = selectedFormat
-      ? { mimeType: selectedFormat.mimeType, videoBitsPerSecond: targetBitrate, audioBitsPerSecond: 192_000 }
-      : { videoBitsPerSecond: targetBitrate, audioBitsPerSecond: 192_000 };
-    const fileType = selectedFormat?.mimeType || 'video/webm';
-
-    let recorder: MediaRecorder;
     try {
-      recorder = new MediaRecorder(mixedStream, recorderOptions);
-    } catch {
-      setExportLogs(prev => [...prev, 'Fallback to default WebM encoder...']);
-      recorder = new MediaRecorder(mixedStream);
-    }
-    mediaRecorderRef.current = recorder;
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        void audioCtxRef.current.resume();
+      }
+
+      const recordCanvas = exportW === canvas.width && exportH === canvas.height
+        ? canvas
+        : Object.assign(document.createElement('canvas'), { width: exportW, height: exportH });
+      const recordContext = recordCanvas === canvas ? null : recordCanvas.getContext('2d');
+      if (recordCanvas !== canvas && !recordContext) throw new Error('无法创建兼容导出画布');
+
+      const canvasStream = recordCanvas.captureStream(targetFps);
+      const mixedStream = new MediaStream();
+      canvasStream.getVideoTracks().forEach(track => mixedStream.addTrack(track));
+
+      if (includeAudio && audioDestinationRef.current) {
+        audioDestinationRef.current.stream.getAudioTracks().forEach(track => mixedStream.addTrack(track));
+      }
+
+      const formatCandidates = [
+        { mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', extension: 'mp4' as const },
+        { mimeType: 'video/mp4', extension: 'mp4' as const },
+        ...(includeAudio ? [{ mimeType: 'video/webm;codecs=vp9,opus', extension: 'webm' as const }, { mimeType: 'video/webm;codecs=vp8,opus', extension: 'webm' as const }] : [{ mimeType: 'video/webm;codecs=vp9', extension: 'webm' as const }, { mimeType: 'video/webm;codecs=vp8', extension: 'webm' as const }]),
+        { mimeType: 'video/webm', extension: 'webm' as const }
+      ];
+      const selectedFormat = formatCandidates.find(candidate => MediaRecorder.isTypeSupported(candidate.mimeType));
+      const recorderOptions: MediaRecorderOptions = selectedFormat
+        ? { mimeType: selectedFormat.mimeType, videoBitsPerSecond: targetBitrate, ...(includeAudio ? { audioBitsPerSecond: 192_000 } : {}) }
+        : { videoBitsPerSecond: targetBitrate, ...(includeAudio ? { audioBitsPerSecond: 192_000 } : {}) };
+      let fileType = selectedFormat?.mimeType || 'video/webm';
+      let fileExtension = selectedFormat?.extension || 'webm';
+
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(mixedStream, recorderOptions);
+      } catch {
+        setExportLogs(prev => [...prev, '当前编码器不支持首选格式，已切换到 WebM 兼容格式']);
+        fileType = 'video/webm';
+        fileExtension = 'webm';
+        recorder = new MediaRecorder(mixedStream, { ...(includeAudio ? { audioBitsPerSecond: 192_000 } : {}), videoBitsPerSecond: targetBitrate });
+      }
+      mediaRecorderRef.current = recorder;
 
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => {
@@ -95,51 +111,84 @@ export function useVideoExport(options: VideoExportOptions) {
       }
     };
 
-    recorder.onstop = () => {
-      setIsPlaying(false);
-      setExportLogs(prev => [...prev, '所有时间轴帧采集完成，正在封装视频... (100%)']);
+      recorder.onstop = () => {
+        setIsPlaying(false);
+        recordingTimerRef.current = null;
+        mediaRecorderRef.current = null;
+        mixedStream.getTracks().forEach(track => track.stop());
+        if (cancelRequestedRef.current) return;
+        setExportLogs(prev => [...prev, '所有时间轴帧采集完成，正在封装视频... (100%)']);
 
-      const blob = new Blob(chunks, { type: fileType });
-      const url = URL.createObjectURL(blob);
-      setExportProgress(100);
+        const blob = new Blob(chunks, { type: fileType });
+        const url = URL.createObjectURL(blob);
+        setExportProgress(100);
 
-      const result: ExportResultInfo & { url: string } = {
-        blob,
-        url,
-        duration,
-        totalFrames: Math.round(duration * targetFps),
-        averageFps: targetFps,
-        totalTimeSec: duration,
-        sizeBytes: blob.size,
-        width: exportW,
-        height: exportH
+        const result: ExportResultInfo & { url: string } = {
+          blob,
+          url,
+          duration,
+          totalFrames: Math.round(duration * targetFps),
+          averageFps: targetFps,
+          totalTimeSec: duration,
+          sizeBytes: blob.size,
+          width: exportW,
+          height: exportH,
+          mimeType: fileType,
+          fileExtension
+        };
+        setExportResult(result);
+        toast.success(`视频导出成功（${fileExtension.toUpperCase()}）！`);
       };
-      setExportResult(result);
-      toast.success('🎉 视频导出成功！');
-    };
 
-    setIsPlaying(true);
-    recorder.start();
+      // Drive the fallback timeline from the export timer. The normal playback
+      // loop would advance against the full project duration and fight the
+      // selected export range.
+      const mainContext = canvas.getContext('2d');
+      if (!mainContext) throw new Error('无法获取 Canvas 渲染上下文');
+      setIsPlaying(false);
+      recorder.start();
 
-    // Emulate progress
-    let elapsed = 0;
-    const interval = 100;
-    const timer = setInterval(() => {
-      elapsed += interval / 1000;
-      const progress = Math.min(99, Math.round((elapsed / duration) * 100));
-      setExportProgress(progress);
-      setCurrentFrame(Math.round(elapsed * targetFps));
-      setTotalFrames(Math.round(duration * targetFps));
-      setEstimatedSecondsRemaining(Math.max(0, Math.round(duration - elapsed)));
-
-      if (elapsed >= duration) {
-        clearInterval(timer);
-        if (recorder.state === 'recording') {
-          recorder.stop();
+      // Emulate progress
+      let elapsed = 0;
+      const interval = 100;
+      const timer = setInterval(() => {
+        elapsed += interval / 1000;
+        const timelineTime = rangeStart + Math.min(duration, elapsed);
+        try {
+          drawFrame(mainContext, timelineTime);
+          if (recordContext) {
+            recordContext.clearRect(0, 0, exportW, exportH);
+            recordContext.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, exportW, exportH);
+          }
+        } catch (error) {
+          clearInterval(timer);
+          cancelRequestedRef.current = true;
+          if (recorder.state === 'recording') recorder.stop();
+          setIsPlaying(false);
+          setExporting(false);
+          toast.error(`兼容导出失败: ${error instanceof Error ? error.message : String(error)}`);
+          return;
         }
-      }
-    }, interval);
-    recordingTimerRef.current = timer;
+        const progress = Math.min(99, Math.round((elapsed / duration) * 100));
+        setExportProgress(progress);
+        setCurrentFrame(Math.round(elapsed * targetFps));
+        setTotalFrames(Math.round(duration * targetFps));
+        setEstimatedSecondsRemaining(Math.max(0, Math.round(duration - elapsed)));
+
+        if (elapsed >= duration) {
+          clearInterval(timer);
+          recordingTimerRef.current = null;
+          if (recorder.state === 'recording') recorder.stop();
+        }
+        setCurrentTime(timelineTime);
+      }, interval);
+      recordingTimerRef.current = timer;
+    } catch (error) {
+      setIsPlaying(false);
+      setExporting(false);
+      setExportLogs(prev => [...prev, `❌ 兼容导出启动失败: ${error instanceof Error ? error.message : String(error)}`]);
+      toast.error(`无法开始兼容导出: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   // High-Speed Dual-Engine Video Export Handler
@@ -154,6 +203,7 @@ export function useVideoExport(options: VideoExportOptions) {
     const targetHeight = customConfig?.height ?? height;
     const includeAudio = customConfig?.includeAudio !== false;
     const audioGain = customConfig?.audioGain ?? 1.0;
+    exportAudioGainRef.current = audioGain;
 
     const activeLayers = layers.filter(l => l.visible);
     const maxLayerEnd = activeLayers.reduce((max, l) => l.end > max ? l.end : max, 0);
@@ -166,9 +216,13 @@ export function useVideoExport(options: VideoExportOptions) {
     setIsPlaying(false);
     setCurrentTime(rangeStart);
     setExporting(true);
+    cancelRequestedRef.current = false;
     setExportProgress(0);
+    setExportResult(previous => {
+      revokeExportUrl(previous);
+      return null;
+    });
     setExportFps(null);
-    setExportResult(null);
     setPreviewSnapshotUrl(null);
 
     abortControllerRef.current = new AbortController();
@@ -336,11 +390,12 @@ export function useVideoExport(options: VideoExportOptions) {
     // 2. Fallback to MediaRecorder Engine
     setExportEngine('mediarecorder');
     setExportLogs(['🛡️ 启动兼容流式录制引擎...', `Format: MP4 / WebM @ ${targetFps} FPS`]);
-    exportWithMediaRecorder(canvas, duration, targetFps, targetBitrate, targetWidth, targetHeight);
+    exportWithMediaRecorder(canvas, duration, targetFps, targetBitrate, targetWidth, targetHeight, includeAudio, rangeStart);
   };
 
   // Cancel Export handler
   const handleCancel = () => {
+    cancelRequestedRef.current = true;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -359,28 +414,51 @@ export function useVideoExport(options: VideoExportOptions) {
     isOfflineExportingRef.current = false;
     setIsPlaying(false);
     setExporting(false);
-    setExportResult(null);
+    setExportResult(previous => {
+      revokeExportUrl(previous);
+      return null;
+    });
     setPreviewSnapshotUrl(null);
     toast.info('已取消当前视频导出');
   };
 
-  // Save to cloud storage
+  const handleClose = () => {
+    setExporting(false);
+    setExportResult(previous => {
+      revokeExportUrl(previous);
+      return null;
+    });
+    setPreviewSnapshotUrl(null);
+  };
+
+  // Persist an export locally in a recoverable format. The callback name is
+  // kept for compatibility with the existing overlay contract.
   const handleSaveCloud = async (result: ExportResultInfo) => {
     const key = `KEYVIDEO_CLOUD_VAULT_${Date.now()}`;
-    await localDB.set(key, {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('无法读取成片数据'));
+      reader.onerror = () => reject(reader.error || new Error('无法读取成片数据'));
+      reader.readAsDataURL(result.blob);
+    });
+    const stored = await localDB.set(key, {
       createdAt: new Date().toISOString(),
       sizeBytes: result.sizeBytes,
       duration: result.duration,
       width: result.width,
       height: result.height,
-      blob: result.blob
+      mimeType: result.mimeType || result.blob.type,
+      fileExtension: result.fileExtension || 'mp4',
+      dataUrl
     });
-    toast.success('☁️ 已将成片永久归档至工程云存储库！');
+    if (!stored) throw new Error('本地归档写入失败');
+    toast.success('已将成片保存到本地归档！');
   };
 
   return {
     handleExport,
     handleCancel,
+    handleClose,
     handleSaveCloud,
     currentFrame,
     totalFrames,

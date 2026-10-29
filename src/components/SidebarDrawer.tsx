@@ -2,10 +2,10 @@
 import { supabase } from '../utils/supabaseClient';
 import { deleteFileFromOSS } from '../utils/ossClient';
 import { localDB } from '../utils/db';
+import { projectStorageKey } from '../utils/projectStorage';
 import { TemplateTab } from './sidebar/TemplateTab';
 import type { ScriptTemplate } from '../config/scriptTemplates';
 import { TextTab } from './sidebar/TextTab';
-import { StickerTab } from './sidebar/StickerTab';
 import { AudioTab } from './sidebar/AudioTab';
 import { MediaTab } from './sidebar/MediaTab';
 import type { VideoStepProps } from './sidebar/ai/VideoStep';
@@ -76,6 +76,10 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
   setLayers,
   selectedLayerId,
   setSelectedLayerId,
+  currentTime,
+  setCurrentTime,
+  isPlaying,
+  setIsPlaying,
   setModelSwapRunning,
   ratio,
   session,
@@ -92,8 +96,6 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
 }, ref) => {
   const {
     addTextLayer,
-    addStickerLayer,
-    addBrandLogoLayer: addBrandLogoStickerLayer,
     addLocalVideoLayer,
     selectBgm
   } = useTimelineActions(setLayers, setSelectedLayerId);
@@ -138,7 +140,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
   useEffect(() => {
     if (!activeProjectId) return;
     const timer = window.setTimeout(() => {
-      void localDB.set('ai_storyboards', storyboards);
+      void localDB.set(projectStorageKey(activeProjectId, 'storyboards'), storyboards);
     }, 250);
     return () => window.clearTimeout(timer);
   }, [activeProjectId, storyboards]);
@@ -363,7 +365,6 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     downloadImage: handleDownloadImage,
     reorderStoryboards: handleReorderStoryboards,
     applyVideoToTimeline: handleApplyI2VToTimeline,
-    applyTemplate,
     applyModel: applyModelFromLibrary,
     applyScene: applySceneBackground
   } = useSidebarUtilityActions({
@@ -629,7 +630,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
 
       {/* 1. TEMPLATES PANEL */}
       {activeTab === 'template' && (
-        <TemplateTab applyTemplate={applyTemplate} onUseTemplate={handleUseScriptTemplate} />
+        <TemplateTab onUseTemplate={handleUseScriptTemplate} />
       )}
 
       {/* 2. MEDIA LIBRARY */}
@@ -724,12 +725,18 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
 
       {/* 3. TEXT OVERLAYS */}
       {activeTab === 'text' && (
-        <TextTab addTextLayer={addTextLayer} />
-      )}
-
-      {/* 4. STICKERS AND BADGES */}
-      {activeTab === 'sticker' && (
-        <StickerTab addStickerLayer={addStickerLayer} addBrandLogoStickerLayer={addBrandLogoStickerLayer} />
+        <TextTab
+          layers={layers}
+          setLayers={setLayers}
+          selectedLayerId={selectedLayerId}
+          setSelectedLayerId={setSelectedLayerId}
+          currentTime={currentTime}
+          setCurrentTime={setCurrentTime}
+          isPlaying={isPlaying}
+          setIsPlaying={setIsPlaying}
+          ratio={ratio}
+          productName={projects.find(project => project.id === activeProjectId)?.name}
+        />
       )}
 
       {activeTab === 'ai' && (

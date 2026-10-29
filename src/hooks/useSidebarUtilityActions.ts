@@ -4,7 +4,6 @@ import type { Layer } from '../components/VideoCanvas';
 import type { StoryboardItem } from '../types/aiProject';
 import type { AudioAsset, SceneAsset } from '../types/assets';
 import { applyI2VToTimeline } from '../services/i2vTimelineService';
-import { createTimelineTemplate, type TimelineTemplateType } from '../services/timelineTemplateFactory';
 
 interface Options {
   activeProjectId: string;
@@ -60,26 +59,29 @@ export function useSidebarUtilityActions(options: Options) {
     setLayers: options.setLayers, setSelectedLayerId: options.setSelectedLayerId
   }), [options]);
 
-  const applyTemplate = useCallback((template: TimelineTemplateType) => {
-    const layers = createTimelineTemplate(template, options.bgmLibrary[0]);
-    options.setLayers(layers);
-    options.setSelectedLayerId(layers[0].id);
-  }, [options]);
-
   const applyModel = useCallback((src: string, name: string) => {
     options.setSwapModelUrl(src);
-    options.setActiveTab('ai');
-    alert(`已选定模特「${name}」作为生成参考模特，已为您自动切换至「AI工具」面板。`);
+    alert(`已选定模特「${name}」，后续试衣和分镜将复用此模特。`);
   }, [options]);
 
   const applyScene = useCallback((name: string, src: string) => {
-    const builtIn: Record<string, string> = { 摩登街头: 'street', 专业影棚: 'studio', 温馨居家: 'home', 职场办公: 'office', 阳光海滩: 'beach', 时尚秀场: 'runway', 极简侘寂: 'minimalist' };
+    const builtIn: Record<string, string> = {
+      摩登街头: 'street',
+      专业影棚: 'studio',
+      阳光海滩: 'beach',
+      奢华客厅: 'home',
+      时装秀场: 'runway',
+      侘寂暖居: 'wabi-sabi',
+      温馨居家: 'home',
+      职场办公: 'office',
+      时尚秀场: 'runway',
+      极简侘寂: 'minimalist'
+    };
     const scene = builtIn[name] || options.customScenes.find(item => item.src === src || item.name === name)?.id;
     if (!scene) return alert('未找到该场景，请在 AI 面板中手动选择。');
     options.setModelScene(scene);
-    options.setActiveTab('ai');
-    alert(`已选定场景「${name}」作为生成参考背景，已为您自动切换至「AI工具」面板。`);
+    alert(`已选定场景「${name}」作为生成参考背景。`);
   }, [options]);
 
-  return { downloadImage, reorderStoryboards, applyVideoToTimeline, applyTemplate, applyModel, applyScene };
+  return { downloadImage, reorderStoryboards, applyVideoToTimeline, applyModel, applyScene };
 }

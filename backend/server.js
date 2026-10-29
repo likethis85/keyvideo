@@ -1170,6 +1170,38 @@ Output ONLY the JSON object, no markdown wrappers, no other text.`;
 });
 
 // 6. Prompts Generation from Skill (Enriched)
+app.post('/api/ai/text-copy', async (req, res) => {
+  try {
+    const { brief = '', product = '', platform = '短视频', tone = '高级自然', goal = '突出核心卖点' } = req.body || {};
+    const clean = value => String(value ?? '').trim().slice(0, 1200);
+    const safeBrief = clean(brief);
+    if (!safeBrief) return res.status(400).json({ error: '请先输入文案主题或产品卖点' });
+
+    const chatConfig = getChatCompletionConfig();
+    if (!chatConfig.url || !chatConfig.apiKey) return res.status(503).json({ error: 'AI 文案服务暂未配置' });
+    const prompt = `你是一名专业短视频广告文案编辑。请根据输入生成 5 条适合直接叠加在视频画面上的中文短文案。\n产品信息：${clean(product) || '未提供'}\n文案主题或用户要求：${safeBrief}\n发布平台：${clean(platform)}\n表达风格：${clean(tone)}\n本次目标：${clean(goal)}\n要求：每条 6 到 24 个汉字，口语清楚、有信息量，不编造价格、功效、材质和促销事实；避免夸大承诺；五条角度要不同。只输出 5 行文案，不要标题、编号、引号或解释。`;
+    const response = await fetchWithTimeout(chatConfig.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chatConfig.apiKey}` },
+      body: JSON.stringify({
+        model: chatConfig.defaultModel,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 420,
+        stream: false
+      })
+    }, LONG_EXTERNAL_TIMEOUT_MS);
+
+    if (!response.ok) throw new Error(`AI 文案生成失败 (${response.status})`);
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (typeof text !== 'string' || !text.trim()) throw new Error('AI 未返回文案内容');
+    return res.status(200).json({ text: text.trim() });
+  } catch (error) {
+    console.error('Text copy generation failed:', error);
+    return res.status(500).json({ error: error.message || 'AI 文案生成失败' });
+  }
+});
+
 app.post('/api/ai/prompts-skill', async (req, res) => {
   try {
     const {

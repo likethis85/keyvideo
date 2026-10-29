@@ -15,6 +15,8 @@ import { CanvasNodeMaskEditModal } from './dialogs/CanvasNodeMaskEditModal';
 import { CanvasNodeCropModal } from './dialogs/CanvasNodeCropModal';
 import { CanvasNodeUpscaleModal } from './dialogs/CanvasNodeUpscaleModal';
 import { CanvasSpawnNodeMenu } from './dialogs/CanvasSpawnNodeMenu';
+import { CanvasNodeInspector } from './CanvasNodeInspector';
+import { CanvasIcon } from './CanvasIcon';
 import { convertAiProjectToCanvas, injectCanvasAssetToTimeline } from '../../utils/canvasBridge';
 import { executeCustomApi, getCustomApiConfig } from '../../utils/customApiRunner';
 import {
@@ -35,6 +37,13 @@ interface InfiniteCanvasProps {
   setLayers: React.Dispatch<React.SetStateAction<Layer[]>>;
   commitHistory: (layers: Layer[], desc: string) => void;
   onRegisterAutoLayout?: (fn: () => void) => void;
+  onRegisterActions?: (actions: {
+    importProject: () => void;
+    fitViewport: () => void;
+    runPipeline: () => void;
+  }) => void;
+  onOpenEditor?: () => void;
+  onOpenTimeline?: () => void;
 }
 
 export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
@@ -44,7 +53,10 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   layers,
   setLayers,
   commitHistory,
-  onRegisterAutoLayout
+  onRegisterAutoLayout,
+  onRegisterActions,
+  onOpenEditor,
+  onOpenTimeline
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -95,6 +107,11 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   } | null>(null);
 
   const [showMinimap, setShowMinimap] = useState(true);
+  const [showGrid, setShowGrid] = useState(true);
+  const [activeCanvasTool, setActiveCanvasTool] = useState<'select' | 'pan' | 'connect' | 'draw' | 'frame'>('select');
+  const [connectSourceNodeId, setConnectSourceNodeId] = useState<string | null>(null);
+  const [drawStrokes, setDrawStrokes] = useState<Position[][]>([]);
+  const [drawingStroke, setDrawingStroke] = useState<Position[] | null>(null);
 
   // Selected Connection State
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
@@ -256,8 +273,8 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
 
   // Mouse Down handler for Canvas background & Middle click panning
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    // 1. Middle mouse button (button 1), Space+LeftClick, or Alt+LeftClick -> PAN anywhere
-    if (e.button === 1 || isSpacePressedRef.current || (e.altKey && e.button === 0)) {
+    // 1. Middle mouse button (button 1), hand tool, Space+LeftClick, or Alt+LeftClick -> PAN anywhere
+    if (e.button === 1 || (activeCanvasTool === 'pan' && e.button === 0) || isSpacePressedRef.current || (e.altKey && e.button === 0)) {
       e.preventDefault();
       setIsPanning(true);
       panStartRef.current = {
@@ -266,6 +283,12 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         viewX: viewportRef.current.x,
         viewY: viewportRef.current.y
       };
+      return;
+    }
+
+    // Draw mode records a lightweight local annotation stroke in world coordinates.
+    if (activeCanvasTool === 'draw' && e.button === 0) {
+      setDrawingStroke([screenToWorld(e.clientX, e.clientY)]);
       return;
     }
 
@@ -300,6 +323,12 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         x: Math.round(panStartRef.current.viewX + dx),
         y: Math.round(panStartRef.current.viewY + dy)
       }));
+      return;
+    }
+
+    if (drawingStroke) {
+      const point = screenToWorld(e.clientX, e.clientY);
+      setDrawingStroke(previous => previous ? [...previous, point] : previous);
       return;
     }
 
@@ -348,6 +377,10 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   // Global Mouse Up
   const handleMouseUp = (e?: React.MouseEvent) => {
     if (isPanning) setIsPanning(false);
+    if (drawingStroke) {
+      if (drawingStroke.length > 1) setDrawStrokes(previous => [...previous, drawingStroke]);
+      setDrawingStroke(null);
+    }
     if (draggingNodeId) {
       setDraggingNodeId(null);
       commitPositionMove();
@@ -406,6 +439,36 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
     if ((e.target as HTMLElement).closest('.node-handle') || (e.target as HTMLElement).closest('input') || (e.target as HTMLElement).closest('textarea') || (e.target as HTMLElement).closest('select') || (e.target as HTMLElement).closest('button')) {
       return;
     }
+
+    if (activeCanvasTool === 'draw') {
+      setDrawingStroke([screenToWorld(e.clientX, e.clientY)]);
+      return;
+    }
+
+    if (activeCanvasTool === 'connect') {
+      if (!connectSourceNodeId) {
+        setConnectSourceNodeId(nodeId);
+        setSelectedNodeIds([nodeId]);
+        toast.info('已选中连接起点，请点击另一个节点完成连接');
+      } else if (connectSourceNodeId === nodeId) {
+        setConnectSourceNodeId(null);
+        toast.info('已取消连接起点');
+      } else {
+        addConnection(connectSourceNodeId, nodeId, 'out', 'in');
+        setConnectSourceNodeId(null);
+        setSelectedNodeIds([nodeId]);
+        toast.success('已建立节点连接');
+      }
+      return;
+    }
+
+    if (activeCanvasTool === 'frame') {
+      setSelectedNodeIds(e.shiftKey
+        ? (selectedNodeIds.includes(nodeId) ? selectedNodeIds.filter(id => id !== nodeId) : [...selectedNodeIds, nodeId])
+        : [nodeId]);
+      return;
+    }
+
     setDraggingNodeId(nodeId);
     nodeDragStartRef.current = { mouseX: e.clientX, mouseY: e.clientY };
     if (!selectedNodeIds.includes(nodeId)) {
@@ -525,7 +588,7 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   };
 
   // Import from Active AIProject
-  const handleImportFromAiProject = () => {
+  const handleImportFromAiProject = useCallback(() => {
     if (!activeProject) {
       toast.info('当前未选中任何 AI 试衣工程');
       return;
@@ -534,7 +597,7 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
     loadTopology(newNodes, newConns);
     setViewport({ x: 60, y: 40, scale: 0.85 });
     toast.success(`已将工程「${activeProject.name}」的试衣与分镜全量导入画布！`);
-  };
+  }, [activeProject, loadTopology, setViewport]);
 
   // Smart Auto-Layout execution
   const handleAutoLayout = useCallback(() => {
@@ -619,7 +682,7 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   };
 
   // Batch Pipeline DAG Execution
-  const handleExecutePipeline = async () => {
+  const handleExecutePipeline = useCallback(async () => {
     if (isExecutingPipeline) return;
     setIsExecutingPipeline(true);
     toast.info('🚀 正在启动画布全管线 DAG 拓扑流水线执行...');
@@ -631,7 +694,15 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
     } finally {
       setIsExecutingPipeline(false);
     }
-  };
+  }, [connections, isExecutingPipeline, nodes, updateNode]);
+
+  useEffect(() => {
+    onRegisterActions?.({
+      importProject: handleImportFromAiProject,
+      fitViewport: () => setViewport({ x: 120, y: 80, scale: 1 }),
+      runPipeline: () => { void handleExecutePipeline(); }
+    });
+  }, [handleExecutePipeline, handleImportFromAiProject, onRegisterActions, setViewport]);
 
   // Batch Sync Canvas to Timeline
   const handleBatchSyncTimeline = () => {
@@ -766,6 +837,8 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         setSelectedConnectionId(null);
         setConnectingState(null);
         setSpawnMenuState(null);
+        setConnectSourceNodeId(null);
+        setDrawingStroke(null);
       }
     };
 
@@ -786,14 +859,44 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`infinite-canvas-viewport ${isPanning ? 'is-panning' : ''}`}
+      className={`infinite-canvas-viewport canvas-reference-workspace ${isPanning ? 'is-panning' : ''}`}
       onMouseDown={handleCanvasMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
+      <div className="canvas-stage-header" onMouseDown={event => event.stopPropagation()}>
+        <div className="canvas-stage-title">
+          <strong>AI 生成管线</strong>
+          <span className="canvas-stage-save">自动保存</span>
+          <small>{nodes.length} 个节点 · {connections.length} 个连线</small>
+        </div>
+        <div className="canvas-stage-actions">
+          <button type="button" onClick={undo} disabled={!canUndo} title="撤销">↶ 撤销</button>
+          <button type="button" onClick={autoLayout} title="自动整理节点">▦ 自动布局</button>
+          <button type="button" className="primary" onClick={() => { const node = addNode('workflow'); if (node) toast.success('已添加 AI 工作流节点'); }} title="添加节点">＋ 添加节点</button>
+        </div>
+      </div>
+
+      <nav className="canvas-tool-rail" aria-label="画布工具" onMouseDown={event => event.stopPropagation()}>
+        <button type="button" className={activeCanvasTool === 'select' ? 'active' : ''} onClick={() => { setActiveCanvasTool('select'); setConnectSourceNodeId(null); }} title="选择工具：点击选择并拖动节点" data-tooltip="选择工具" aria-label="选择工具"><CanvasIcon name="select" size={21} /></button>
+        <button type="button" className={activeCanvasTool === 'pan' ? 'active' : ''} onClick={() => { setActiveCanvasTool('pan'); setConnectSourceNodeId(null); }} title="平移画布：拖动空白区域移动视图" data-tooltip="平移画布" aria-label="平移画布"><CanvasIcon name="pan" size={21} /></button>
+        <button type="button" className={showGrid ? 'active' : ''} onClick={() => setShowGrid(value => !value)} title={`${showGrid ? '隐藏' : '显示'}画布网格`} data-tooltip={`${showGrid ? '隐藏' : '显示'}网格`} aria-label={`${showGrid ? '隐藏' : '显示'}画布网格`}><CanvasIcon name="grid" size={21} /></button>
+        <button type="button" className={activeCanvasTool === 'connect' ? 'active' : ''} onClick={() => { setActiveCanvasTool('connect'); setConnectSourceNodeId(null); }} title="连接节点：依次点击起点和终点" data-tooltip="连接节点" aria-label="连接节点"><CanvasIcon name="connect" size={21} /></button>
+        <button type="button" className={activeCanvasTool === 'draw' ? 'active' : ''} onClick={() => { if (activeCanvasTool === 'draw') { setDrawStrokes([]); setDrawingStroke(null); toast.info('已清空画布标注'); } else { setActiveCanvasTool('draw'); setConnectSourceNodeId(null); } }} title="标注工具：在画布上自由绘制；再次点击清空标注" data-tooltip="自由标注" aria-label="自由标注"><CanvasIcon name="draw" size={21} /></button>
+        <button type="button" className={activeCanvasTool === 'frame' ? 'active' : ''} onClick={() => { setActiveCanvasTool('frame'); setConnectSourceNodeId(null); }} title="框选节点：拖动空白区域批量选择" data-tooltip="框选节点" aria-label="框选节点"><CanvasIcon name="frame" size={21} /></button>
+        <span className="canvas-tool-divider" />
+        <button type="button" onClick={() => { const node = addNode('workflow'); if (node) toast.success('已添加 AI 工作流节点'); }} title="快速添加工作流节点" data-tooltip="添加节点" aria-label="快速添加工作流节点"><CanvasIcon name="add" size={21} /></button>
+        <button type="button" onClick={() => setViewport(prev => ({ ...prev, scale: Math.min(4, Number((prev.scale + 0.1).toFixed(2))) }))} title="放大画布" data-tooltip="放大画布" aria-label="放大画布"><CanvasIcon name="zoomIn" size={21} /></button>
+        <div className="canvas-tool-spacer" />
+        <button type="button" onClick={() => setViewport({ x: 120, y: 80, scale: 1 })} title="回到画布中心" data-tooltip="回到中心" aria-label="回到画布中心"><CanvasIcon name="fit" size={21} /></button>
+        {(onOpenEditor || onOpenTimeline) && <span className="canvas-tool-divider" />}
+        {onOpenEditor && <button type="button" className="canvas-workspace-action" onClick={onOpenEditor} title="返回剪辑工作台：继续预览、编辑文字和素材" data-tooltip="返回剪辑" aria-label="返回剪辑工作台"><CanvasIcon name="edit" size={21} /></button>}
+        {onOpenTimeline && <button type="button" className="canvas-workspace-action" onClick={onOpenTimeline} title="打开全屏时间轴：调整片段、字幕、音频和节奏" data-tooltip="打开时间轴" aria-label="打开全屏时间轴"><CanvasIcon name="timeline" size={21} /></button>}
+      </nav>
+
       {/* Background Grid Pattern */}
       <div
-        className="canvas-grid-bg"
+        className={`canvas-grid-bg ${showGrid ? '' : 'is-hidden'}`}
         style={{
           backgroundPosition: `${viewport.x}px ${viewport.y}px`,
           backgroundSize: `${30 * viewport.scale}px ${30 * viewport.scale}px`
@@ -940,6 +1043,29 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         )}
       </div>
 
+      {(drawStrokes.length > 0 || drawingStroke) && (
+        <svg
+          className="canvas-annotation-layer"
+          width="100%"
+          height="100%"
+          style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`, transformOrigin: '0 0' }}
+          aria-label="画布标注"
+        >
+          {[...drawStrokes, ...(drawingStroke ? [drawingStroke] : [])].map((stroke, index) => (
+            <polyline
+              key={`annotation-${index}`}
+              points={stroke.map(point => `${point.x},${point.y}`).join(' ')}
+              fill="none"
+              stroke="#58e6ff"
+              strokeWidth={3 / viewport.scale}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.9}
+            />
+          ))}
+        </svg>
+      )}
+
       {/* Floating Toolbar */}
       <CanvasToolbar
         scale={viewport.scale}
@@ -992,6 +1118,19 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
           }}
         />
       )}
+
+      <CanvasNodeInspector
+        node={nodes.find(node => node.id === selectedNodeIds[0]) || null}
+        onUpdate={patch => {
+          const selected = nodes.find(node => node.id === selectedNodeIds[0]);
+          if (selected) updateNode(selected.id, patch);
+        }}
+        onClose={() => setSelectedNodeIds([])}
+        onRegenerate={() => {
+          const selected = nodes.find(node => node.id === selectedNodeIds[0]);
+          if (selected?.type === 'workflow') void handleExecuteWorkflow(selected);
+        }}
+      />
 
       {/* Route A: Image Modification Modals */}
       <CanvasNodeMaskEditModal

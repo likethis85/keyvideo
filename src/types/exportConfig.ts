@@ -129,7 +129,9 @@ export function loadSavedExportConfig(
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultConfig;
     const parsed = JSON.parse(raw);
-    const preset = parsed.preset || '1080p';
+    const preset: ResolutionPreset = ['720p', '1080p', '2k', '4k', 'native'].includes(parsed.preset)
+      ? parsed.preset as ResolutionPreset
+      : '1080p';
     const dims = calculateExportDimensions(ratio, preset, nativeWidth, nativeHeight);
 
     return {

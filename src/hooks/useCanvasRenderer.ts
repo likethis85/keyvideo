@@ -329,6 +329,12 @@ export function useCanvasRenderer(options: Options) {
   
         const pxX = (layer.x / 100) * width;
         const pxY = (layer.y / 100) * height;
+        if (layer.properties.rotation) {
+          ctx.translate(pxX, pxY);
+          ctx.rotate(layer.properties.rotation * Math.PI / 180);
+          ctx.translate(-pxX, -pxY);
+        }
+        ctx.globalCompositeOperation = layer.properties.blendMode || 'source-over';
   
         if (layer.type === 'media' && layer.properties.src) {
           const transitionType = layer.properties.transitionType || 'none';
@@ -406,11 +412,18 @@ export function useCanvasRenderer(options: Options) {
         } 
         else if (layer.type === 'text' && layer.properties.text) {
           const text = layer.properties.text;
-          const fontSize = (layer.properties.fontSize || 32) * (width / 540); // responsive font
+          const fontSize = (layer.properties.fontSize || 32) * (width / 540) * layer.scale;
           const fontColor = layer.properties.color || '#ffffff';
+          const fontFamily = layer.properties.fontFamily || 'Outfit';
+          const textAlign = layer.properties.textAlign || 'center';
           const animation = layer.properties.animation || 'fade';
           const isBold = layer.properties.bold;
+          const isItalic = layer.properties.italic;
           const hasShadow = layer.properties.shadow;
+          const lines = text.split(/\r?\n/);
+          const lineHeight = fontSize * 1.2;
+          const outlineWidth = (layer.properties.outlineWidth ?? 4) * (width / 540) * layer.scale;
+          const padding = (layer.properties.padding ?? 12) * (width / 540) * layer.scale;
   
           ctx.translate(pxX, pxY);
   
@@ -441,9 +454,22 @@ export function useCanvasRenderer(options: Options) {
           ctx.globalAlpha = layer.opacity * animOpacity;
           ctx.scale(animScale, animScale);
   
-          ctx.font = `${isBold ? '700' : '400'} ${fontSize}px 'Outfit', sans-serif`;
-          ctx.textAlign = 'center';
+          ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? '700' : '400'} ${fontSize}px '${fontFamily}', sans-serif`;
+          ctx.textAlign = textAlign;
           ctx.textBaseline = 'middle';
+          const maxTextWidth = width * 0.9;
+          const measuredWidths = lines.map(line => Math.min(maxTextWidth, ctx.measureText(line).width));
+          const textWidth = Math.max(1, ...measuredWidths);
+          const alignOffset = textAlign === 'left' ? 0 : textAlign === 'right' ? -textWidth : -textWidth / 2;
+          const textTop = -((lines.length - 1) * lineHeight) / 2;
+
+          if (layer.properties.backgroundColor && (layer.properties.backgroundOpacity ?? 0) > 0) {
+            ctx.save();
+            ctx.globalAlpha *= layer.properties.backgroundOpacity ?? 0;
+            ctx.fillStyle = layer.properties.backgroundColor;
+            ctx.fillRect(alignOffset - padding, textTop - lineHeight / 2 - padding / 2, textWidth + padding * 2, lineHeight * lines.length + padding);
+            ctx.restore();
+          }
   
           if (hasShadow) {
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
@@ -452,13 +478,15 @@ export function useCanvasRenderer(options: Options) {
             ctx.shadowOffsetY = 2;
           }
   
-          // Text Stroke background for premium legibility on cloth textures
-          ctx.strokeStyle = '#000000';
-          ctx.lineWidth = 4;
-          ctx.strokeText(textToShow, 0, animOffset);
-          
+          ctx.strokeStyle = layer.properties.outlineColor || '#000000';
+          ctx.lineWidth = outlineWidth;
           ctx.fillStyle = fontColor;
-          ctx.fillText(textToShow, 0, animOffset);
+          lines.forEach((line, index) => {
+            const visibleLine = lines.length === 1 ? textToShow : line;
+            const y = textTop + index * lineHeight + animOffset;
+            if (outlineWidth > 0) ctx.strokeText(visibleLine, 0, y, maxTextWidth);
+            ctx.fillText(visibleLine, 0, y, maxTextWidth);
+          });
         }
         else if (layer.type === 'sticker' && layer.properties.text) {
           const text = layer.properties.text;

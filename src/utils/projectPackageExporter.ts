@@ -87,6 +87,10 @@ export const exportProjectPackage = (data: {
  */
 export const importProjectPackage = async (file: File): Promise<KeyVideoProjectPackage> => {
   return new Promise((resolve, reject) => {
+    if (file.size > 50 * 1024 * 1024) {
+      reject(new Error('工程包超过 50MB 大小限制'));
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -98,8 +102,17 @@ export const importProjectPackage = async (file: File): Promise<KeyVideoProjectP
         }
 
         const pkg = parsed as Partial<KeyVideoProjectPackage>;
-        if (!pkg.canvas || !Array.isArray(pkg.canvas.layers)) {
+        if (pkg.version !== '1.0.0') {
+          throw new Error('不支持的工程包版本，请使用当前版本导出的文件');
+        }
+        if (!pkg.project || typeof pkg.project.id !== 'string' || typeof pkg.project.name !== 'string') {
+          throw new Error('工程包缺少有效的项目元数据');
+        }
+        if (!pkg.canvas || !['1-1', '3-4', '9-16', '16-9'].includes(pkg.canvas.ratio) || !Array.isArray(pkg.canvas.layers)) {
           throw new Error('缺少有效的图层配置数据 (canvas.layers)');
+        }
+        if (pkg.infiniteCanvas && (!Array.isArray(pkg.infiniteCanvas.nodes) || !Array.isArray(pkg.infiniteCanvas.connections))) {
+          throw new Error('工程包中的无限画布数据无效');
         }
 
         resolve(pkg as KeyVideoProjectPackage);

@@ -41,16 +41,18 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
   // Sync dimensions when ratio or preset changes
   useEffect(() => {
     const dims = calculateExportDimensions(ratio, config.preset, nativeWidth, nativeHeight);
+    const safeEnd = isRangeCustom ? Math.max(0.5, Math.min(totalDuration, config.timeRange.end)) : Math.max(1, totalDuration);
+    const safeStart = isRangeCustom ? Math.min(Math.max(0, config.timeRange.start), Math.max(0, safeEnd - 0.5)) : 0;
     setConfig(prev => ({
       ...prev,
       width: dims.width,
       height: dims.height,
       timeRange: {
-        start: isRangeCustom ? prev.timeRange.start : 0,
-        end: isRangeCustom ? Math.min(totalDuration, prev.timeRange.end) : Math.max(1, totalDuration)
+        start: safeStart,
+        end: safeEnd
       }
     }));
-  }, [ratio, config.preset, totalDuration, nativeWidth, nativeHeight, isRangeCustom]);
+  }, [ratio, config.preset, totalDuration, nativeWidth, nativeHeight, isRangeCustom, config.timeRange.end, config.timeRange.start]);
 
   const activeDuration = Math.max(0.5, config.timeRange.end - config.timeRange.start);
   const totalFrames = Math.max(1, Math.round(activeDuration * config.fps));
@@ -59,6 +61,15 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
   }, [activeDuration, config.bitrateBps, config.includeAudio]);
 
   const webCodecsAvailable = useMemo(() => isWebCodecsSupported(), []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -71,18 +82,21 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
   };
 
   const setQuickRange = (start: number, end: number) => {
+    const boundedEnd = Math.min(totalDuration, Math.max(0.5, end));
+    const boundedStart = Math.min(Math.max(0, start), Math.max(0, boundedEnd - 0.5));
     setIsRangeCustom(true);
     setConfig(prev => ({
       ...prev,
       timeRange: {
-        start: Math.max(0, start),
-        end: Math.min(totalDuration, end)
+        start: boundedStart,
+        end: boundedEnd
       }
     }));
   };
 
   return createPortal(
     <div
+      className="export-modal-backdrop"
       style={{
         position: 'fixed',
         inset: 0,
@@ -97,6 +111,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
       onClick={onClose}
     >
       <div
+        className="export-settings-modal"
         style={{
           width: '640px',
           maxWidth: '95vw',
@@ -114,6 +129,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
       >
         {/* Modal Header */}
         <div
+          className="export-modal-header"
           style={{
             padding: '16px 22px',
             borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
@@ -125,6 +141,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div
+              className="export-modal-mark"
               style={{
                 width: '34px',
                 height: '34px',
@@ -137,18 +154,19 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
                 boxShadow: '0 2px 10px rgba(124, 58, 237, 0.4)'
               }}
             >
-              🎬
+              ↗
             </div>
             <div>
-              <div style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', letterSpacing: '0.3px' }}>
-                视频硬件加速导出中心 (Export Hub)
+              <div className="export-modal-title" style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', letterSpacing: '0.3px' }}>
+                视频导出中心
               </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                自由配置成片分辨率、高刷帧率、母带码率与片段选区
+              <div className="export-modal-subtitle" style={{ fontSize: '11px', color: '#94a3b8' }}>
+                配置分辨率、帧率、码率、片段和音频
               </div>
             </div>
           </div>
           <button
+            className="export-modal-close"
             type="button"
             onClick={onClose}
             style={{
@@ -167,6 +185,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
 
         {/* Modal Body */}
         <div
+          className="export-modal-body"
           style={{
             padding: '20px 22px',
             overflowY: 'auto',
@@ -178,21 +197,22 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
           {/* 1. Resolution Preset Matrix */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
-                🖥️ 输出分辨率 (画板比例 {ratio})
+              <span className="export-section-title" style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
+                <i aria-hidden="true">▦</i> 输出分辨率 <small>画板比例 {ratio}</small>
               </span>
               <span style={{ fontSize: '11px', color: '#00f2fe', fontFamily: 'var(--mono, monospace)', fontWeight: 600 }}>
                 {config.width} × {config.height} px
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+            <div className="export-resolution-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
               {(
                 [
                   { preset: '720p', label: '720P 标清', sub: '极速流畅', tag: '轻量' },
                   { preset: '1080p', label: '1080P 全高清', sub: '商业推荐', tag: '推荐' },
                   { preset: '2k', label: '2K 超清', sub: '发烧画质', tag: '细腻' },
-                  { preset: '4k', label: '4K 母带级', sub: '影院级极致', tag: '高精' }
+                  { preset: '4k', label: '4K 母带级', sub: '影院级极致', tag: '高精' },
+                  { preset: 'native', label: '原生尺寸', sub: '保持画布规格', tag: '原生' }
                 ] as Array<{ preset: ResolutionPreset; label: string; sub: string; tag: string }>
               ).map(item => {
                 const isSelected = config.preset === item.preset;
@@ -256,8 +276,8 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '14px' }}>
             {/* FPS Selector */}
             <div>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', display: 'block', marginBottom: '8px' }}>
-                ⏱️ 渲染帧率 (FPS)
+              <span className="export-section-title" style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', display: 'block', marginBottom: '8px' }}>
+                <i aria-hidden="true">◷</i> 渲染帧率 <small>FPS</small>
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {FRAMERATE_OPTIONS.map(opt => {
@@ -294,8 +314,8 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
 
             {/* Bitrate Selector */}
             <div>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', display: 'block', marginBottom: '8px' }}>
-                🎚️ 视频码率 (比特率)
+              <span className="export-section-title" style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', display: 'block', marginBottom: '8px' }}>
+                <i aria-hidden="true">◈</i> 视频码率 <small>比特率</small>
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {(Object.entries(BITRATE_PRESETS) as Array<[BitratePreset, { label: string; bps: number; desc: string }]>).map(
@@ -336,8 +356,8 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
           {/* 3. Export Time Range */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
-                ✂️ 导出时间范围 (总片长 {totalDuration.toFixed(1)}s)
+              <span className="export-section-title" style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
+                <i aria-hidden="true">✂</i> 导出时间范围 <small>总片长 {totalDuration.toFixed(1)}s</small>
               </span>
               <span style={{ fontSize: '11px', color: '#00f2fe', fontFamily: 'var(--mono, monospace)' }}>
                 导出长度: {activeDuration.toFixed(1)} 秒
@@ -366,7 +386,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                🎬 全片导出 (0.0s - {totalDuration.toFixed(1)}s)
+                ▶ 全片导出 (0.0s - {totalDuration.toFixed(1)}s)
               </button>
 
               <button
@@ -384,7 +404,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                ⏱️ 自定义片段选区
+                ⌁ 自定义片段选区
               </button>
             </div>
 
@@ -535,7 +555,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
                 style={{ accentColor: '#7c3aed', width: '15px', height: '15px' }}
               />
               <span style={{ fontSize: '11px', fontWeight: 600, color: '#e2e8f0' }}>
-                🎵 包含时间轴音频音轨 (BGM + 拟音 Foley)
+                ♫ 包含时间轴音频音轨（BGM + 拟音）
               </span>
             </label>
 
@@ -606,6 +626,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
 
         {/* Modal Footer */}
         <div
+          className="export-modal-footer"
           style={{
             padding: '14px 22px',
             borderTop: '1px solid rgba(255, 255, 255, 0.08)',
@@ -650,7 +671,7 @@ export const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
                 boxShadow: '0 4px 15px rgba(124, 58, 237, 0.4)'
               }}
             >
-              <span>🚀 开始硬件加速渲染</span>
+              <span>↗ 开始导出渲染</span>
             </button>
           </div>
         </div>

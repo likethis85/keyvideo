@@ -8,6 +8,15 @@ import { TimelineTrackBlocks } from './timeline/TimelineTrackBlocks';
 import { TRANSITION_CONFIGS, type TransitionType } from './timeline/timelineTransitions';
 import { canSplitLayer, splitLayerInList } from '../services/timelineSplitService';
 import type { StoryboardItem } from '../types/aiProject';
+import { getStudioTrack, type StudioTrack } from '../utils/studioTimeline';
+
+const EMPTY_STORYBOARDS: StoryboardItem[] = [
+  { id: 'placeholder-shot-1', name: '出场', shotType: 'shot-1', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 },
+  { id: 'placeholder-shot-2', name: '特写', shotType: 'shot-2', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 },
+  { id: 'placeholder-shot-3', name: '转身', shotType: 'shot-3', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 },
+  { id: 'placeholder-shot-4', name: '回眸', shotType: 'shot-4', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 },
+  { id: 'placeholder-shot-5', name: '定格', shotType: 'shot-5', imageSrc: '', videoSrc: null, isGeneratingVideo: false, progress: 0 }
+];
 
 interface TimelineProps {
   layers: Layer[];
@@ -137,10 +146,12 @@ export const Timeline: React.FC<TimelineProps> = ({
   };
 
   const activeLayers = React.useMemo(() => layers.filter(layer => layer.visible), [layers]);
+  const visibleStoryboards = storyboards.length > 0 ? storyboards : (fullPage ? EMPTY_STORYBOARDS : []);
+  const hasGeneratedStoryboards = storyboards.length > 0;
   const maxLayerEnd = activeLayers.reduce((max, l) => l.end > max ? l.end : max, 0);
   const totalDuration = maxLayerEnd > 0 ? Math.min(15, maxLayerEnd) : 15;
-  const activeStoryboardIndex = storyboards.length > 0
-    ? Math.min(storyboards.length - 1, Math.max(0, Math.floor(currentTime / 3)))
+  const activeStoryboardIndex = visibleStoryboards.length > 0
+    ? Math.min(visibleStoryboards.length - 1, Math.max(0, Math.floor(currentTime / 3)))
     : -1;
 
   // Selected layer reference
@@ -553,14 +564,22 @@ export const Timeline: React.FC<TimelineProps> = ({
     toast.info(`${cfg.icon} 已设置转场效果为「${cfg.label}」`);
   }, [commitInstantHistory, setLayers]);
 
-  const getMediaLayers = () => layers.filter(layer => layer.type === 'media');
-  const getTextLayers = () => layers.filter(layer => layer.type === 'text' || layer.type === 'sticker');
-  const getAudioLayers = () => layers.filter(layer => layer.type === 'audio');
+  const getTrackLayers = (track: StudioTrack) => layers.filter(layer => getStudioTrack(layer) === track);
+  const getTrackMeta = (track: StudioTrack, count: number) => {
+    if (track === 'video') return `${count} 个片段 · 1.0x`;
+    if (track === 'caption') return `${count} 个字幕`;
+    if (track === 'voice') return `${count} 条音频`;
+    if (track === 'sfx') return `${count} 个片段`;
+    if (track === 'brand') return 'LOGO · 标志';
+    return `${count} 个标记`;
+  };
 
   const renderTrackBlocks = (trackLayers: Layer[], typeClass: 'media' | 'text' | 'audio') => (
     <TimelineTrackBlocks
       layers={trackLayers}
       typeClass={typeClass}
+      rowHeight={fullPage ? 68 : 38}
+      showDuration={fullPage}
       totalDuration={totalDuration}
       currentTime={currentTime}
       selectedLayerId={selectedLayerId}
@@ -593,7 +612,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   if (isCollapsed) {
     return (
       <div className="timeline-collapsed-bar">
-        <button type="button" className="timeline-expand-btn" onClick={onToggleCollapsed}>
+        <button type="button" className="timeline-expand-btn" onClick={onToggleCollapsed} title="展开多轨剪辑时间轴" data-tooltip="展开时间轴" aria-label="展开时间轴">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 18h16M4 12h16M4 6h16" />
           </svg>
@@ -630,14 +649,14 @@ export const Timeline: React.FC<TimelineProps> = ({
         )}
       </div>
 
-      {storyboards.length > 0 && (
+      {visibleStoryboards.length > 0 && (
         <div className="timeline-story-rail">
           <div className="timeline-story-label">
             <b>AI 分镜</b>
-            <span>{storyboards.length} 镜 · 点击定位</span>
+            <span>{hasGeneratedStoryboards ? `${storyboards.length} 镜 · 点击定位` : '5 个待生成分镜'}</span>
           </div>
           <div className="timeline-story-cards">
-            {storyboards.map((storyboard, index) => (
+            {visibleStoryboards.map((storyboard, index) => (
               <button
                 key={storyboard.id}
                 className={`timeline-story-card ${activeStoryboardIndex === index ? 'active' : ''}`}
@@ -654,7 +673,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                   <span className="timeline-story-name">镜 {index + 1} · {storyboard.name}</span>
                   <span className="timeline-story-time">{(index * 3).toFixed(1)}s – {((index + 1) * 3).toFixed(1)}s</span>
                 </span>
-                <span className={`timeline-story-status ${storyboard.videoSrc || storyboard.isGeneratingVideo ? 'ready' : ''}`} />
+                <span className={`timeline-story-status ${hasGeneratedStoryboards && (storyboard.videoSrc || storyboard.isGeneratingVideo) ? 'ready' : ''}`} />
               </button>
             ))}
           </div>
@@ -662,6 +681,7 @@ export const Timeline: React.FC<TimelineProps> = ({
       )}
 
       <TimelineHeader
+        fullPage={fullPage}
         zoom={zoom}
         onZoomChange={setZoom}
         undo={undo}
@@ -703,29 +723,62 @@ export const Timeline: React.FC<TimelineProps> = ({
           >
             <TimelineTrackRow
               label="画面轨"
+              meta={getTrackMeta('video', getTrackLayers('video').length)}
               accent="var(--accent-purple)"
               glow="var(--accent-purple-glow)"
               icon={<><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></>}
             >
-              {renderTrackBlocks(getMediaLayers(), 'media')}
+              {renderTrackBlocks(getTrackLayers('video'), 'media')}
             </TimelineTrackRow>
 
             <TimelineTrackRow
-              label="文案/贴纸"
+              label="字幕/贴纸"
+              meta={getTrackMeta('caption', getTrackLayers('caption').length)}
               accent="#f59e0b"
               glow="rgba(245, 158, 11, 0.5)"
               icon={<><polyline points="4 7 4 4 20 4 20 7" /><line x1="12" y1="4" x2="12" y2="20" /><line x1="9" y1="20" x2="15" y2="20" /></>}
             >
-              {renderTrackBlocks(getTextLayers(), 'text')}
+              {renderTrackBlocks(getTrackLayers('caption'), 'text')}
             </TimelineTrackRow>
 
             <TimelineTrackRow
-              label="音频轨"
+              label="人声/BGM"
+              meta={getTrackMeta('voice', getTrackLayers('voice').length)}
               accent="var(--accent-cyan)"
               glow="var(--accent-cyan-glow)"
               icon={<><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>}
             >
-              {renderTrackBlocks(getAudioLayers(), 'audio')}
+              {renderTrackBlocks(getTrackLayers('voice'), 'audio')}
+            </TimelineTrackRow>
+
+            <TimelineTrackRow
+              label="音效"
+              meta={getTrackMeta('sfx', getTrackLayers('sfx').length)}
+              accent="#a78bfa"
+              glow="rgba(167, 139, 250, 0.5)"
+              icon={<><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>}
+            >
+              {renderTrackBlocks(getTrackLayers('sfx'), 'audio')}
+            </TimelineTrackRow>
+
+            <TimelineTrackRow
+              label="贴纸/品牌"
+              meta={getTrackMeta('brand', getTrackLayers('brand').length)}
+              accent="#f6c453"
+              glow="rgba(246, 196, 83, 0.45)"
+              icon={<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />}
+            >
+              {renderTrackBlocks(getTrackLayers('brand'), 'text')}
+            </TimelineTrackRow>
+
+            <TimelineTrackRow
+              label="标记/备注"
+              meta={getTrackMeta('note', getTrackLayers('note').length)}
+              accent="#71809a"
+              glow="rgba(113, 128, 154, 0.4)"
+              icon={<><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 2" /></>}
+            >
+              {renderTrackBlocks(getTrackLayers('note'), 'text')}
             </TimelineTrackRow>
           </div>
         </div>

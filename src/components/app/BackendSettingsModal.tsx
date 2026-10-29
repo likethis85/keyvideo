@@ -30,14 +30,6 @@ export function BackendSettingsModal({
     latency?: number;
   }>({ status: 'idle' });
 
-  const [wasOpen, setWasOpen] = useState(isOpen);
-  if (isOpen !== wasOpen) {
-    setWasOpen(isOpen);
-    if (isOpen) {
-      setTestResult({ status: 'idle' });
-    }
-  }
-
   const save = useCallback(() => {
     const url = value.trim().replace(/\/$/, '');
     localStorage.setItem('KEYVIDEO_BACKEND_URL', url);
@@ -64,13 +56,13 @@ export function BackendSettingsModal({
     setTesting(true);
     setTestResult({ status: 'idle' });
     const startTime = performance.now();
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      timeoutId = setTimeout(() => controller.abort(), 3500);
       const resp = await fetch(`${urlToTest}/api/health`, {
         signal: controller.signal
       });
-      clearTimeout(timeoutId);
       const latency = Math.round(performance.now() - startTime);
       if (resp.ok) {
         setTestResult({ status: 'success', message: `服务连通正常 (${latency}ms)`, latency });
@@ -83,6 +75,7 @@ export function BackendSettingsModal({
         : '无法连通服务，请确认后端已启动';
       setTestResult({ status: 'error', message: msg });
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       setTesting(false);
     }
   }, [value]);
@@ -91,6 +84,7 @@ export function BackendSettingsModal({
 
   return (
     <div
+      className="backend-settings-backdrop"
       style={{
         position: 'fixed',
         inset: 0,
@@ -106,6 +100,7 @@ export function BackendSettingsModal({
       onClick={onClose}
     >
       <div
+        className="backend-settings-modal"
         style={{
           width: '520px',
           maxWidth: '92vw',
@@ -123,7 +118,7 @@ export function BackendSettingsModal({
         onClick={event => event.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div className="backend-settings-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div
               style={{
@@ -140,7 +135,7 @@ export function BackendSettingsModal({
             >
               ⚙️
             </div>
-            <div>
+            <div className="backend-settings-heading-copy">
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary, #ffffff)', letterSpacing: '-0.01em' }}>
                 系统设置与服务配置
               </h3>
@@ -182,7 +177,7 @@ export function BackendSettingsModal({
         </div>
 
         {/* Section 1: Appearance & Theme Selection */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div className="backend-settings-section" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary, #ffffff)' }}>
               界面主题外观 (Theme)
@@ -192,9 +187,10 @@ export function BackendSettingsModal({
             </span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div className="backend-settings-theme-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             {/* Dark Theme Card */}
             <div
+              className="backend-settings-theme-card"
               role="button"
               tabIndex={0}
               onClick={() => onThemeChange?.('dark')}
@@ -220,6 +216,7 @@ export function BackendSettingsModal({
               }}
             >
               <div
+                className="backend-settings-theme-icon"
                 style={{
                   width: '32px',
                   height: '32px',
@@ -253,6 +250,7 @@ export function BackendSettingsModal({
 
             {/* Light Theme Card */}
             <div
+              className="backend-settings-theme-card"
               role="button"
               tabIndex={0}
               onClick={() => onThemeChange?.('light')}
@@ -278,6 +276,7 @@ export function BackendSettingsModal({
               }}
             >
               <div
+                className="backend-settings-theme-icon"
                 style={{
                   width: '32px',
                   height: '32px',
@@ -315,7 +314,7 @@ export function BackendSettingsModal({
         <div style={{ height: '1px', background: 'var(--border-color, rgba(255, 255, 255, 0.08))' }} />
 
         {/* Input Field Section */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div className="backend-settings-section" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary, #ffffff)' }}>
               后端基础 URL (BACKEND_BASE_URL)
@@ -360,12 +359,13 @@ export function BackendSettingsModal({
           </div>
 
           {/* Preset Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+          <div className="backend-settings-presets" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-muted, #6b7280)' }}>快速预设:</span>
             {PRESETS.map(p => {
               const isActive = value.trim().replace(/\/$/, '') === p.url;
               return (
                 <button
+                  className="backend-settings-preset"
                   key={p.url}
                   type="button"
                   onClick={() => {
@@ -393,6 +393,7 @@ export function BackendSettingsModal({
 
         {/* Connectivity Status Bar */}
         <div
+          className="backend-settings-status"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -440,6 +441,7 @@ export function BackendSettingsModal({
             </span>
           </div>
           <button
+            className="backend-settings-test"
             type="button"
             onClick={() => testConnection()}
             disabled={testing}
@@ -470,6 +472,7 @@ export function BackendSettingsModal({
 
         {/* Tip & Documentation Card */}
         <div
+          className="backend-settings-help"
           style={{
             padding: '12px 14px',
             borderRadius: '10px',
@@ -493,7 +496,7 @@ export function BackendSettingsModal({
         </div>
 
         {/* Footer Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+        <div className="backend-settings-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
           <button
             type="button"
             className="btn-secondary"

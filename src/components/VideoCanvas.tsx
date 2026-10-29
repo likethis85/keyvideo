@@ -23,12 +23,23 @@ export interface Layer {
   scale: number; // 0.1 to 3
   opacity: number; // 0 to 1
   properties: {
+    rotation?: number;
+    blendMode?: 'source-over' | 'multiply' | 'screen';
+    timelineTrack?: 'video' | 'caption' | 'voice' | 'sfx' | 'brand' | 'note';
     src?: string;
     text?: string;
     fontSize?: number;
+    fontFamily?: string;
     color?: string;
+    textAlign?: 'left' | 'center' | 'right';
+    outlineColor?: string;
+    outlineWidth?: number;
+    backgroundColor?: string;
+    backgroundOpacity?: number;
+    padding?: number;
     animation?: 'fade' | 'typewriter' | 'zoom' | 'slide';
     bold?: boolean;
+    italic?: boolean;
     shadow?: boolean;
     style?: 'red' | 'gold' | 'cyan' | 'black' | 'purple';
     bgRemoved?: boolean;
@@ -102,6 +113,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
 
   const [canvasBgMode, setCanvasBgMode] = useState<'showroom' | 'dark' | 'checkerboard'>('showroom');
   const [isLooping, setIsLooping] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const { isFullscreen, enterFullscreen, exitFullscreen } = useCanvasFullscreen({
     controlledValue: propIsFullscreen,
     onControlledChange: propSetIsFullscreen,
@@ -113,6 +125,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioSourcesRef = useRef<Record<string, MediaElementAudioSourceNode>>({});
   const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const exportAudioGainRef = useRef(1);
   const isOfflineExportingRef = useRef(false);
 
   // Background music audio sync effect
@@ -171,7 +184,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
 
       // Update volume
       const vol = typeof layer.properties.volume === 'number' ? layer.properties.volume : 0.8;
-      audio.volume = vol;
+      audio.volume = Math.max(0, Math.min(1, exporting ? vol * exportAudioGainRef.current : vol));
 
       // Check if timeline currentTime falls within the audio track bounds
       const isInRange = currentTime >= layer.start && currentTime <= layer.end;
@@ -375,7 +388,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   useEffect(() => {
     const animate = (timestamp: number) => {
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
-      const delta = (timestamp - lastTimeRef.current) / 1000;
+      const delta = ((timestamp - lastTimeRef.current) / 1000) * playbackRate;
       lastTimeRef.current = timestamp;
 
       if (isPlaying) {
@@ -410,7 +423,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [currentTime, drawFrame, isLooping, isPlaying, renderTrigger, setCurrentTime, setIsPlaying, totalDuration]);
+  }, [currentTime, drawFrame, isLooping, isPlaying, playbackRate, renderTrigger, setCurrentTime, setIsPlaying, totalDuration]);
 
   // Pause all cached videos when global playback pauses (except during export)
   useEffect(() => {
@@ -431,6 +444,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
   const {
     handleExport,
     handleCancel,
+    handleClose,
     handleSaveCloud,
     currentFrame,
     totalFrames,
@@ -439,7 +453,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
     previewSnapshotUrl,
     exportResult
   } = useVideoExport({
-    canvasRef, audioCtxRef, audioDestinationRef, videosCacheRef, isOfflineExportingRef, layers, ratio,
+    canvasRef, audioCtxRef, audioDestinationRef, exportAudioGainRef, videosCacheRef, isOfflineExportingRef, layers, ratio,
     width, height, exporting, drawFrame, setCurrentTime, setIsPlaying, setExporting,
     setExportProgress: (p: number) => setExportProgress(p),
     setExportLogs, setExportFps, setExportEngine
@@ -464,9 +478,11 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         duration={totalDuration}
         isPlaying={isPlaying}
         isLooping={isLooping}
+        playbackRate={playbackRate}
         onTimeChange={setCurrentTime}
         onPlayingChange={setIsPlaying}
         onLoopingChange={setIsLooping}
+        onPlaybackRateChange={setPlaybackRate}
         backgroundMode={canvasBgMode}
         onBackgroundModeChange={setCanvasBgMode}
         onFullscreen={enterFullscreen}
@@ -481,9 +497,11 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         duration={totalDuration}
         isPlaying={isPlaying}
         isLooping={isLooping}
+        playbackRate={playbackRate}
         setCurrentTime={setCurrentTime}
         setIsPlaying={setIsPlaying}
         setIsLooping={setIsLooping}
+        setPlaybackRate={setPlaybackRate}
         drawFrame={drawFrame}
         onClose={exitFullscreen}
       />
@@ -501,7 +519,7 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
         previewSnapshotUrl={previewSnapshotUrl}
         exportResult={exportResult}
         onCancel={handleCancel}
-        onClose={() => setExporting(false)}
+        onClose={handleClose}
         onSaveCloud={handleSaveCloud}
       />
 
