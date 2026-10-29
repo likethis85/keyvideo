@@ -31,6 +31,16 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
+// Persistent state lives outside the code directory so containers can mount a
+// volume without shadowing the application. Defaults to the repo folder for
+// local development.
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __dirname;
+try {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch (error) {
+  console.error(`[TaskStore] Could not create DATA_DIR ${DATA_DIR}:`, error.message);
+}
+
 const app = express();
 const port = process.env.PORT || 3001;
 const host = process.env.HOST || '127.0.0.1';
@@ -455,7 +465,7 @@ const compactTaskStore = () => {
   return compacted;
 };
 
-const TASKS_FILE = path.join(__dirname, 'tasks_history.json');
+const TASKS_FILE = path.join(DATA_DIR, 'tasks_history.json');
 const TASKS_BACKUP_FILE = `${TASKS_FILE}.bak`;
 let taskStore = {};
 let primaryTaskStoreIsValid = !fs.existsSync(TASKS_FILE);
@@ -1673,7 +1683,7 @@ app.get('/api/video/content/:taskId', async (req, res) => {
 });
 
 // ==================== Infinite Canvas REST APIs (Route B) ====================
-const CANVAS_STORE_PATH = path.join(__dirname, 'canvas_state.json');
+const CANVAS_STORE_PATH = path.join(DATA_DIR, 'canvas_state.json');
 const getCanvasStore = () => {
   try {
     if (fs.existsSync(CANVAS_STORE_PATH)) {
