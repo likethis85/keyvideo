@@ -2,12 +2,8 @@ name: 'Publish Tauri Desktop Apps'
 
 on:
   push:
-    branches:
-      - main
-      - master
     tags:
       - 'v*'
-  workflow_dispatch:
 
 jobs:
   publish-tauri:
@@ -44,6 +40,15 @@ jobs:
       - name: verify frontend
         run: npm test
 
+      - name: verify tag matches app version
+        shell: bash
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [[ "${GITHUB_REF_NAME}" != "v${version}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match src-tauri version ${version}."
+            exit 1
+          fi
+
       - name: verify production backend uses HTTPS
         shell: bash
         env:
@@ -68,7 +73,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL }}
         with:
-          tagName: app-v__VERSION__
+          tagName: ${{ github.ref_name }}
           releaseName: 'KeyVideo v__VERSION__'
           releaseBody: 'KeyVideo 桌面端自动构建发布。包含 Windows 和 macOS 安装包。'
           releaseDraft: true
