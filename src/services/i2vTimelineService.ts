@@ -47,6 +47,7 @@ export function applyI2VToTimeline({ storyboards, bgmLibrary, videoDuration, vid
           opacity: 1,
           properties: {
             src: storyboards[0]?.videoSrc || '/video.mp4',
+            storyboardId: storyboards[0]?.id,
             isVideo: true,
             videoStartOffset: 0,
             videoEndOffset: 15
@@ -100,6 +101,7 @@ export function applyI2VToTimeline({ storyboards, bgmLibrary, videoDuration, vid
           opacity: 1,
           properties: {
             src: storyboards[0]?.videoSrc || '/video.mp4',
+            storyboardId: storyboards[0]?.id,
             isVideo: true,
             videoStartOffset: 0,
             videoEndOffset: 3
@@ -119,6 +121,7 @@ export function applyI2VToTimeline({ storyboards, bgmLibrary, videoDuration, vid
           opacity: 1,
           properties: {
             src: storyboards[1]?.videoSrc || '/video.mp4',
+            storyboardId: storyboards[1]?.id,
             isVideo: true,
             videoStartOffset: 0,
             videoEndOffset: 3,
@@ -140,6 +143,7 @@ export function applyI2VToTimeline({ storyboards, bgmLibrary, videoDuration, vid
           opacity: 1,
           properties: {
             src: storyboards[2]?.videoSrc || '/video.mp4',
+            storyboardId: storyboards[2]?.id,
             isVideo: true,
             videoStartOffset: 0,
             videoEndOffset: 3,
@@ -161,6 +165,7 @@ export function applyI2VToTimeline({ storyboards, bgmLibrary, videoDuration, vid
           opacity: 1,
           properties: {
             src: storyboards[3]?.videoSrc || '/video.mp4',
+            storyboardId: storyboards[3]?.id,
             isVideo: true,
             videoStartOffset: 0,
             videoEndOffset: 3,
@@ -182,6 +187,7 @@ export function applyI2VToTimeline({ storyboards, bgmLibrary, videoDuration, vid
           opacity: 1,
           properties: {
             src: storyboards[4]?.videoSrc || '/video.mp4',
+            storyboardId: storyboards[4]?.id,
             isVideo: true,
             videoStartOffset: 0,
             videoEndOffset: 3,

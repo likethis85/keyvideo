@@ -51,6 +51,7 @@ import type { CanvasNodeData, CanvasConnection, CanvasViewport } from './types/c
 import { generateCanvasPipeline, saveCanvasTopologyToLocalDB, convertAiProjectToCanvas } from './utils/canvasBridge';
 import { splitLayerInList } from './services/timelineSplitService';
 import { projectStorageKey } from './utils/projectStorage';
+import { findStoryboardForLayer } from './utils/storyboardLayerBinding';
 import './App.css';
 import './studio.css';
 
@@ -324,9 +325,7 @@ function App() {
           if (!layer || typeof layer !== 'object' || !layer.properties) return layer;
           if (layer.type !== 'media' || !layer.properties.isVideo) return layer;
 
-          const match = /^media_i2v_(\d+)_/.exec(layer.id);
-          const sbIndex = match ? Number(match[1]) : -1;
-          const sb = sbIndex !== -1 ? storyboardList[sbIndex] : null;
+          const sb = findStoryboardForLayer(layer, storyboardList);
           if (!sb) return layer;
 
           if (typeof Blob !== 'undefined' && sb.videoBlob instanceof Blob) {

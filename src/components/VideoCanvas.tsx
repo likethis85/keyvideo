@@ -27,6 +27,12 @@ export interface Layer {
     blendMode?: 'source-over' | 'multiply' | 'screen';
     timelineTrack?: 'video' | 'caption' | 'voice' | 'sfx' | 'brand' | 'note';
     src?: string;
+    /**
+     * Links an i2v media layer to the storyboard it was rendered from, so
+     * reloads restore the correct Blob even after storyboards are reordered or
+     * deleted. Legacy layers fall back to their `media_i2v_<index>_` id.
+     */
+    storyboardId?: string;
     text?: string;
     fontSize?: number;
     fontFamily?: string;

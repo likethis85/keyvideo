@@ -4,6 +4,8 @@ import { buildCustomApiPayload, extractCustomApiResult } from '../src/utils/cust
 import { calculateExportDimensions, estimateExportFileSizeMb } from '../src/types/exportConfig.ts';
 import { buildBatchRequestKey } from '../src/utils/batchRequestKey.ts';
 import { DEFAULT_PROJECT_ID, createProjectId, migrateLegacyProjectIds } from '../src/utils/aiProjectFactory.ts';
+import { findStoryboardForLayer } from '../src/utils/storyboardLayerBinding.ts';
+import type { StoryboardItem } from '../src/types/aiProject.ts';
 
 test('custom API JSON templates interpolate without executing code', () => {
   const payload = buildCustomApiPayload(
@@ -60,6 +62,36 @@ test('default project IDs are unique per account while legacy IDs migrate', () =
   const untouched = migrateLegacyProjectIds([{ id: 'existing-project' }], idFactory);
   assert.equal(untouched.changed, false);
   assert.equal(untouched.projects[0].id, 'existing-project');
+});
+
+test('timeline media layers bind to storyboards by id before index', () => {
+  const storyboard = (id: string): StoryboardItem => ({
+    id,
+    name: id,
+    shotType: 'shot-1',
+    imageSrc: '',
+    videoSrc: null,
+    isGeneratingVideo: false,
+    progress: 0
+  });
+  const reordered = [storyboard('sb-b'), storyboard('sb-a')];
+
+  const bound = findStoryboardForLayer(
+    { id: 'media_i2v_0_123', properties: { storyboardId: 'sb-b' } },
+    reordered
+  );
+  assert.equal(bound?.id, 'sb-b');
+
+  const legacy = findStoryboardForLayer({ id: 'media_i2v_1_123', properties: {} }, reordered);
+  assert.equal(legacy?.id, 'sb-a');
+
+  const missing = findStoryboardForLayer(
+    { id: 'media_i2v_0_123', properties: { storyboardId: 'sb-deleted' } },
+    reordered
+  );
+  assert.equal(missing, null);
+
+  assert.equal(findStoryboardForLayer({ id: 'logo_1', properties: {} }, reordered), null);
 });
 
 test('batch idempotency keys cover reference images and explicit retries', () => {
