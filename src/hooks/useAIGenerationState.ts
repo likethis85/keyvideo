@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { StoryboardItem } from '../types/aiProject';
 import { DEFAULT_I2V_PROMPTS, DEFAULT_MASTER_PROMPT } from '../utils/aiProjectFactory';
+import { normalizeVideoModel } from '../config/videoModels';
 
 export function useAIGenerationState() {
   const [modelGender, setModelGender] = useState<'female' | 'male'>('female');
@@ -18,7 +19,7 @@ export function useAIGenerationState() {
   const [i2vPrompts, setI2vPrompts] = useState(() => ({ ...DEFAULT_I2V_PROMPTS }));
   const [videoDuration, setVideoDuration] = useState<'3s' | '15s'>('15s');
   const [i2vMasterPrompt15s, setI2vMasterPrompt15s] = useState(DEFAULT_MASTER_PROMPT);
-  const [videoModel, setVideoModel] = useState(() => localStorage.getItem('ai_video_model') || 'viduq2');
+  const [videoModel, setVideoModel] = useState(() => normalizeVideoModel(localStorage.getItem('ai_video_model')));
   const [includeI2VSubtitles, setIncludeI2VSubtitles] = useState(false);
   const [includeI2VStickers, setIncludeI2VStickers] = useState(false);
   const [useSlowMotion, setUseSlowMotion] = useState(() => localStorage.getItem('ai_use_slow_motion') === 'true');

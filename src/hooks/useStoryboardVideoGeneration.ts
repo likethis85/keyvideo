@@ -5,6 +5,7 @@ import { AiTaskCancelledError } from '../utils/aiTaskStateMachine';
 import { generateVideoTask, getVideoContent, waitForVideoTask } from '../utils/aiGateway';
 import { parseFiveShotPrompt } from '../services/storyboardPromptParser';
 import { SCENE_PROMPT_DESCRIPTIONS } from '../services/storyboardSceneService';
+import { isSupportedVideoModel } from '../config/videoModels';
 
 type StoryboardUpdater = StoryboardItem[] | ((previous: StoryboardItem[]) => StoryboardItem[]);
 
@@ -42,6 +43,11 @@ export function useStoryboardVideoGeneration(options: StoryboardVideoGenerationO
   const generateStoryboardVideos = async () => {
       const currentProjId = activeProjectId;
       if (!currentProjId) return;
+
+      if (!isSupportedVideoModel(videoModel)) {
+        alert('当前版本仅支持 kling-v3-omni 图生视频模型，请重新选择。');
+        return;
+      }
   
       const projectObj = projects.find(p => p.id === currentProjId);
       if (!projectObj) return;

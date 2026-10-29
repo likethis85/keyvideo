@@ -418,10 +418,14 @@ export const generateVideoTask = async (params: {
   projectId?: string;
 }): Promise<string> => {
   return dedupeGenerationRequest('video-task', params, async (requestKey) => {
+    // The backend owns provider credentials; never forward the UI gateway token.
+    const requestBody = { ...params };
+    delete requestBody.gatewayUrl;
+    delete requestBody.gatewayToken;
     const data = await requestJson<{ id: string }>(`${getBackendUrl()}/api/video/task`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params)
+      body: JSON.stringify(requestBody)
     }, {
       fallbackError: 'Video task creation failed',
       idempotencyKey: requestKey

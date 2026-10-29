@@ -1,5 +1,6 @@
 import React from 'react';
 import type { StoryboardItem } from '../../SidebarDrawer';
+import { SUPPORTED_VIDEO_MODELS } from '../../../config/videoModels';
 
 export interface VideoStepProps {
   storyboards: StoryboardItem[];
@@ -208,10 +209,9 @@ export const VideoStep: React.FC<VideoStepProps> = ({
             className="text-input"
             style={{ padding: '8px 12px', fontSize: '12px', width: '100%', background: 'var(--bg-surface-solid)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
           >
-            <option value="kling-v3-omni">🎥 kling-v3-omni (快手可灵 v3.0)</option>
-            <option value="viduq2">🎥 viduq2 (Vidu 2.0 - 极速推荐)</option>
-            <option value="veo-3.1-fast-generate-001">🎥 veo-3.1-fast-generate-001 (Google Veo)</option>
-            <option value="MiniMax-Hailuo-2.3">🎥 MiniMax-Hailuo-2.3 (海螺 AI)</option>
+            {SUPPORTED_VIDEO_MODELS.map(model => (
+              <option key={model.id} value={model.id}>🎥 {model.label}</option>
+            ))}
           </select>
         </div>
 

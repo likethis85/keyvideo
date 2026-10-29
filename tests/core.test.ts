@@ -6,6 +6,7 @@ import { buildBatchRequestKey } from '../src/utils/batchRequestKey.ts';
 import { DEFAULT_PROJECT_ID, createProjectId, migrateLegacyProjectIds } from '../src/utils/aiProjectFactory.ts';
 import { findStoryboardForLayer } from '../src/utils/storyboardLayerBinding.ts';
 import { mergeBatchVideosIntoTimeline } from '../src/utils/batchTimelineMerge.ts';
+import { DEFAULT_VIDEO_MODEL, isSupportedVideoModel, normalizeVideoModel } from '../src/config/videoModels.ts';
 import type { Layer } from '../src/components/VideoCanvas.tsx';
 import type { StoryboardItem } from '../src/types/aiProject.ts';
 
@@ -94,6 +95,16 @@ test('timeline media layers bind to storyboards by id before index', () => {
   assert.equal(missing, null);
 
   assert.equal(findStoryboardForLayer({ id: 'logo_1', properties: {} }, reordered), null);
+});
+
+test('unsupported video models normalize to the only mapped upstream model', () => {
+  assert.equal(DEFAULT_VIDEO_MODEL, 'kling-v3-omni');
+  assert.equal(isSupportedVideoModel('kling-v3-omni'), true);
+  assert.equal(isSupportedVideoModel('viduq2'), false);
+  assert.equal(isSupportedVideoModel('veo-3.1-fast-generate-001'), false);
+  assert.equal(normalizeVideoModel('viduq2'), 'kling-v3-omni');
+  assert.equal(normalizeVideoModel(null), 'kling-v3-omni');
+  assert.equal(normalizeVideoModel('kling-v3-omni'), 'kling-v3-omni');
 });
 
 test('batch imports replace only their own storyboard layers', () => {
