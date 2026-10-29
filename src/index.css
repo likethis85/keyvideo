@@ -3838,3 +3838,52 @@ body[data-theme="light"] {
   line-height: 1.4;
   text-align: left;
 }
+.script-quick-layout {
+  margin-top: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-element);
+  padding: 0 9px;
+}
+
+.script-quick-layout summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 9px;
+  padding: 8px 0;
+  user-select: none;
+}
+
+.script-quick-layout summary:hover {
+  color: var(--text-primary);
+}
+
+.script-quick-layout > p {
+  margin: 0 0 7px;
+  color: var(--text-muted);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.script-quick-layout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding-bottom: 9px;
+}
+
+.script-quick-layout-grid button {
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--bg-surface-solid);
+  color: var(--text-secondary);
+  padding: 6px 5px;
+  font-size: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.script-quick-layout-grid button:hover {
+  border-color: var(--border-accent);
+  color: var(--accent-cyan);
+}

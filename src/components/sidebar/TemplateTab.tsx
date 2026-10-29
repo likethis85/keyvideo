@@ -11,7 +11,7 @@ interface TemplateTabProps {
   onUseTemplate?: (template: ScriptTemplate) => void;
 }
 
-export const TemplateTab: React.FC<TemplateTabProps> = ({ onUseTemplate }) => {
+export const TemplateTab: React.FC<TemplateTabProps> = ({ applyTemplate, onUseTemplate }) => {
   const [category, setCategory] = useState<'all' | ScriptTemplateCategory>('all');
 
   const visibleTemplates = useMemo(
@@ -92,6 +92,17 @@ export const TemplateTab: React.FC<TemplateTabProps> = ({ onUseTemplate }) => {
         >
           ＋ 创建自己的脚本模板
         </button>
+
+        <details className="script-quick-layout">
+          <summary>快速时间轴排版（旧版模板）</summary>
+          <p>只调整时间轴图层的节奏和转场，不改变脚本提示词。</p>
+          <div className="script-quick-layout-grid">
+            <button type="button" onClick={() => applyTemplate?.('beat')}>时尚卡点卖点流</button>
+            <button type="button" onClick={() => applyTemplate?.('split')}>模特画报风</button>
+            <button type="button" onClick={() => applyTemplate?.('detail')}>简约细节大图款</button>
+            <button type="button" onClick={() => applyTemplate?.('transition_demo')}>多片段过渡演示</button>
+          </div>
+        </details>
       </div>
     </>
   );
