@@ -6,7 +6,7 @@
 
 ## P1：安全与数据正确性
 
-- [ ] **先鉴权，再处理幂等缓存。** `backend/server.js` 当前在 `/api` 鉴权中间件前执行生成请求缓存，缓存键只有 path 和客户端提供的 key；缓存响应可能绕过鉴权并跨用户复用。服务端应以用户、HTTP 方法、路由和规范化请求体共同构造键，限制缓存总量，并覆盖未登录、跨账号、同 key 不同 body 和高基数 key 测试。`src/services/videoBatchTaskService.ts` 生成的批量 key 还漏掉了 `imageSrc`，且显式重试会复用同一 key；修复后应确保只改参考图会产生新请求、失败任务可立即重新提交。
+- [x] **先鉴权，再处理幂等缓存。** 已抽出 `backend/idempotency.js` 并安装在鉴权与限流之后；键包含用户、方法、路由、客户端 key 与规范化 body 哈希，`Map` 有硬上限并按最旧条目淘汰，5xx 不缓存。前端批量 key 已纳入 `imageSrc`，显式重试附加 `retryToken` 生成新 key。`backend/idempotency.test.js` 覆盖未登录、跨账号、同 key 不同 body、并发合并、5xx 重试与高基数淘汰；`tests/core.test.ts` 覆盖参考图变化与重试 key。
 - [ ] **避免上游任务提交的模糊重试造成重复计费。** `backend/server.js` 的 `submitSandbaseTask` 在网络错误、超时及部分 5xx/429 后会重试 POST；若上游已接收任务但响应丢失，就会重复创建付费任务。使用上游幂等键/提交状态查询，或仅对能证明未受理的响应重试；用“上游已受理但连接断开”的模拟测试确认只创建一个任务。
 - [ ] **让长耗时生图接口可恢复。** `/api/ai/background` 同步等待最多 360 秒，而 `src/utils/aiGateway.ts` 客户端请求超时为 180 秒；该路由既不登记可查询的任务，也不支持异步轮询。客户端超时后用户拿不到结果，服务端可能仍继续消耗额度；改为统一的异步任务/状态接口，记录 userId 与 projectId，并覆盖断连、重启和恢复场景。
 - [ ] **明确云端素材列表的隐私边界。** `src/utils/create_table.sql` 给 `audio_assets`、`model_assets` 配置了 `TO public USING (true)` 的全表 SELECT，前端又用 `select('*')` 拉取记录；匿名访问者可枚举素材名称、URL 和 user_id。确认素材是否刻意作为公共素材库；私人资产改为按 `auth.uid() = user_id` 读取，公共素材单独建表/标记并回归匿名及跨账号访问。

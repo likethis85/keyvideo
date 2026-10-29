@@ -48,6 +48,7 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
   const pollerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const storyboardsRef = useRef(storyboards);
   const queueTasksRef = useRef(queueTasks);
+  const submissionAttemptRef = useRef(0);
   storyboardsRef.current = storyboards;
 
   useEffect(() => {
@@ -234,11 +235,13 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
     toast.info(`🚀 已发起 5 幕分镜全并发生成队列...`);
 
     try {
+      submissionAttemptRef.current += 1;
       const results = await submitBatchVideoTasks({
         projectId: activeProjectId,
         shots: batchShots,
         model: config.model,
-        seconds: 3
+        seconds: 3,
+        retryToken: submissionAttemptRef.current > 1 ? String(submissionAttemptRef.current) : undefined
       });
 
       setQueueTasks(prev => prev.map(t => {
@@ -285,6 +288,7 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
     } : t));
 
     try {
+      submissionAttemptRef.current += 1;
       const results = await submitBatchVideoTasks({
         projectId: activeProjectId,
         shots: [{
@@ -294,7 +298,8 @@ export function useBatchVideoQueue(options: UseBatchVideoQueueOptions) {
           imageSrc: task.imageSrc,
           seconds: 3
         }],
-        model
+        model,
+        retryToken: `shot-${submissionAttemptRef.current}`
       });
 
       const res = results[0];

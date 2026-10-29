@@ -10,6 +10,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'url';
 import { createSsoRouter } from './sso.js';
 import { createApiAuthMiddleware } from './auth.js';
+import { createIdempotencyMiddleware, IDEMPOTENT_GENERATION_PATHS } from './idempotency.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -180,70 +181,6 @@ app.use(cors({
 app.use(express.json({ limit: `${MAX_JSON_MB}mb` }));
 app.use(express.urlencoded({ limit: `${MAX_JSON_MB}mb`, extended: true }));
 
-const idempotencyStore = new Map();
-const idempotencyTtlMs = Math.max(5, Number(process.env.IDEMPOTENCY_TTL_SECONDS) || 30) * 1000;
-const idempotentGenerationPaths = [
-  '/api/ai/mannequin',
-  '/api/ai/inpaint',
-  '/api/ai/upscale',
-  '/api/ai/tryon',
-  '/api/ai/background',
-  '/api/ai/stylist',
-  '/api/ai/prompts-skill',
-  '/api/video/task',
-  '/api/video/task/batch'
-];
-
-app.use(idempotentGenerationPaths, async (req, res, next) => {
-  const requestKey = req.get('X-Idempotency-Key');
-  if (!requestKey || requestKey.length > 200) return next();
-
-  const scopedKey = `${req.path}:${requestKey}`;
-  const now = Date.now();
-  const existing = idempotencyStore.get(scopedKey);
-  if (existing && existing.expiresAt > now) {
-    try {
-      const replay = existing.response || await existing.promise;
-      res.set('X-Idempotency-Replayed', 'true');
-      return res.status(replay.status).json(replay.body);
-    } catch (error) {
-      idempotencyStore.delete(scopedKey);
-      return next(error);
-    }
-  }
-  if (existing) idempotencyStore.delete(scopedKey);
-
-  let settleRequest;
-  const promise = new Promise(resolve => { settleRequest = resolve; });
-  const record = { promise, response: null, expiresAt: now + idempotencyTtlMs };
-  idempotencyStore.set(scopedKey, record);
-
-  const originalJson = res.json.bind(res);
-  res.json = (body) => {
-    const response = { status: res.statusCode, body };
-    record.response = response;
-    settleRequest(response);
-    if (res.statusCode >= 500) idempotencyStore.delete(scopedKey);
-    return originalJson(body);
-  };
-
-  res.once('close', () => {
-    if (!record.response) {
-      const response = { status: 503, body: { error: 'Original idempotent request disconnected' } };
-      settleRequest(response);
-      idempotencyStore.delete(scopedKey);
-    }
-  });
-
-  // Keep the in-memory store bounded on long-running backend processes.
-  if (idempotencyStore.size > 1000) {
-    for (const [key, value] of idempotencyStore) {
-      if (value.expiresAt <= now) idempotencyStore.delete(key);
-    }
-  }
-  return next();
-});
-
 app.use((err, _req, res, next) => {
   if (err?.message === 'Origin is not allowed by CORS') {
     return res.status(403).json({ error: err.message });
@@ -296,6 +233,13 @@ app.use('/api', (req, res, next) => {
   }
   return next();
 });
+
+// Idempotent generation replay runs only after authentication, so cached paid
+// results are namespaced by the verified user and canonical request body.
+app.use(IDEMPOTENT_GENERATION_PATHS, createIdempotencyMiddleware({
+  ttlMs: Math.max(5, Number(process.env.IDEMPOTENCY_TTL_SECONDS) || 30) * 1000,
+  maxEntries: Math.max(1, Number(process.env.IDEMPOTENCY_MAX_ENTRIES) || 1000)
+}));
 
 const TRYON_SCENE_PROMPT_DESCRIPTIONS = {
   street: 'posing in a modern urban street with city lights and soft outdoor background',

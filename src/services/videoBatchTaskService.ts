@@ -1,5 +1,6 @@
 import { getBackendUrl } from '../utils/aiGateway';
 import { getApiAuthHeaders } from '../utils/apiAuth';
+import { buildBatchRequestKey } from '../utils/batchRequestKey';
 
 export interface BatchVideoShotItem {
   id: string;
@@ -41,31 +42,12 @@ export interface ProjectVideoTaskRecord {
 /**
  * Submit all 5 storyboard shots in a single parallel batch request to backend
  */
-const buildBatchRequestKey = (params: {
-  projectId: string;
-  shots: BatchVideoShotItem[];
-  model?: string;
-  seconds?: number;
-}): string => {
-  const signature = JSON.stringify({
-    projectId: params.projectId,
-    model: params.model,
-    seconds: params.seconds,
-    shots: params.shots.map(shot => ({ id: shot.id, prompt: shot.prompt, seconds: shot.seconds }))
-  });
-  let hash = 2166136261;
-  for (let index = 0; index < signature.length; index += 1) {
-    hash ^= signature.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `batch:${params.projectId}:${(hash >>> 0).toString(16)}`;
-};
-
 export async function submitBatchVideoTasks(params: {
   projectId: string;
   shots: BatchVideoShotItem[];
   model?: string;
   seconds?: number;
+  retryToken?: string;
 }): Promise<BatchVideoTaskResult[]> {
   const backendUrl = getBackendUrl();
   const authHeaders = await getApiAuthHeaders();
