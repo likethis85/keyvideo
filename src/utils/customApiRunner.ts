@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from './http.ts';
+
 export interface CustomApiConfig {
   enabled: boolean;
   endpointUrl: string;
@@ -117,11 +119,11 @@ export const executeCustomApi = async (params: Record<string, unknown>): Promise
     headers['Authorization'] = config.authHeader.trim();
   }
 
-  const response = await fetch(endpoint, {
+  const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers,
     body: JSON.stringify(requestBody)
-  });
+  }, { timeoutMs: 180_000 });
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');

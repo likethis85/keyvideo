@@ -10,6 +10,7 @@ import { DEFAULT_VIDEO_MODEL, isSupportedVideoModel, normalizeVideoModel } from 
 import { normalizeCanvasState } from '../src/utils/canvasImport.ts';
 import { createProjectSyncScheduler } from '../src/utils/projectSyncScheduler.ts';
 import { buildRequestKey } from '../src/utils/requestIdentity.ts';
+import { fetchWithTimeout } from '../src/utils/http.ts';
 import type { Layer } from '../src/components/VideoCanvas.tsx';
 import type { StoryboardItem } from '../src/types/aiProject.ts';
 
@@ -98,6 +99,28 @@ test('timeline media layers bind to storyboards by id before index', () => {
   assert.equal(missing, null);
 
   assert.equal(findStoryboardForLayer({ id: 'logo_1', properties: {} }, reordered), null);
+});
+
+test('fetchWithTimeout aborts a request that never answers', async () => {
+  const fetchImpl = (_url, init) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener('abort', () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      reject(error);
+    });
+  });
+
+  await assert.rejects(
+    fetchWithTimeout('https://example.com', {}, { timeoutMs: 10, fetchImpl }),
+    /timed out after/
+  );
+
+  const okResponse = new Response('{}', { status: 200 });
+  const response = await fetchWithTimeout('https://example.com', {}, {
+    timeoutMs: 1_000,
+    fetchImpl: async () => okResponse
+  });
+  assert.equal(response.status, 200);
 });
 
 test('request dedup keys include the identity and payload', () => {

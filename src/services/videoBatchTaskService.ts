@@ -1,6 +1,7 @@
 import { getBackendUrl } from '../utils/aiGateway';
 import { getApiAuthHeaders } from '../utils/apiAuth';
 import { buildBatchRequestKey } from '../utils/batchRequestKey';
+import { fetchWithTimeout } from '../utils/http';
 
 export interface BatchVideoShotItem {
   id: string;
@@ -51,7 +52,7 @@ export async function submitBatchVideoTasks(params: {
 }): Promise<BatchVideoTaskResult[]> {
   const backendUrl = getBackendUrl();
   const authHeaders = await getApiAuthHeaders();
-  const response = await fetch(`${backendUrl}/api/video/task/batch`, {
+  const response = await fetchWithTimeout(`${backendUrl}/api/video/task/batch`, {
     method: 'POST',
     headers: {
       ...authHeaders,
@@ -59,7 +60,7 @@ export async function submitBatchVideoTasks(params: {
       'X-Idempotency-Key': buildBatchRequestKey(params)
     },
     body: JSON.stringify(params)
-  });
+  }, { timeoutMs: 60_000 });
 
   if (!response.ok) {
     const errText = await response.text();
@@ -78,9 +79,9 @@ export async function fetchProjectVideoTasks(projectId: string): Promise<Project
   const backendUrl = getBackendUrl();
   try {
     const authHeaders = await getApiAuthHeaders();
-    const response = await fetch(`${backendUrl}/api/video/tasks/project/${encodeURIComponent(projectId)}`, {
+    const response = await fetchWithTimeout(`${backendUrl}/api/video/tasks/project/${encodeURIComponent(projectId)}`, {
       headers: authHeaders
-    });
+    }, { timeoutMs: 15_000 });
     if (!response.ok) return [];
     const data = await response.json();
     return data.tasks || [];

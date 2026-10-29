@@ -46,7 +46,7 @@
 - [ ] **回收时间轴素材缓存与生成 Blob URL。** `src/hooks/useCanvasRenderer.ts` 将所有图片和视频永久保留在 cache refs，删除/替换图层时不释放视频解码资源；视频生成、重新生成与手动替换路径也会反复 `URL.createObjectURL`，但替换旧结果时没有统一撤销。按当前工程素材做缓存淘汰，暂停并卸载失效媒体，集中管理 Blob URL 并覆盖大量素材、替换、登出和卸载。
 - [ ] **为超大图片的智能抠图设置资源上限。** `src/hooks/useCanvasRenderer.ts` 按原图宽高创建完整 `ImageData`、`Uint8Array(w*h)` 和逐像素坐标队列；超大用户图片会造成主线程长时间阻塞和高内存占用。抠图前限制像素数、缩放到受控分辨率或移至 Worker，并验证大图会平稳拒绝/降采样且不冻结编辑器。
 - [ ] **清理 OSS 孤儿对象并校验删除失败。** 模特/场景/BGM 上传后若 Supabase 写入失败会遗留已上传对象；成功删除资产记录时也没有统一删除 OSS 对象。设计带所有者记录的删除/回滚和定期孤儿清理，避免因跨用户或上传中断误删，并测试 DB 写入失败、重试和删除部分失败。
-- [ ] **统一前端网络超时策略。** `src/services/videoBatchTaskService.ts`、`src/utils/customApiRunner.ts` 及若干文件读取路径直接 `fetch`，没有超时/取消；提交任务或自定义接口无响应时界面可能永久停留在 submitting。复用带 AbortSignal 的请求层，并验证超时后 UI 恢复且后台任务可查询。
+- [x] **统一前端网络超时策略。** 新增 `src/utils/http.ts` 的 `fetchWithTimeout()`（AbortController，超时抛明确错误）；批量视频提交（60s）、项目任务拉取（15s）与自定义 API（180s）已接入，超时后调用方 `catch` 会结束 submitting 状态。`tests/core.test.ts` 覆盖永不响应时中止与正常响应。素材下载/上传路径仍有直接 `fetch`，后续可继续迁移。
 - [ ] **让视频剪辑属性在预览与导出中一致生效。** `Layer.properties` 定义了 `videoEndOffset`、`speed`、`loop`，分割服务也维护视频起止偏移，但 `useCanvasRenderer` 和 WebCodecs 导出按原始时间/时长播放，没有消费这些字段。明确支持的剪辑属性，补齐 UI、实时预览及两种导出引擎的一致计算；未支持的属性不要静默保存在工程包中。覆盖分割、裁切、变速、循环和导出对比。
 - [ ] **把 Supabase 初始化脚本改为可追踪的迁移。** 部分完成：`create_table.sql` 的每个策略前加入 `DROP POLICY IF EXISTS`，脚本可在已初始化库重复执行不再报错；已新增 `supabase/migrations/20261030_asset_privacy.sql` 与 `20261030_model_assets_update.sql` 两个可审计升级脚本。尚未把全部建表/触发器拆成完整有序迁移历史，也未在真实空库/已有库上跑迁移验证。
 - [x] **阻止发布工作流反复创建同一个版本。** 工作流改为只在推送 `v*` 标签时触发（移除 main/master 与手动触发），发布前校验标签名必须等于 `v` + `src-tauri/tauri.conf.json` 版本，`tauri-action` 的 `tagName` 改用实际推送标签而非固定 `app-v__VERSION__`，避免每次主分支推送生成重复发布；矩阵多架构仍上传到同一 draft release。
