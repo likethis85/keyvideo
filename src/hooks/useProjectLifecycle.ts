@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { AIProject, StoryboardItem } from '../types/aiProject';
-import { createAIProject, DEFAULT_PROJECT_ID } from '../utils/aiProjectFactory';
+import { createAIProject, createProjectId, migrateLegacyProjectIds } from '../utils/aiProjectFactory';
 import { localDB } from '../utils/db';
 import { loadPersistedProjectState } from '../services/aiProjectPersistence';
 import { syncProjectToSupabase } from '../services/aiProjectSyncService';
@@ -54,14 +54,25 @@ export function useProjectLifecycle(options: Options) {
       try {
         const persisted = await loadPersistedProjectState();
         if (persisted.swapModelUrl) options.setSwapModelUrl(persisted.swapModelUrl);
-        if (persisted.projects.length > 0) {
-          options.setProjects(persisted.projects);
-          const id = persisted.activeProjectId && persisted.projects.some(project => project.id === persisted.activeProjectId)
-            ? persisted.activeProjectId : persisted.projects[0].id;
-          const project = persisted.projects.find(item => item.id === id);
+
+        const migration = migrateLegacyProjectIds(persisted.projects);
+        const projects = migration.projects;
+        if (migration.changed) {
+          options.setProjects(projects);
+          void localDB.set('ai_projects', projects).catch(error => console.warn('Failed to persist migrated project IDs:', error));
+        }
+
+        if (projects.length > 0) {
+          if (!migration.changed) options.setProjects(projects);
+          const storedActiveId = persisted.activeProjectId && migration.legacyIdMap.get(persisted.activeProjectId)
+            ? migration.legacyIdMap.get(persisted.activeProjectId)
+            : persisted.activeProjectId;
+          const id = storedActiveId && projects.some(project => project.id === storedActiveId)
+            ? storedActiveId : projects[0].id;
+          const project = projects.find(item => item.id === id);
           if (project) options.applyProjectToEditor(project, { restoreGenerationState: false, resetWizard: false });
         } else {
-          const project = createAIProject({ id: DEFAULT_PROJECT_ID, name: '默认项目', withDefaultPrompts: true });
+          const project = createAIProject({ id: createProjectId(), name: '默认项目', withDefaultPrompts: true });
           options.setProjects([project]);
           options.applyProjectToEditor(project, { restoreGenerationState: false, resetWizard: false });
         }

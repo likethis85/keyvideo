@@ -2,6 +2,51 @@ import type { AIProject } from '../types/aiProject';
 
 export const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
+const UUID_V4_TEMPLATE = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+
+/**
+ * Generates a project ID that is unique per account. The previous fixed
+ * zero-UUID made `ai_video_projects.id` collide for every Supabase user,
+ * because the column is a global primary key.
+ */
+export function createProjectId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+  return UUID_V4_TEMPLATE.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
+/**
+ * Replaces the legacy fixed default project ID with a fresh unique ID so that
+ * two accounts can each own a default project without colliding. Returns a map
+ * of old → new IDs for the active project pointer.
+ */
+export function migrateLegacyProjectIds<T extends { id: string }>(
+  projects: T[],
+  idFactory: () => string = createProjectId
+): { projects: T[]; legacyIdMap: Map<string, string>; changed: boolean } {
+  const legacyIdMap = new Map<string, string>();
+  const usedIds = new Set(projects.map(project => project.id));
+  let changed = false;
+
+  const migrated = projects.map(project => {
+    if (project.id !== DEFAULT_PROJECT_ID) return project;
+    let nextId = idFactory();
+    while (usedIds.has(nextId)) nextId = idFactory();
+    usedIds.add(nextId);
+    if (!legacyIdMap.has(project.id)) legacyIdMap.set(project.id, nextId);
+    changed = true;
+    return { ...project, id: nextId };
+  });
+
+  return { projects: migrated, legacyIdMap, changed };
+}
+
 export const DEFAULT_I2V_PROMPTS: AIProject['i2vPrompts'] = {
   'full-body': '模特从远处缓慢走向镜头并步入画面中心。镜头保持平稳，慢速跟焦推进，展示全身服装版型与行走时的灵动垂感。',
   'medium': '镜头缓慢自左向右横移。半身中景对焦模特上身，模特伴随轻微自然的侧身姿势调整，慢速横移运镜，画面流畅。',
