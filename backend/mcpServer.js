@@ -6,7 +6,7 @@
 import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -471,46 +471,67 @@ const handleToolCall = async (name, args = {}) => {
   }
 };
 
-const sendResponse = (id, result, error = null) => {
-  const payload = { jsonrpc: '2.0', id };
-  if (error) {
-    payload.error = error;
-  } else {
-    payload.result = result;
+/**
+ * Handles one JSON-RPC line and returns the response payload (or null for
+ * notifications). Exported so protocol behavior can be tested without stdio.
+ */
+export const processJsonRpcLine = async (line) => {
+  const trimmed = typeof line === 'string' ? line.trim() : '';
+  if (!trimmed) return null;
+
+  let msg;
+  try {
+    msg = JSON.parse(trimmed);
+  } catch {
+    return { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } };
   }
-  process.stdout.write(JSON.stringify(payload) + '\n');
-};
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-  terminal: false
-});
+  if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.method !== 'string') {
+    const id = msg && typeof msg === 'object' && 'id' in msg ? msg.id : null;
+    return { jsonrpc: '2.0', id, error: { code: -32600, message: 'Invalid Request' } };
+  }
 
-rl.on('line', async (line) => {
-  const trimmed = line.trim();
-  if (!trimmed) return;
+  const { id, method, params } = msg;
+  const isNotification = !('id' in msg);
+  const ok = result => (isNotification ? null : { jsonrpc: '2.0', id, result });
+  const fail = (code, message) => (isNotification ? null : { jsonrpc: '2.0', id, error: { code, message } });
 
   try {
-    const msg = JSON.parse(trimmed);
-    const { id, method, params } = msg;
-
     if (method === 'initialize') {
-      sendResponse(id, {
+      return ok({
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
         serverInfo: { name: 'keyvideo-mcp-server', version: '2.0.0' }
       });
-    } else if (method === 'tools/list') {
-      sendResponse(id, { tools: MCP_TOOLS });
-    } else if (method === 'tools/call') {
-      const { name, arguments: args } = params;
-      const result = await handleToolCall(name, args);
-      sendResponse(id, result);
-    } else {
-      sendResponse(id, null, { code: -32601, message: `Method not found: ${method}` });
     }
-  } catch (err) {
-    sendResponse(null, null, { code: -32700, message: err.message });
+    if (method === 'tools/list') {
+      return ok({ tools: MCP_TOOLS });
+    }
+    if (method === 'tools/call') {
+      const name = params?.name;
+      if (typeof name !== 'string' || !name) {
+        return fail(-32602, 'Invalid params: tool name is required');
+      }
+      return ok(await handleToolCall(name, params?.arguments || {}));
+    }
+    return fail(-32601, `Method not found: ${method}`);
+  } catch (error) {
+    return fail(-32603, `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`);
   }
-});
+};
+
+const isMainModule = Boolean(process.argv[1])
+  && pathToFileURL(process.argv[1]).href === import.meta.url;
+
+if (isMainModule) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+  });
+
+  rl.on('line', async (line) => {
+    const response = await processJsonRpcLine(line);
+    if (response) process.stdout.write(JSON.stringify(response) + '\n');
+  });
+}
