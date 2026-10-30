@@ -74,12 +74,14 @@ export function AICopilotLauncher({ onClick }: AICopilotLauncherProps) {
       title="点击打开 AI 剪辑助理，拖动调整位置"
     >
       <span className="studio-ai-launcher-icon" aria-hidden="true">
-        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M10 12.5h12a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4v-5a4 4 0 0 1 4-4Z" />
-          <path d="M16 12.5V8m0 0-2-2m2 2 2-2" />
-          <circle cx="12" cy="19" r="1.5" fill="currentColor" />
-          <circle cx="20" cy="19" r="1.5" fill="currentColor" />
-          <path d="M12 23h8M6 18H3m26 0h-3" />
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M11 14.5h18a7 7 0 0 1 7 7v4a7 7 0 0 1-7 7H11a7 7 0 0 1-7-7v-4a7 7 0 0 1 7-7Z" fill="rgba(255,255,255,.12)" />
+          <path d="M13 14.5 10.5 9l5 2.7M27 14.5 29.5 9l-5 2.7" />
+          <path d="M20 14.5V8" />
+          <circle cx="14" cy="23" r="2" fill="currentColor" stroke="none" />
+          <circle cx="26" cy="23" r="2" fill="currentColor" stroke="none" />
+          <path d="M15.5 28c2.3 1.7 6.7 1.7 9 0" />
+          <path d="M5 23H2m36 0h-3" />
         </svg>
         <i />
       </span>

@@ -174,8 +174,10 @@ USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_video_projects_user_id ON public.ai_video_projects(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_video_projects_created_at ON public.ai_video_projects(created_at DESC);
 
--- 5. Auto-update updated_at timestamp trigger function
-CREATE OR REPLACE FUNCTION public.handle_updated_at()
+-- 5. Auto-update updated_at timestamp trigger function.
+-- Keep this function KeyVideo-specific so this reference script cannot replace
+-- an unrelated function with the generic public.handle_updated_at name.
+CREATE OR REPLACE FUNCTION public.keyvideo_projects_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = now();
@@ -183,7 +185,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trg_ai_video_projects_updated_at
+DROP TRIGGER IF EXISTS keyvideo_projects_updated_at ON public.ai_video_projects;
+
+CREATE TRIGGER keyvideo_projects_updated_at
     BEFORE UPDATE ON public.ai_video_projects
     FOR EACH ROW
-    EXECUTE FUNCTION public.handle_updated_at();
+    EXECUTE FUNCTION public.keyvideo_projects_updated_at();

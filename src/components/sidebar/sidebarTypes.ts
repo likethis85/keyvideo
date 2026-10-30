@@ -6,7 +6,7 @@ export type SidebarTab = 'template' | 'media' | 'text' | 'sticker' | 'ai' | 'aud
 
 export interface SidebarDrawerRef {
   switchProject: (id: string) => void;
-  createNewProject: () => void;
+  createNewProject: (name?: string) => AIProject | undefined;
   createProjectWithTemplate: (input: {
     name: string;
     masterPrompt: string;

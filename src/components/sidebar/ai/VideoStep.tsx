@@ -1,6 +1,7 @@
 import React from 'react';
 import type { StoryboardItem } from '../../SidebarDrawer';
 import { SUPPORTED_VIDEO_MODELS } from '../../../config/videoModels';
+import { AIIcon } from './AIIcon';
 
 export interface VideoStepProps {
   storyboards: StoryboardItem[];
@@ -89,7 +90,7 @@ const StoryboardCardThumbnail: React.FC<{ sb: StoryboardItem }> = ({ sb }) => {
         userSelect: 'none'
       }}
     >
-      <span style={{ fontSize: '15px' }}>{sb.videoSrc ? '🎬' : '🎞️'}</span>
+      <AIIcon name={sb.videoSrc ? 'film' : 'camera'} size={18} />
       <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted, #6b7280)' }}>
         {sb.videoSrc ? '视频就绪' : '静态分镜'}
       </span>
@@ -114,16 +115,16 @@ export const VideoStep: React.FC<VideoStepProps> = ({
 }) => {
   return (
     <>
-      <div className="property-group" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div className="property-group ai-video-workspace" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <span className="property-label" style={{ marginBottom: '4px', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)' }}>
-          🎥 AI 视频生成与合成
+          <AIIcon name="film" size={18} /> AI 视频生成与合成
         </span>
 
         {/* Generated Videos / Status Grid */}
         {storyboards.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-element)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '4px' }}>
             <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              🎬 各分镜视频生成与预览
+              <AIIcon name="play" size={16} /> 各分镜视频生成与预览
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
               {storyboards.map((sb) => (
@@ -210,7 +211,7 @@ export const VideoStep: React.FC<VideoStepProps> = ({
             style={{ padding: '8px 12px', fontSize: '12px', width: '100%', background: 'var(--bg-surface-solid)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
           >
             {SUPPORTED_VIDEO_MODELS.map(model => (
-              <option key={model.id} value={model.id}>🎥 {model.label}</option>
+              <option key={model.id} value={model.id}>{model.label}</option>
             ))}
           </select>
         </div>
@@ -239,7 +240,7 @@ export const VideoStep: React.FC<VideoStepProps> = ({
               cursor: 'pointer'
             }}
           >
-            <span style={{ marginRight: '7px', fontSize: '15px' }}>🚀</span>
+            <AIIcon name="film" size={17} />
             一键全量 5 幕并发生成 (Kling 3.0)
           </button>
         )}
@@ -263,7 +264,7 @@ export const VideoStep: React.FC<VideoStepProps> = ({
               cursor: 'pointer'
             }}
           >
-            <span>📋 查看任务队列看板</span>
+            <span className="video-task-board-label"><AIIcon name="queue" size={16} /> 查看任务队列看板</span>
             {batchActiveCount > 0 && (
               <span style={{ fontSize: '10px', background: 'rgba(0, 242, 254, 0.2)', color: 'var(--accent-cyan)', padding: '1px 6px', borderRadius: '10px', fontWeight: 'bold' }}>
                 ● {batchActiveCount} 幕运行中

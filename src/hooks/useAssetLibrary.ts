@@ -51,6 +51,16 @@ function mapAudio(rows: unknown[]): AudioAsset[] {
   }));
 }
 
+function mergeBySource<T extends { id: string; src: string }>(cloud: T[], local: T[]): T[] {
+  const seen = new Set<string>();
+  return [...cloud, ...local].filter(item => {
+    const key = item.src || item.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function loadLocalModelAssets(): Promise<unknown[]> {
   let models: unknown = await localDB.get('ai_model_library');
   if (!models) {
@@ -104,13 +114,21 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
 
       if (hasSupabaseUser) {
         try {
+          const localAssets = await loadLocalModelAssets();
+          const localSceneRows: unknown = await localDB.get('ai_custom_scenes');
           const { data, error } = await supabase
             .from('model_assets')
             .select('id, name, src, created_at, is_public')
             .order('created_at', { ascending: false });
           if (error || !data) throw error || new Error('Model assets unavailable');
-          const models = mapModels(data, deletedModelIds);
-          const scenes = mapScenes(data, deletedSceneIds, true);
+          const models = mergeBySource(
+            mapModels(data, deletedModelIds),
+            mapModels(localAssets, deletedModelIds)
+          );
+          const scenes = mergeBySource(
+            mapScenes(data, deletedSceneIds, true),
+            mapScenes(Array.isArray(localSceneRows) ? localSceneRows : [], deletedSceneIds)
+          );
           if (!cancelled) {
             setModelLibrary(models);
             setCustomScenes(scenes);
@@ -130,12 +148,16 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
 
       if (hasSupabaseUser) {
         try {
+          const localAudioRows: unknown = await localDB.get('ai_bgm_library');
           const { data, error } = await supabase
             .from('audio_assets')
             .select('id, name, src, desc, created_at, is_public')
             .order('created_at', { ascending: false });
           if (error || !data) throw error || new Error('Audio assets unavailable');
-          const audio = mapAudio(data);
+          const audio = mergeBySource(
+            mapAudio(data),
+            mapAudio(Array.isArray(localAudioRows) ? localAudioRows : [])
+          );
           if (!cancelled) setBgmLibrary(audio);
           applyDefaultAudio(audio);
         } catch (error) {

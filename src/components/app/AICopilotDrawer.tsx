@@ -76,134 +76,49 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   return (
-    <div
-      className="studio-ai-copilot"
-      style={{
-        position: 'fixed',
-        top: '56px',
-        right: 0,
-        bottom: 0,
-        width: '420px',
-        maxWidth: 'min(420px, 100vw)',
-        background: 'var(--modal-bg, var(--bg-surface, #ffffff))',
-        backdropFilter: 'blur(20px)',
-        borderLeft: '1px solid var(--border-color)',
-        boxShadow: 'var(--glass-shadow, -10px 0 30px rgba(0,0,0,0.12))',
-        zIndex: 999,
-        display: 'flex',
-        flexDirection: 'column',
-        color: 'var(--text-primary)',
-        animation: 'slideInRight 0.25s ease-out'
-      }}
-    >
+    <section className="studio-ai-copilot" aria-label="AI 剪辑助理">
       {/* Header */}
-      <div
-        style={{
-          padding: '14px 18px',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'var(--bg-element)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className="studio-ai-copilot-mark" aria-hidden="true">🤖</span>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 750, color: 'var(--text-primary)' }}>AI 剪辑助理</h3>
-          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '10px', background: 'var(--accent-purple-glow, rgba(124, 58, 237, 0.15))', color: 'var(--accent-purple)', fontWeight: 600 }}>
-            Agent 就绪
+      <header className="studio-ai-copilot-header">
+        <div className="studio-ai-copilot-title">
+          <span className="studio-ai-copilot-mark" aria-hidden="true">
+            <svg className="studio-ai-mascot-svg" viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 14.5h18a7 7 0 0 1 7 7v4a7 7 0 0 1-7 7H11a7 7 0 0 1-7-7v-4a7 7 0 0 1 7-7Z" fill="rgba(255,255,255,.12)" />
+              <path d="M13 14.5 10.5 9l5 2.7M27 14.5 29.5 9l-5 2.7M20 14.5V8" />
+              <circle cx="14" cy="23" r="2" fill="currentColor" stroke="none" />
+              <circle cx="26" cy="23" r="2" fill="currentColor" stroke="none" />
+              <path d="M15.5 28c2.3 1.7 6.7 1.7 9 0" />
+            </svg>
           </span>
+          <div><h3>AI 剪辑助理</h3><span>Agent 就绪</span></div>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="关闭 AI 剪辑助理"
-          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '22px', cursor: 'pointer', padding: '0 4px' }}
-        >
-          ✕
-        </button>
-      </div>
+        <button className="studio-ai-copilot-close" onClick={onClose} aria-label="关闭 AI 剪辑助理">✕</button>
+      </header>
 
       {/* Messages List */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div className="studio-ai-copilot-messages">
         {messages.map(msg => (
-          <div
-            key={msg.id}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '85%',
-              gap: '4px'
-            }}
-          >
-            <div
-              style={{
-                padding: '10px 14px',
-                borderRadius: msg.sender === 'user' ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
-                background: msg.sender === 'user' ? 'var(--accent-purple, #7c3aed)' : 'var(--bg-element)',
-                border: msg.sender === 'user' ? 'none' : '1px solid var(--border-color)',
-                color: msg.sender === 'user' ? '#ffffff' : 'var(--text-primary)',
-                fontSize: '13px',
-                lineHeight: '1.5',
-                whiteSpace: 'pre-wrap'
-              }}
-            >
-              {msg.text}
-            </div>
+          <div key={msg.id} className={`studio-ai-message ${msg.sender}`}>
+            <div className="studio-ai-message-bubble">{msg.text}</div>
 
             {msg.actionTag && (
-              <span
-                style={{
-                  alignSelf: 'flex-start',
-                  fontSize: '10px',
-                  padding: '2px 8px',
-                  borderRadius: '10px',
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  color: '#059669',
-                  fontWeight: 600,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                ⚡ {msg.actionTag}
-              </span>
+              <span className="studio-ai-action-tag">⚡ {msg.actionTag}</span>
             )}
 
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
-              {msg.time}
-            </span>
+            <span className="studio-ai-message-time">{msg.time}</span>
           </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Quick Prompts Suggestions */}
-      <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '6px', overflowX: 'auto', background: 'var(--bg-element)' }}>
+      <div className="studio-ai-quick-actions" aria-label="快捷指令">
         {QUICK_ACTIONS.map((action, i) => (
-          <button
-            key={i}
-            onClick={() => handleSend(action)}
-            style={{
-              padding: '5px 10px',
-              borderRadius: '14px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--bg-surface, #ffffff)',
-              color: 'var(--text-secondary)',
-              fontSize: '12px',
-              whiteSpace: 'nowrap',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            {action}
-          </button>
+          <button key={i} onClick={() => handleSend(action)}>{action}</button>
         ))}
       </div>
 
       {/* Input Box */}
-      <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '8px', background: 'var(--bg-surface)' }}>
+      <div className="studio-ai-input-row">
         <input
           type="text"
           value={input}
@@ -215,34 +130,9 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({ isOpen, onClos
             }
           }}
           placeholder="输入剪辑指令，例如：切换为16:9横屏..."
-          style={{
-            flex: 1,
-            padding: '8px 12px',
-            borderRadius: '8px',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-element)',
-            color: 'var(--text-primary)',
-            fontSize: '13px',
-            outline: 'none'
-          }}
         />
-        <button
-          type="button"
-          onClick={() => handleSend()}
-          style={{
-            padding: '8px 14px',
-            borderRadius: '8px',
-            background: 'var(--accent-purple, #7c3aed)',
-            border: 'none',
-            color: '#fff',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          发送
-        </button>
+        <button type="button" className="studio-ai-send" onClick={() => handleSend()}>发送</button>
       </div>
-    </div>
+    </section>
   );
 };

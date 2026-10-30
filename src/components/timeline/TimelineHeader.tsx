@@ -143,7 +143,7 @@ export function TimelineHeader(props: TimelineHeaderProps) {
         <button className="timeline-stepper-button" onClick={() => props.onZoomChange(Math.min(5, props.zoom + 0.25))} disabled={props.zoom >= 5} title="放大时间轴视图" data-tooltip="放大时间轴" aria-label="放大时间轴"><TimelineIcon name="zoomIn" size={16} /></button>
         <span className="timeline-zoom-value">{Math.round(props.zoom * 100)}%</span>
 
-        {props.onHeightChange && (
+        {props.onHeightChange && !props.fullPage && (
           <div className="timeline-height-presets" title="时间轴高度档位切换 (亦可向上拖拽顶边缘自由调整)">
             <span className="timeline-control-label"><TimelineIcon name="height" size={16} />轨道高度</span>
             <button

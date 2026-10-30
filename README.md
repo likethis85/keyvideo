@@ -58,10 +58,11 @@ npm run dev
 
 ## 数据库（Supabase）
 
-1. 在 Supabase SQL Editor 执行 [`src/utils/create_table.sql`](./src/utils/create_table.sql)（可重复执行）。
-2. 按顺序执行升级脚本：
+1. 在开发库的 Supabase SQL Editor 中按文件名顺序执行 [`supabase/migrations/`](./supabase/migrations/) 内的迁移。首先执行 [`20261030_00_create_keyvideo_tables.sql`](./supabase/migrations/20261030_00_create_keyvideo_tables.sql)，再执行：
    - [`supabase/migrations/20261030_asset_privacy.sql`](./supabase/migrations/20261030_asset_privacy.sql)
    - [`supabase/migrations/20261030_model_assets_update.sql`](./supabase/migrations/20261030_model_assets_update.sql)
+
+   这三份迁移只创建或配置 KeyVideo 使用的 `ai_video_projects`、`model_assets`、`audio_assets`，不会修改 `media_assets` 或其他表。旧版 [`src/utils/create_table.sql`](./src/utils/create_table.sql) 保留用于参考，不建议直接执行到包含其他业务对象的数据库。
 
 素材默认私有：只有 `is_public = true` 或 `auth.uid() = user_id` 的行可读。需要共享的品牌素材请显式标记：
 

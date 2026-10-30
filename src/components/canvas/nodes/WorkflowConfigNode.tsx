@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CanvasNodeData } from '../../../types/canvas';
 import { BaseNode } from './BaseNode';
+import { CanvasIcon } from '../CanvasIcon';
 
 interface WorkflowConfigNodeProps {
   node: CanvasNodeData;
@@ -35,7 +36,7 @@ export const WorkflowConfigNode: React.FC<WorkflowConfigNodeProps> = ({
       onDelete={onDelete}
       onStartConnect={onStartConnect}
       onEndConnect={onEndConnect}
-      headerIcon={<span style={{ fontSize: '14px' }}>⚡</span>}
+      headerIcon={<CanvasIcon name="connect" size={19} />}
       extraHeaderActions={
         onExecuteWorkflow ? (
           <button

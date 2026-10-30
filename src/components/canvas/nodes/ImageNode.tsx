@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CanvasNodeData } from '../../../types/canvas';
 import { BaseNode } from './BaseNode';
+import { CanvasIcon } from '../CanvasIcon';
 
 interface ImageNodeProps {
   node: CanvasNodeData;
@@ -47,7 +48,7 @@ export const ImageNode: React.FC<ImageNodeProps> = ({
       onDelete={onDelete}
       onStartConnect={onStartConnect}
       onEndConnect={onEndConnect}
-      headerIcon={<span style={{ fontSize: '14px' }}>🖼️</span>}
+        headerIcon={<CanvasIcon name="grid" size={19} />}
       extraHeaderActions={
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, whiteSpace: 'nowrap' }}>
           {isComparison && onAdoptAsMaster && hasValidImage && (

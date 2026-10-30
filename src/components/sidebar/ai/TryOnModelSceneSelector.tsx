@@ -1,4 +1,5 @@
 import { formatFileName } from '../../../utils/formatUtils';
+import { AIIcon } from './AIIcon';
 
 interface LibraryItem { id: string; src: string; name: string; }
 interface Props {
@@ -12,12 +13,12 @@ interface Props {
 }
 
 const sceneNames: Record<string, string> = {
-  street: '🏙️ 摩登街头', studio: '🧘 专业影棚', home: '🏡 温馨居家', office: '💼 职场办公',
-  beach: '🏖️ 阳光海滩', runway: '👠 时尚秀场', minimalist: '🎨 极简侘寂'
+  street: '摩登街头', studio: '专业影棚', home: '温馨居家', office: '职场办公',
+  beach: '阳光海滩', runway: '时尚秀场', minimalist: '极简侘寂'
 };
 
 function SelectorRow({ label, src, name, hint, onClick }: { label: string; src: string; name: string; hint: string; onClick: () => void }) {
-  return <div className="try-on-selector-group"><span>{label}</span><button className="try-on-selector-row" onClick={onClick}>{src ? <img src={src} alt={name} /> : <span className="try-on-selector-placeholder">🖼️</span>}<span className="try-on-selector-copy"><strong title={name}>{formatFileName(name)}</strong><small>{hint}</small></span><span>➔</span></button></div>;
+  return <div className="try-on-selector-group"><span>{label}</span><button className="try-on-selector-row" onClick={onClick}>{src ? <img src={src} alt={name} /> : <span className="try-on-selector-placeholder"><AIIcon name="scene" size={22} /></span>}<span className="try-on-selector-copy"><strong title={name}>{formatFileName(name)}</strong><small>{hint}</small></span><span className="try-on-selector-arrow"><AIIcon name="arrow" size={18} /></span></button></div>;
 }
 
 export function TryOnModelSceneSelector(props: Props) {
@@ -27,7 +28,7 @@ export function TryOnModelSceneSelector(props: Props) {
   const sceneName = sceneNames[props.sceneId] || customScene?.name || '自定义场景';
   return (
     <div className="property-group try-on-model-scene-selector">
-      <span className="property-label">👤 模特与场景配置</span>
+      <span className="property-label"><span className="ai-section-icon model" aria-hidden="true"><AIIcon name="model" size={18} /></span>模特与场景配置</span>
       <SelectorRow label="选择试衣模特" src={props.modelUrl} name={modelName} hint="点击打开模特库选择" onClick={props.onOpenModels} />
       <SelectorRow label="选择分镜背景场景" src={sceneSrc} name={sceneName} hint="点击打开场景库选择" onClick={props.onOpenScenes} />
     </div>

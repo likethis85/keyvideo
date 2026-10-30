@@ -29,9 +29,6 @@ interface ProjectSelectorProps {
   onCancelEditing: () => void;
   onSaveName: () => void;
   onSwitchProject: (id: string) => void;
-  onCreateProject: () => void;
-  onStartRename: () => void;
-  onDeleteProject: (id: string) => void;
   onOpenDashboard: () => void;
 }
 
@@ -113,25 +110,12 @@ export function ProjectSelector(props: ProjectSelectorProps) {
                 );
               })}
             </div>
-            <div className="project-menu-footer">
-              <button onClick={() => closeAnd(props.onCreateProject)}><ProjectIcon name="plus" /> 新建项目</button>
-              <button onClick={() => closeAnd(props.onOpenDashboard)}><ProjectIcon name="dashboard" /> 大屏看板 <b>{props.projects.length}</b></button>
-            </div>
           </div>
         )}
       </div>
 
       <span className="project-actions-divider" />
-      <button className={`project-create-button ${props.theme}`} onClick={props.onCreateProject} title="创建一个新的剪辑项目"><span className="project-create-icon"><ProjectIcon name="plus" /></span><span>新建项目</span></button>
-      <button className="icon-btn-micro project-action project-action-labeled" onClick={props.onStartRename} title="重命名当前项目">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg><span>重命名</span>
-      </button>
-      {props.projects.length > 1 && <button className="icon-btn-micro project-action project-action-labeled delete" onClick={() => props.onDeleteProject(props.activeProjectId)} title="删除当前项目">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6m4-6v6" /><path d="m6 7 1 13h10l1-13M9 7V4h6v3" /></svg><span>删除</span>
-      </button>}
-      <button className="icon-btn-micro project-action project-action-labeled dashboard" onClick={props.onOpenDashboard} title="打开项目管理看板">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg><span>项目</span>
-      </button>
+      <button className="icon-btn-micro project-action project-action-labeled dashboard" onClick={props.onOpenDashboard} title="打开项目大屏看板"><ProjectIcon name="dashboard" /><span>项目大屏看板</span></button>
     </div>
   );
 }

@@ -488,4 +488,30 @@
   transform: scale(1.1);
 }
 
+/* Storyboard prompt editor: keep controls readable at narrow drawer widths. */
+.ai-prompt-mode { margin-left: 2px; padding: 4px 8px; color: #aab9cf; font-size: 11px; font-weight: 700; background: rgba(148, 169, 200, .08); border: 1px solid rgba(148, 169, 200, .16); border-radius: 6px; }
+.ai-shot-header { display: grid !important; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center !important; }
+.ai-shot-heading { min-width: 0; flex: 1 1 auto; }
+.ai-shot-heading > span:not(.storyboard-shot-icon) { min-width: 0; color: #f0f5ff !important; font-size: 14px !important; font-weight: 820 !important; line-height: 1.3; }
+.ai-shot-actions { min-width: 0; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 6px !important; }
+.ai-shot-toolbar-button { display: inline-flex !important; min-width: 64px; min-height: 40px !important; align-items: center; justify-content: center; gap: 6px !important; padding: 0 10px !important; color: #b7c6d8 !important; font-size: 12px !important; font-weight: 750 !important; line-height: 1.2; white-space: nowrap; border-radius: 9px !important; }
+.ai-shot-toolbar-button svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.ai-shot-toolbar-button:hover:not(:disabled) { color: #f4f9ff !important; transform: translateY(-1px); }
+.ai-shot-polish-button { min-width: 86px; color: #d2b3ff !important; }
+.ai-shot-polish-button:disabled { cursor: not-allowed; opacity: .52; }
+.ai-shot-card textarea { min-height: 108px !important; padding: 13px 14px !important; color: #ecf3fc !important; font-size: 14px !important; line-height: 1.7 !important; border-radius: 9px !important; }
+.ai-shot-card > .ai-shot-header + textarea { margin-top: 2px; }
+.storyboard-generation-actions .btn-primary,
+.storyboard-generation-actions .btn-secondary { min-height: 54px !important; font-size: 14px !important; font-weight: 800 !important; border-radius: 12px !important; }
+.storyboard-generation-actions .btn-secondary { min-width: 150px; }
+@media (max-width: 620px) {
+  .ai-shot-header { grid-template-columns: 1fr; gap: 10px; align-items: stretch !important; }
+  .ai-shot-actions { justify-content: stretch; }
+  .ai-shot-toolbar-button { flex: 1 1 0; min-width: 0; }
+  .ai-shot-polish-button { flex: 1.25 1 0; }
+  .ai-prompt-mode { font-size: 10px; }
+  .storyboard-generation-actions { flex-direction: column; }
+  .storyboard-generation-actions .btn-secondary { width: 100%; }
+}
+
 

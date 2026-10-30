@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CanvasNodeData } from '../../../types/canvas';
 import { BaseNode } from './BaseNode';
+import { CanvasIcon } from '../CanvasIcon';
 
 interface PromptNodeProps {
   node: CanvasNodeData;
@@ -38,7 +39,7 @@ export const PromptNode: React.FC<PromptNodeProps> = ({
       onDelete={onDelete}
       onStartConnect={onStartConnect}
       onEndConnect={onEndConnect}
-      headerIcon={<span style={{ fontSize: '14px' }}>✍️</span>}
+      headerIcon={<CanvasIcon name="draw" size={19} />}
     >
       <div className="prompt-node-content">
         <textarea
@@ -64,6 +65,9 @@ export const PromptNode: React.FC<PromptNodeProps> = ({
               <button
                 key={idx}
                 className="quick-tag-chip"
+                type="button"
+                title={`添加完整提示词：${p}`}
+                aria-label={`添加提示词：${p}`}
                 onClick={() => onUpdate({
                   metadata: {
                     ...node.metadata,
@@ -71,7 +75,8 @@ export const PromptNode: React.FC<PromptNodeProps> = ({
                   }
                 })}
               >
-                + {p.slice(0, 8)}...
+                <span aria-hidden="true">+</span>
+                <span>{p}</span>
               </button>
             ))}
           </div>

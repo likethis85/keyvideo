@@ -24,14 +24,16 @@ export const ToastContainer: React.FC = () => {
     <div
       style={{
         position: 'fixed',
-        top: '24px',
-        right: '24px',
+        inset: 0,
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
         gap: '10px',
         pointerEvents: 'none',
-        maxWidth: '420px'
+        padding: '24px',
+        maxWidth: 'none'
       }}
     >
       {toasts.map(t => (
@@ -100,19 +102,21 @@ const ToastMessage: React.FC<{ toast: ToastItem; onClose: () => void }> = ({ toa
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
-        padding: '12px 16px',
-        borderRadius: '10px',
-        background: 'rgba(16, 18, 27, 0.94)',
+        padding: '16px 20px',
+        borderRadius: '14px',
+        background: 'rgba(16, 18, 27, 0.97)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
         border: `1px solid ${typeConfig.borderColor}`,
         boxShadow: `0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px ${typeConfig.glowColor}`,
         color: '#ffffff',
         fontFamily: "'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        fontSize: '13px',
+        fontSize: '15px',
+        fontWeight: 650,
         lineHeight: '1.4',
-        animation: 'toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-        minWidth: '280px',
+        animation: 'toastCenterIn 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
+        minWidth: 'min(360px, calc(100vw - 48px))',
+        maxWidth: 'min(620px, calc(100vw - 48px))',
         cursor: isInteractive ? 'pointer' : 'default',
         transition: 'transform 0.15s ease, border-color 0.15s ease, filter 0.15s ease'
       }}
@@ -196,13 +200,13 @@ const ToastMessage: React.FC<{ toast: ToastItem; onClose: () => void }> = ({ toa
         ✕
       </button>
       <style>{`
-        @keyframes toastSlideIn {
+        @keyframes toastCenterIn {
           from {
-            transform: translateX(100%) scale(0.95);
+            transform: translateY(12px) scale(0.92);
             opacity: 0;
           }
           to {
-            transform: translateX(0) scale(1);
+            transform: translateY(0) scale(1);
             opacity: 1;
           }
         }

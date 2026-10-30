@@ -191,30 +191,30 @@ export const PropertyInspector: React.FC<PropertyInspectorProps> = ({
           </div>
 
           {/* Shortcut Cheatsheet Card */}
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              ⌨️ <span>专业剪辑快捷键</span>
+          <div className="shortcut-help-card">
+            <div className="shortcut-help-heading">
+              <span className="shortcut-help-icon">⌨</span><span>专业剪辑快捷键</span><small>快速控制时间轴与图层</small>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '11px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>播放 / 暂停</span>
-                <kbd style={{ background: 'var(--kbd-bg)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--mono)', color: 'var(--text-primary)', fontWeight: '600' }}>Space</kbd>
+            <div className="shortcut-help-list">
+              <div className="shortcut-help-row">
+                <span><b>播放 / 暂停</b><small>预览当前时间轴</small></span>
+                <kbd>Space</kbd>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>删除选中图层</span>
-                <kbd style={{ background: 'var(--kbd-bg)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--mono)', color: 'var(--text-primary)', fontWeight: '600' }}>Delete</kbd>
+              <div className="shortcut-help-row">
+                <span><b>删除选中图层</b><small>移除当前素材或文字</small></span>
+                <kbd>Delete</kbd>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>撤销最近操作</span>
-                <kbd style={{ background: 'var(--kbd-bg)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--mono)', color: 'var(--text-primary)', fontWeight: '600' }}>Ctrl + Z</kbd>
+              <div className="shortcut-help-row">
+                <span><b>撤销最近操作</b><small>回退上一步编辑</small></span>
+                <kbd>Ctrl + Z</kbd>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>重做操作</span>
-                <kbd style={{ background: 'var(--kbd-bg)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--mono)', color: 'var(--text-primary)', fontWeight: '600' }}>Ctrl + Y</kbd>
+              <div className="shortcut-help-row">
+                <span><b>重做操作</b><small>恢复已撤销编辑</small></span>
+                <kbd>Ctrl + Y</kbd>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>退出全屏预览</span>
-                <kbd style={{ background: 'var(--kbd-bg)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--mono)', color: 'var(--text-primary)', fontWeight: '600' }}>Esc</kbd>
+              <div className="shortcut-help-row">
+                <span><b>退出全屏预览</b><small>返回剪辑工作台</small></span>
+                <kbd>Esc</kbd>
               </div>
             </div>
           </div>

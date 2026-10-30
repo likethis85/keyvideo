@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { formatFileName } from '../../utils/formatUtils';
+import { AIIcon } from './ai/AIIcon';
 
 export interface ModelItem {
   id: string;
@@ -66,7 +67,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
           <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            👤 选择试衣参考模特
+            <><AIIcon name="model" size={18} /> 选择试衣参考模特</>
           </h3>
           <button
             onClick={onClose}
@@ -166,7 +167,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
             }}
             style={{ padding: '6px 12px', fontSize: '11px', cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
           >
-            ⚙️ 前往素材库管理模特
+            <><AIIcon name="library" size={16} /> 前往素材库管理模特</>
           </button>
           <button
             className="btn-secondary"

@@ -56,13 +56,19 @@ export function useProjectActions({
     setIsEditingProjectName(false);
   }, [activeProjectId, editingProjectName, setIsEditingProjectName, setProjects]);
 
-  const createNewProject = useCallback(() => {
+  const createNewProject = useCallback((requestedName?: string) => {
     const defaultName = `项目_${projects.length + 1}`;
-    const project = createAIProject({ id: generateProjectId(), name: defaultName });
+    const name = requestedName?.trim() || defaultName;
+    const project = createAIProject({ id: generateProjectId(), name });
     setProjects(previous => [...previous, project]);
     applyProjectToEditor(project, { restoreGenerationState: false });
-    setEditingProjectName(defaultName);
-    setIsEditingProjectName(true);
+    if (requestedName?.trim()) {
+      setIsEditingProjectName(false);
+    } else {
+      setEditingProjectName(defaultName);
+      setIsEditingProjectName(true);
+    }
+    return project;
   }, [applyProjectToEditor, projects.length, setEditingProjectName, setIsEditingProjectName, setProjects]);
 
   const deleteProject = useCallback((projectId: string) => {

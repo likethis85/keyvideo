@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { PromptItem } from '../../../config/promptLibraryData';
 import {
@@ -34,14 +34,26 @@ interface PromptInjectModalProps {
 }
 
 const SHOT_OPTIONS: Array<{ key: InjectionTarget; label: string; icon: string; desc: string }> = [
-  { key: 'shot-1', label: '分镜一：出场与吸睛钩子', icon: '🚶‍♀️', desc: '0-3s 模特走入画面或前3秒视觉抓眼球' },
-  { key: 'shot-2', label: '分镜二：细节特写微距推镜', icon: '🔍', desc: '3-6s 聚焦面料细节、做工缝线与领口' },
-  { key: 'shot-3', label: '分镜三：张力与律动步态', icon: '💃', desc: '6-9s 360°环绕、走秀动感与裙摆垂坠' },
-  { key: 'shot-4', label: '分镜四：微动与物理褶皱', icon: '✨', desc: '9-12s 侧身45度、真实重力微动' },
-  { key: 'shot-5', label: '分镜五：黄金定格全身比例', icon: '👑', desc: '12-15s 广角全身定格、品牌出镜与促单' },
-  { key: 'master', label: '15s 完整主提示词', icon: '📜', desc: '追加至全局连贯 5 幕脚本' },
-  { key: 'text_layer', label: '创建为画布文案图层', icon: '📝', desc: '在时间轴上生成可编辑的带动画文字图层' }
+  { key: 'shot-1', label: '分镜一：出场与吸睛钩子', icon: '🚶‍♀️', desc: '0-3s 模特走入画面，建立第一眼记忆点' },
+  { key: 'shot-2', label: '分镜二：细节特写微距推镜', icon: '🔍', desc: '3-6s 聚焦面料、缝线和服装工艺' },
+  { key: 'shot-3', label: '分镜三：张力与律动步态', icon: '💃', desc: '6-9s 走秀动感、环绕与裙摆垂坠' },
+  { key: 'shot-4', label: '分镜四：微动与物理褶皱', icon: '✨', desc: '9-12s 侧身微动，表现真实重力关系' },
+  { key: 'shot-5', label: '分镜五：黄金定格全身比例', icon: '👑', desc: '12-15s 全身定格，完成品牌展示与促单' },
+  { key: 'master', label: '15s 完整主提示词', icon: '📜', desc: '写入全局连贯五幕脚本' },
+  { key: 'text_layer', label: '时间轴文案图层', icon: '📝', desc: '加入可编辑的字幕图层，可在剪辑页调整' }
 ];
+
+const INJECTION_MODES: Array<{ mode: InjectionMode; label: string; icon: string; desc: string }> = [
+  { mode: 'append', label: '追加到末尾', icon: '＋', desc: '保留原内容，补充新灵感' },
+  { mode: 'replace', label: '替换当前内容', icon: '↻', desc: '用新提示词覆盖当前镜头' },
+  { mode: 'prepend', label: '置于开头', icon: '↥', desc: '让新提示词优先生效' }
+];
+
+const targetLabel = (target: InjectionTarget) => {
+  if (target === 'master') return '15s 完整主提示词';
+  if (target === 'text_layer') return '时间轴文案图层';
+  return SHOT_OPTIONS.find(option => option.key === target)?.label || '当前分镜';
+};
 
 export const PromptInjectModal: React.FC<PromptInjectModalProps> = ({
   isOpen,
@@ -51,384 +63,72 @@ export const PromptInjectModal: React.FC<PromptInjectModalProps> = ({
   currentMasterPrompt,
   onConfirmInject
 }) => {
-  // 1. Resolve variables
   const variables = useMemo(() => resolvePromptVariables(variableContext), [variableContext]);
-
-  // 2. Interpolate prompt content
   const interpolatedContent = interpolatePromptVariables(item?.content ?? '', variables);
-
-  // 3. Determine initial recommended target
   const initialTarget: InjectionTarget = useMemo(() => {
-    if (item?.recommendedShot && item.recommendedShot !== 'all') {
-      return item.recommendedShot;
-    }
+    if (item?.recommendedShot && item.recommendedShot !== 'all') return item.recommendedShot;
     if (item?.category === 'copy') return 'shot-1';
     if (item?.category === 'fabric') return 'shot-2';
     return 'shot-1';
   }, [item]);
-
   const [selectedTarget, setSelectedTarget] = useState<InjectionTarget>(initialTarget);
   const [injectionMode, setInjectionMode] = useState<InjectionMode>('append');
   const [useInterpolated, setUseInterpolated] = useState(true);
   const [customText, setCustomText] = useState(interpolatedContent);
 
-  // Synchronize when item changes
-  React.useEffect(() => {
+  useEffect(() => {
     setCustomText(useInterpolated ? interpolatedContent : (item?.content ?? ''));
     setSelectedTarget(initialTarget);
   }, [item, interpolatedContent, useInterpolated, initialTarget]);
 
-  // 4. Calculate target preview
-  const parsedCurrentShots = useMemo(() => {
-    return parseFiveShotPrompt(currentMasterPrompt);
-  }, [currentMasterPrompt]);
-
+  const parsedCurrentShots = useMemo(() => parseFiveShotPrompt(currentMasterPrompt), [currentMasterPrompt]);
   const previewResult = useMemo(() => {
-    if (selectedTarget === 'text_layer') {
-      return `[将在画布新增文字图层]: "${customText}"`;
-    }
+    if (selectedTarget === 'text_layer') return `将在时间轴新增文案图层：${customText}`;
     if (selectedTarget === 'master') {
       if (injectionMode === 'replace') return customText;
-      if (injectionMode === 'prepend') return `${customText}，${currentMasterPrompt}`;
-      return `${currentMasterPrompt}，${customText}`;
+      if (injectionMode === 'prepend') return currentMasterPrompt ? `${customText}，${currentMasterPrompt}` : customText;
+      return currentMasterPrompt ? `${currentMasterPrompt}，${customText}` : customText;
     }
-
     const currentShotText = parsedCurrentShots[selectedTarget as keyof typeof parsedCurrentShots] || '';
     if (injectionMode === 'replace') return customText;
-    if (injectionMode === 'prepend') {
-      return currentShotText ? `${customText}，${currentShotText}` : customText;
-    }
+    if (injectionMode === 'prepend') return currentShotText ? `${customText}，${currentShotText}` : customText;
     return currentShotText ? `${currentShotText.replace(/[，,、\s]+$/, '')}，${customText}` : customText;
   }, [selectedTarget, injectionMode, customText, parsedCurrentShots, currentMasterPrompt]);
 
   if (!isOpen || !item) return null;
 
   const handleConfirm = (navigateToStoryboard = false) => {
-    onConfirmInject({
-      target: selectedTarget,
-      mode: injectionMode,
-      text: customText,
-      navigateToStoryboard
-    });
+    if (!customText.trim()) {
+      window.alert('请先填写要注入的内容');
+      return;
+    }
+    onConfirmInject({ target: selectedTarget, mode: injectionMode, text: customText.trim(), navigateToStoryboard });
     onClose();
   };
 
   return createPortal(
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 999999,
-        background: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px'
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          width: '580px',
-          maxWidth: '95vw',
-          maxHeight: '90vh',
-          background: 'linear-gradient(135deg, #161826 0%, #10121d 100%)',
-          border: '1px solid rgba(138, 43, 226, 0.4)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(124, 58, 237, 0.2)',
-          borderRadius: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          animation: 'fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Modal Header */}
-        <div
-          style={{
-            padding: '16px 20px',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'rgba(255, 255, 255, 0.02)'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, #7c3aed 0%, #00f2fe 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '16px'
-              }}
-            >
-              ⚡
-            </div>
-            <div>
-              <div style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', letterSpacing: '0.3px' }}>
-                定向注入分镜向导
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                将「{item.title}」结合当前服装与模特参数精准注入
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              fontSize: '20px',
-              cursor: 'pointer',
-              padding: '4px 8px',
-              borderRadius: '6px'
-            }}
-          >
-            ✕
-          </button>
+    <div className="prompt-inject-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="prompt-inject-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-inject-title">
+        <header className="prompt-inject-header">
+          <div className="prompt-inject-heading"><span className="prompt-inject-mark">⚡</span><div><h2 id="prompt-inject-title">定向注入分镜向导</h2><p>将「{item.title}」应用到剪辑工程中的指定位置</p></div></div>
+          <button type="button" className="prompt-inject-close" onClick={onClose} aria-label="关闭注入向导">×</button>
+        </header>
+
+        <div className="prompt-inject-body">
+          <section className="prompt-inject-section">
+            <div className="prompt-inject-section-title"><span>01</span><div><b>选择注入目标</b><small>决定这段灵感写入哪个剪辑内容</small></div></div>
+            <div className="prompt-inject-targets">{SHOT_OPTIONS.map(option => <button key={option.key} type="button" className={selectedTarget === option.key ? 'active' : ''} onClick={() => setSelectedTarget(option.key)}><span className="prompt-inject-option-icon">{option.icon}</span><span><b>{option.label}</b><small>{option.desc}</small></span>{selectedTarget === option.key && <i>✓</i>}</button>)}</div>
+          </section>
+
+          {selectedTarget !== 'text_layer' && <section className="prompt-inject-section"><div className="prompt-inject-section-title"><span>02</span><div><b>选择注入方式</b><small>预览会实时反映当前操作</small></div></div><div className="prompt-inject-modes">{INJECTION_MODES.map(option => <button key={option.mode} type="button" className={injectionMode === option.mode ? 'active' : ''} onClick={() => setInjectionMode(option.mode)}><strong>{option.icon}</strong><span><b>{option.label}</b><small>{option.desc}</small></span></button>)}</div></section>}
+
+          <section className="prompt-inject-section"><div className="prompt-inject-section-title"><span>{selectedTarget === 'text_layer' ? '02' : '03'}</span><div><b>编辑注入内容</b><small>可以直接修改，确认后会同步到当前项目</small></div>{item.hasVariables && <button type="button" className={`prompt-inject-variable-toggle ${useInterpolated ? 'active' : ''}`} onClick={() => setUseInterpolated(previous => !previous)}>{useInterpolated ? '已填充项目变量' : '使用变量模板'}</button>}</div><textarea className="prompt-inject-editor" value={customText} onChange={event => setCustomText(event.target.value)} rows={4} placeholder="输入要注入到分镜或时间轴的内容" /><div className="prompt-inject-editor-meta"><span>{customText.length} 字</span><button type="button" onClick={() => setCustomText('')} disabled={!customText}>清空内容</button></div></section>
+
+          <section className="prompt-inject-preview"><div className="prompt-inject-preview-title"><span>✓</span><div><b>注入结果预览</b><small>{targetLabel(selectedTarget)} · {selectedTarget === 'text_layer' ? '新增图层' : INJECTION_MODES.find(mode => mode.mode === injectionMode)?.label}</small></div></div><p>{previewResult || '填写内容后，这里会显示注入后的最终结果'}</p></section>
         </div>
 
-        {/* Modal Body */}
-        <div
-          style={{
-            padding: '18px 20px',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px'
-          }}
-        >
-          {/* Target Shot Selector Matrix */}
-          <div>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', display: 'block', marginBottom: '8px' }}>
-              🎯 选择注入目标
-            </span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-              {SHOT_OPTIONS.map(opt => {
-                const isSelected = selectedTarget === opt.key;
-                return (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => setSelectedTarget(opt.key)}
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: '8px',
-                      border: isSelected
-                        ? '1px solid #00f2fe'
-                        : '1px solid rgba(255, 255, 255, 0.08)',
-                      background: isSelected
-                        ? 'linear-gradient(135deg, rgba(0, 242, 254, 0.15) 0%, rgba(124, 58, 237, 0.15) 100%)'
-                        : 'rgba(255, 255, 255, 0.03)',
-                      color: isSelected ? '#ffffff' : '#94a3b8',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      textAlign: 'left',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <span style={{ fontSize: '16px' }}>{opt.icon}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '11px', fontWeight: isSelected ? 700 : 500, color: isSelected ? '#ffffff' : '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {opt.label}
-                      </div>
-                      <div style={{ fontSize: '9px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {opt.desc}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Injection Mode */}
-          {selectedTarget !== 'text_layer' && (
-            <div>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>
-                🔀 注入操作方式
-              </span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {[
-                  { mode: 'append' as const, label: '追加至末尾 (推荐)', icon: '➕' },
-                  { mode: 'replace' as const, label: '完全替换该镜头', icon: '🔄' },
-                  { mode: 'prepend' as const, label: '前置于开头', icon: '⏮️' }
-                ].map(m => (
-                  <button
-                    key={m.mode}
-                    type="button"
-                    onClick={() => setInjectionMode(m.mode)}
-                    style={{
-                      flex: 1,
-                      padding: '6px 8px',
-                      borderRadius: '6px',
-                      border: injectionMode === m.mode
-                        ? '1px solid #7c3aed'
-                        : '1px solid rgba(255, 255, 255, 0.08)',
-                      background: injectionMode === m.mode ? 'rgba(124, 58, 237, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                      color: injectionMode === m.mode ? '#ffffff' : '#94a3b8',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <span>{m.icon}</span>
-                    <span>{m.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Variable Toggle & Text Editor */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
-                📝 注入文本内容
-              </span>
-              {item.hasVariables && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextVal = !useInterpolated;
-                    setUseInterpolated(nextVal);
-                    setCustomText(nextVal ? interpolatedContent : item.content);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: useInterpolated ? '#00f2fe' : '#94a3b8',
-                    fontSize: '10px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <span>{useInterpolated ? '⚡ 已填充项目变量 (点击切回模板)' : '⚙️ 原始变量模板 (点击自动填充)'}</span>
-                </button>
-              )}
-            </div>
-
-            <textarea
-              value={customText}
-              onChange={e => setCustomText(e.target.value)}
-              rows={3}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: '8px',
-                background: 'rgba(0, 0, 0, 0.4)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                color: '#ffffff',
-                fontSize: '11px',
-                lineHeight: '1.6',
-                fontFamily: 'inherit',
-                resize: 'vertical',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-
-          {/* Real-Time Preview after injection */}
-          <div
-            style={{
-              padding: '10px 12px',
-              borderRadius: '8px',
-              background: 'rgba(2, 132, 199, 0.08)',
-              border: '1px dashed rgba(0, 242, 254, 0.3)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px'
-            }}
-          >
-            <div style={{ fontSize: '10px', fontWeight: 700, color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span>👁️ 注入后实时合成效果预览</span>
-            </div>
-            <div
-              style={{
-                fontSize: '11px',
-                color: '#e2e8f0',
-                lineHeight: '1.5',
-                maxHeight: '70px',
-                overflowY: 'auto'
-              }}
-            >
-              {previewResult}
-            </div>
-          </div>
-        </div>
-
-        {/* Modal Footer */}
-        <div
-          style={{
-            padding: '14px 20px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: '10px',
-            background: 'rgba(255, 255, 255, 0.02)'
-          }}
-        >
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={onClose}
-            style={{ padding: '6px 14px', fontSize: '12px', margin: 0 }}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => handleConfirm(false)}
-            style={{
-              padding: '6px 14px',
-              fontSize: '12px',
-              margin: 0,
-              background: 'rgba(124, 58, 237, 0.15)',
-              borderColor: 'rgba(124, 58, 237, 0.4)',
-              color: '#c084fc'
-            }}
-          >
-            ⚡ 仅注入
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => handleConfirm(true)}
-            style={{
-              padding: '6px 18px',
-              fontSize: '12px',
-              fontWeight: 700,
-              margin: 0,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'linear-gradient(135deg, #7c3aed 0%, #00f2fe 100%)',
-              boxShadow: '0 4px 15px rgba(124, 58, 237, 0.4)'
-            }}
-          >
-            <span>🚀 注入并前往分镜向导</span>
-          </button>
-        </div>
-      </div>
+        <footer className="prompt-inject-footer"><span>确认后可在剪辑页继续调整，支持 Ctrl + Z 撤销</span><div><button type="button" className="prompt-inject-cancel" onClick={onClose}>取消</button><button type="button" className="prompt-inject-secondary" onClick={() => handleConfirm(false)}>⚡ 仅注入</button><button type="button" className="prompt-inject-primary" onClick={() => handleConfirm(true)}>🚀 注入并前往分镜向导</button></div></footer>
+      </section>
     </div>,
     document.body
   );

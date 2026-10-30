@@ -538,7 +538,7 @@ export const SidebarDrawer = forwardRef<SidebarDrawerRef, SidebarDrawerProps>(({
     polishingShotIndex, onPolishSingleShot: handlePolishSingleShot,
     handleGenerateStoryboards, isStoryboardGenerating, handleFetchRecentTasks, isFetchingRecent,
     storyboards, draggedStoryboardIndex, setDraggedStoryboardIndex, handleReorderStoryboards,
-    isRegeneratingShotId, setPreviewModel, modelOutfitImgUrl, handleGeneratePromptsFromSkill,
+    isRegeneratingShotId, setPreviewModel, modelOutfitImgUrl: modelOutfitImgUrl || modelOutfitImgUrls[0] || null, handleGeneratePromptsFromSkill,
     isGeneratingPromptsFromSkill, i2vMasterPrompt15s, setI2vMasterPrompt15s,
     parse15sMasterPrompt: parseFiveShotPrompt, activeProjectId, setProjectI2vMasterPrompt15s,
     i2vPrompts, setI2vPrompts, setAiWizardStep: changeAiWizardStep,

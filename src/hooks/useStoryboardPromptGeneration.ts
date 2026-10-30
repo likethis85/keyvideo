@@ -4,6 +4,7 @@ import type { SceneAsset } from '../types/assets';
 import { generatePromptsFromSkill, polishSingleShotPrompt } from '../utils/aiGateway';
 import { parseThreeShotPrompt, parseFiveShotPrompt, replaceSingleShotInMasterPrompt } from '../services/storyboardPromptParser';
 import { toast } from '../components/toastStore';
+import { normalizeStoryboardPromptLanguage } from '../utils/storyboardPromptLanguage';
 
 type PromptRequest = Parameters<typeof generatePromptsFromSkill>[0];
 
@@ -68,12 +69,13 @@ export function useStoryboardPromptGeneration(options: StoryboardPromptGeneratio
         lightingMood: options.lightingMood
       });
 
+      const normalizedPrompt = normalizeStoryboardPromptLanguage(responsePrompt);
       if (options.videoDuration === '15s' || options.videoDuration === '3s') {
-        options.setProjectI2vMasterPrompt15s(options.activeProjectId, responsePrompt);
+        options.setProjectI2vMasterPrompt15s(options.activeProjectId, normalizedPrompt);
       } else {
-        options.setProjectI2vPrompts(options.activeProjectId, parseThreeShotPrompt(responsePrompt));
+        options.setProjectI2vPrompts(options.activeProjectId, parseThreeShotPrompt(normalizedPrompt));
       }
-      toast.success('🎉 5 幕连贯分镜视频提示词智能生成成功！已自动注入分镜脚本中。');
+      toast.success('5 幕连贯分镜视频提示词生成成功，已自动注入分镜脚本。');
     } catch (error) {
       console.error(error);
       toast.error(`智能生成分镜提示词失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -92,7 +94,7 @@ export function useStoryboardPromptGeneration(options: StoryboardPromptGeneratio
     const currentMaster = options.i2vMasterPrompt15s || '';
     const shotKey = `shot-${shotIndex}` as 'shot-1' | 'shot-2' | 'shot-3' | 'shot-4' | 'shot-5';
     const parsed = parseFiveShotPrompt(currentMaster);
-    const currentShotText = parsed[shotKey];
+    const currentShotText = normalizeStoryboardPromptLanguage(parsed[shotKey]);
 
     setPolishingShotIndex(shotIndex);
     try {
@@ -108,9 +110,9 @@ export function useStoryboardPromptGeneration(options: StoryboardPromptGeneratio
         useSlowMotion: options.useSlowMotion
       });
 
-      const newMasterPrompt = replaceSingleShotInMasterPrompt(currentMaster, shotKey, polishedContent);
+      const newMasterPrompt = replaceSingleShotInMasterPrompt(currentMaster, shotKey, normalizeStoryboardPromptLanguage(polishedContent));
       options.setProjectI2vMasterPrompt15s(options.activeProjectId, newMasterPrompt);
-      toast.success(`✨ 第 ${shotIndex} 幕分镜提示词已成功智能润色！`);
+      toast.success(`第 ${shotIndex} 幕分镜提示词优化成功。`);
     } catch (error) {
       console.error(error);
       toast.error(`第 ${shotIndex} 幕润色失败: ${error instanceof Error ? error.message : String(error)}`);

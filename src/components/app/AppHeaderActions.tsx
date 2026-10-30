@@ -55,7 +55,7 @@ export function AppHeaderActions(props: Props) {
       if (file) props.onImportProjectPackage?.(file);
       event.target.value = '';
     }} />
-    {variant === 'library' ? props.onOpenProjects && <button className="studio-button header-action-button" onClick={props.onOpenProjects} title="打开最近项目与项目管理">{icon('recent')}<span>最近项目</span></button>
+    {variant === 'library' ? props.onOpenProjects && <button className="studio-button header-action-button" onClick={props.onOpenProjects} title="打开项目大屏看板">{icon('recent')}<span>项目大屏看板</span></button>
       : variant === 'canvas' ? <>
         <button className="studio-button header-action-button" onClick={() => props.onCanvasAction?.('import')} title="导入工程包或画布数据">{icon('import')}<span>导入</span></button>
         <button className="studio-button header-action-button" onClick={() => props.onCanvasAction?.('fit')} title="将所有节点缩放到可见范围">{icon('fit')}<span>适应画布</span></button>
@@ -63,7 +63,9 @@ export function AppHeaderActions(props: Props) {
       </> : <>
         <button className="studio-button header-action-button" onClick={props.onPreview} title="全屏预览当前成片">{icon('preview')}<span>预览</span></button>
         <button className="studio-button header-action-button" onClick={() => setShortcutsOpen(true)} title="查看剪辑快捷键">{icon('shortcut')}<span>快捷键</span></button>
-        <button className={`studio-button header-action-button ${variant === 'editor' ? 'primary' : ''}`} onClick={props.onExport} title="打开视频导出设置">{icon('export')}<span>导出</span></button>
+        {props.onImportProjectPackage && <button className="studio-button header-action-button" onClick={() => fileInputRef.current?.click()} title="导入工程包，恢复项目与画布配置">{icon('import')}<span>导入工程</span></button>}
+        {props.onExportProjectPackage && <button className="studio-button header-action-button" onClick={props.onExportProjectPackage} title="导出当前工程包，包含时间轴与画布数据">{icon('export')}<span>导出工程包</span></button>}
+        <button className={`studio-button header-action-button ${variant === 'editor' ? 'primary' : ''}`} onClick={props.onExport} title="打开视频导出设置">{icon('export')}<span>导出成片</span></button>
       </>}
     {props.onOpenSettings && <button className="studio-button header-action-button header-settings-button" onClick={props.onOpenSettings} title="打开系统设置">{icon('settings')}<span>设置</span></button>}
     <div className="header-user-menu" ref={menuRef}>
@@ -72,22 +74,18 @@ export function AppHeaderActions(props: Props) {
       </button>
       {menuOpen && <div className="studio-account-menu">
         <div className="studio-account-label"><small>当前账号</small><strong>{props.userEmail}</strong></div>
-        {props.onOpenProjects && <button onClick={() => action(props.onOpenProjects)}>▦ 项目管理</button>}
-        <button onClick={() => action(props.onAddLayer)}>＋ 添加文本图层</button>
-        <button onClick={() => action(() => fileInputRef.current?.click())}>⇣ 导入工程</button>
-        <button onClick={() => action(props.onExportProjectPackage)}>↥ 导出工程包</button>
-        <hr />
         <button onClick={() => action(props.onOpenCustomApiModal)}>⌘ 自定义接口</button>
         <button onClick={() => action(props.onReplayOnboarding)}>◷ 重新查看新手引导</button>
-        <button onClick={() => action(() => props.onSetTheme?.(props.theme === 'dark' ? 'light' : 'dark'))}>{props.theme === 'dark' ? '☀ 浅色外观' : '☾ 深色外观'}</button>
         <hr /><button className="danger" onClick={() => { setMenuOpen(false); if (confirm('确定要退出登录吗？')) void props.onSignOut(); }}>↪ 退出登录</button>
       </div>}
     </div>
     {shortcutsOpen && createPortal(<div className="studio-modal-backdrop" onMouseDown={() => setShortcutsOpen(false)}>
-      <section className="studio-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onMouseDown={event => event.stopPropagation()}>
+      <section className="studio-dialog shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" onMouseDown={event => event.stopPropagation()}>
         <header><h2 id="shortcut-title">编辑快捷键</h2><button aria-label="关闭快捷键" onClick={() => setShortcutsOpen(false)}>×</button></header>
         <p>让每一次剪辑，都更顺手。</p>
-        {([['播放 / 暂停', 'Space'], ['上一帧 / 下一帧', '← / →'], ['撤销', 'Ctrl / ⌘ + Z'], ['重做', 'Ctrl / ⌘ + Y'], ['分割选中片段', 'Ctrl / ⌘ + B'], ['删除选中图层', 'Delete'], ['退出预览', 'Esc']] as const).map(([label, key]) => <div className="studio-shortcut-row" key={label}><span>{label}</span><kbd>{key}</kbd></div>)}
+        <div className="studio-shortcut-list">
+          {([['播放 / 暂停', 'Space'], ['上一帧 / 下一帧', '← / →'], ['撤销', 'Ctrl / ⌘ + Z'], ['重做', 'Ctrl / ⌘ + Y'], ['分割选中片段', 'Ctrl / ⌘ + B'], ['删除选中图层', 'Delete'], ['退出预览', 'Esc']] as const).map(([label, key]) => <div className="studio-shortcut-row" key={label}><span>{label}</span><kbd>{key}</kbd></div>)}
+        </div>
         <button className="studio-button primary" autoFocus onClick={() => setShortcutsOpen(false)}>知道了</button>
       </section>
     </div>, document.body)}

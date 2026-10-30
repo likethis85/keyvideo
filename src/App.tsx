@@ -245,6 +245,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<EditorToolTab>('template');
   const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(true);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
+  const [isTimelineInspectorCollapsed, setIsTimelineInspectorCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>('editor');
   const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(true);
@@ -260,6 +261,7 @@ function App() {
   const [activeProjectId, setActiveProjectId] = useState<string>('');
   const [isEditingProjName, setIsEditingProjName] = useState(false);
   const [editingProjNameValue, setEditingProjNameValue] = useState('');
+  const [pendingNewProjectId, setPendingNewProjectId] = useState<string | null>(null);
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
@@ -625,7 +627,9 @@ function App() {
 
   const handleCreateNewProject = () => {
     if (sidebarRef.current) {
-      sidebarRef.current.createNewProject();
+      const created = sidebarRef.current.createNewProject();
+      if (created) setPendingNewProjectId(created.id);
+      return created;
     } else {
       const defaultName = `项目_${projects.length + 1}`;
       const input = prompt('请输入新项目名称：', defaultName);
@@ -635,6 +639,8 @@ function App() {
       setProjects(prev => [...prev, project]);
       setActiveProjectId(project.id);
       toast.success(`已创建并切换至新项目「${project.name}」！`);
+      setPendingNewProjectId(project.id);
+      return project;
     }
   };
 
@@ -675,21 +681,10 @@ function App() {
     setIsOnboardingOpen(false);
   };
 
-  const handleStartRenameProject = () => {
-    if (sidebarRef.current) {
-      sidebarRef.current.startRenameProject();
-    } else {
-      const cur = projects.find(p => p.id === activeProjectId);
-      if (cur) {
-        setEditingProjNameValue(cur.name);
-        setIsEditingProjName(true);
-      }
-    }
-  };
-
   const handleSaveProjectName = () => {
     if (sidebarRef.current) {
       sidebarRef.current.saveProjectName();
+      setPendingNewProjectId(null);
     } else {
       const name = editingProjNameValue.trim();
       if (!name) {
@@ -698,8 +693,23 @@ function App() {
       }
       setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));
       setIsEditingProjName(false);
+      setPendingNewProjectId(null);
       toast.success('项目名称已更新！');
     }
+  };
+
+  const handleCancelProjectName = () => {
+    if (pendingNewProjectId) {
+      const previousProject = projects.find(project => project.id !== pendingNewProjectId);
+      if (previousProject) {
+        setProjects(previous => previous.filter(project => project.id !== pendingNewProjectId));
+        setActiveProjectId(previousProject.id);
+        sidebarRef.current?.switchProject(previousProject.id);
+      }
+      setPendingNewProjectId(null);
+      toast.info('已取消新建项目');
+    }
+    setIsEditingProjName(false);
   };
 
   const handleDeleteProject = (projectId: string) => {
@@ -777,12 +787,9 @@ function App() {
             editingName={editingProjNameValue}
             theme={theme}
             onEditingNameChange={setEditingProjNameValue}
-            onCancelEditing={() => setIsEditingProjName(false)}
+            onCancelEditing={handleCancelProjectName}
             onSaveName={handleSaveProjectName}
             onSwitchProject={handleSwitchProject}
-            onCreateProject={handleCreateNewProject}
-            onStartRename={handleStartRenameProject}
-            onDeleteProject={handleDeleteProject}
             onOpenDashboard={() => setIsProjectsModalOpen(true)}
           />
           <span className="studio-project-view">
@@ -921,6 +928,8 @@ function App() {
                 setLayers={setLayers}
                 selectedLayerId={selectedLayerId}
                 setSelectedLayerId={setSelectedLayerId}
+                isCollapsed={isTimelineInspectorCollapsed}
+                onToggleCollapse={() => setIsTimelineInspectorCollapsed(previous => !previous)}
               />
             </div>
           </div>
@@ -1110,9 +1119,26 @@ function App() {
         projects={projects}
         activeProjectId={activeProjectId}
         createNewProject={handleCreateNewProject}
+        onCreateNamedProject={(name) => {
+          const created = sidebarRef.current?.createNewProject(name);
+          if (!created) {
+            toast.error('项目创建失败，请稍后重试');
+          }
+        }}
         switchProject={handleSwitchProject}
         setProjects={setProjects}
         deleteProject={handleDeleteProject}
+        onOpenWorkspace={(target) => {
+          setViewMode('editor');
+          setIsDrawerCollapsed(target === 'editor');
+          if (target === 'timeline') {
+            setViewMode('timeline');
+            setIsDrawerCollapsed(true);
+          } else if (target === 'ai') {
+            handleActiveTabChange('ai');
+            setIsDrawerCollapsed(false);
+          }
+        }}
         onExportPackage={async () => {
           const curProj = projects.find(p => p.id === activeProjectId);
           const canvasData = await localDB.get<{

@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import type { CanvasNodeData } from '../../../types/canvas';
 import { BaseNode } from './BaseNode';
+import { CanvasIcon } from '../CanvasIcon';
 
 interface VideoNodeProps {
   node: CanvasNodeData;
@@ -50,7 +51,7 @@ export const VideoNode: React.FC<VideoNodeProps> = ({
         onDelete={onDelete}
         onStartConnect={onStartConnect}
         onEndConnect={onEndConnect}
-        headerIcon={<span style={{ fontSize: '14px' }}>🎬</span>}
+        headerIcon={<CanvasIcon name="play" size={19} />}
         extraHeaderActions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, whiteSpace: 'nowrap' }}>
             {videoSrc && (

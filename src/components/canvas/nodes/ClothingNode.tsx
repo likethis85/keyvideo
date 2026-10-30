@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import type { CanvasNodeData } from '../../../types/canvas';
 import { BaseNode } from './BaseNode';
+import { CanvasIcon } from '../CanvasIcon';
 
 interface ClothingNodeProps {
   node: CanvasNodeData;
@@ -52,7 +53,7 @@ export const ClothingNode: React.FC<ClothingNodeProps> = ({
       onDelete={onDelete}
       onStartConnect={onStartConnect}
       onEndConnect={onEndConnect}
-      headerIcon={<span style={{ fontSize: '14px' }}>👗</span>}
+      headerIcon={<CanvasIcon name="layers" size={19} />}
     >
       <div className="clothing-node-content">
         <input

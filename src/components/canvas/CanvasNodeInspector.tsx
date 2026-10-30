@@ -6,6 +6,7 @@ interface CanvasNodeInspectorProps {
   onUpdate: (patch: Partial<CanvasNodeData>) => void;
   onClose: () => void;
   onRegenerate?: () => void;
+  onAddToTimeline?: (node: CanvasNodeData) => void;
 }
 
 function statusLabel(status: CanvasNodeData['status']) {
@@ -23,7 +24,8 @@ function nodeIcon(node: CanvasNodeData) {
   return '✦';
 }
 
-export function CanvasNodeInspector({ node, onUpdate, onClose, onRegenerate }: CanvasNodeInspectorProps) {
+export function CanvasNodeInspector({ node, onUpdate, onClose, onRegenerate, onAddToTimeline }: CanvasNodeInspectorProps) {
+  const hasTimelineAsset = !!node && ((node.type === 'image' && !!node.metadata.imageSrc) || (node.type === 'video' && !!node.metadata.videoSrc));
   const updateMetadata = (key: string, value: unknown) => {
     if (!node) return;
     onUpdate({ metadata: { ...node.metadata, [key]: value } });
@@ -75,7 +77,10 @@ export function CanvasNodeInspector({ node, onUpdate, onClose, onRegenerate }: C
           </section>
 
           {node.metadata.imageSrc && <div className="canvas-inspector-preview"><img src={node.metadata.imageSrc} alt="节点输入预览" /></div>}
-          <button type="button" className="canvas-inspector-regenerate" onClick={onRegenerate} disabled={!onRegenerate || node.status === 'loading'}>↻ 重新生成此节点</button>
+          <div className="canvas-inspector-actions">
+            {onAddToTimeline && hasTimelineAsset && <button type="button" className="canvas-inspector-timeline" onClick={() => onAddToTimeline(node)}>＋ 加入时间轴</button>}
+            {onRegenerate && <button type="button" className="canvas-inspector-regenerate" onClick={onRegenerate} disabled={node.status === 'loading'}>↻ 重新生成此节点</button>}
+          </div>
           <p className="canvas-inspector-note">节点完成后会自动更新下游连接；拖动节点或端点即可调整工作流。</p>
         </div>
       ) : (

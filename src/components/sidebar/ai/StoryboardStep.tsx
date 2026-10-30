@@ -17,6 +17,8 @@ import {
   interpolatePromptVariables
 } from '../../../utils/promptVariableInterpolator';
 import { toast } from '../../toastStore';
+import { AIIcon } from './AIIcon';
+import { normalizeStoryboardPromptLanguage } from '../../../utils/storyboardPromptLanguage';
 
 export interface StoryboardItem {
   id: string;
@@ -158,9 +160,9 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   return (
     <>
       {/* I2V Storyboard Panel */}
-      <div className="property-group" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px' }}>
+      <div className="property-group ai-storyboard-workspace" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px' }}>
         <span className="property-label" style={{ marginBottom: '6px', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)' }}>
-          🎬 AI 智能图生视频分镜合成 (I2V 故事板)
+          <><AIIcon name="film" size={18} /> AI 智能图生视频分镜合成 <span className="ai-section-kicker">I2V 故事板</span></>
         </span>
         <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px', display: 'block' }}>
           一键通过 AI 模特分镜图调用「图生视频大模型」，进行多视角的视频片段合成与无缝卡点剪辑拼接：
@@ -175,8 +177,8 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
             className="text-input"
             style={{ padding: '7px 10px', fontSize: '12px', width: '100%', background: 'var(--bg-surface-solid)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
           >
-            <option value="3s">⏱️ 3秒 (分镜拼接 - 生成 5 段合成 15s 视频)</option>
-            <option value="15s">⏱️ 15秒 (可灵单任务或分镜拼接 - 15s 视频)</option>
+            <option value="3s">3秒（分镜拼接，生成 5 段合成 15 秒视频）</option>
+            <option value="15s">15秒（单任务或分镜拼接）</option>
           </select>
         </div>
 
@@ -193,9 +195,9 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
             className="text-input"
             style={{ padding: '7px 10px', fontSize: '12px', width: '100%', background: 'var(--bg-surface-solid)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
           >
-            <option value="individual">🖼️ 独立分镜逐个生成 (多图模式)</option>
-            <option value="composite_slice">✨ 合集单图生成并切割 (多分镜卡片)</option>
-            <option value="composite_no_slice">🎬 16:9 合图不切割 (整图传视频模型)</option>
+            <option value="individual">独立分镜逐个生成（多图模式）</option>
+            <option value="composite_slice">合集单图生成并切割（多分镜卡片）</option>
+            <option value="composite_no_slice">16:9 合图不切割（整图传视频模型）</option>
           </select>
         </div>
 
@@ -230,7 +232,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
               }}
               style={{ accentColor: 'var(--border-accent)', width: '15px', height: '15px', cursor: 'pointer' }}
             />
-            🏃‍♂️ 人物慢动作，注重镜头运镜
+            人物慢动作，注重镜头运镜
           </label>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', width: '100%' }}>
@@ -245,15 +247,15 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
               className="text-input"
               style={{ padding: '7px 10px', fontSize: '12px', width: '100%', background: 'var(--bg-surface-solid)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
             >
-              <option value="both">👗 整体搭配 / 两者同样重要</option>
-              <option value="top">👕 重点推广上装</option>
-              <option value="bottom">👖 重点推广下装</option>
+              <option value="both">整体搭配 / 两者同样重要</option>
+              <option value="top">重点推广上装</option>
+              <option value="bottom">重点推广下装</option>
             </select>
           </div>
 
           {/* 服装品类专属物理力学规约 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', width: '100%' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>👗 服装品类专属物理力学</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}><AIIcon name="clothes" size={15} />服装品类专属物理力学</span>
             <select
               value={apparelStyle}
               onChange={(e) => {
@@ -264,20 +266,20 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
               className="text-input"
               style={{ padding: '7px 10px', fontSize: '12px', width: '100%', background: 'var(--bg-surface-solid)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
             >
-              <option value="general">✨ 通用高端时尚 (自然重力垂坠与微褶皱)</option>
-              <option value="dress">👗 优雅长裙/礼服 (流线垂坠与波浪飘逸)</option>
-              <option value="suit">👔 职场通勤/正装西服 (挺阔肩线与精纺哑光)</option>
-              <option value="overcoat">🧥 风衣/大衣外套 (大衣下摆开合/带风气场)</option>
-              <option value="neo_chinese">🪭 新中式/国风汉服 (广袖流云与丝绸暗光)</option>
-              <option value="street">🧢 潮酷高街/运动机能 (机能抽绳/弹性质感)</option>
-              <option value="knitwear">🧶 软糯针织/静奢羊绒 (羊绒微纤肌理与悬垂)</option>
+              <option value="general">通用高端时尚（自然重力垂坠与微褶皱）</option>
+              <option value="dress">优雅长裙 / 礼服（流线垂坠与波浪飘逸）</option>
+              <option value="suit">职场通勤 / 正装西服（挺阔肩线与精纺哑光）</option>
+              <option value="overcoat">风衣 / 大衣外套（下摆开合与带风气场）</option>
+              <option value="neo_chinese">新中式 / 国风汉服（广袖流云与丝绸暗光）</option>
+              <option value="street">潮酷高街 / 运动机能（抽绳结构与弹性质感）</option>
+              <option value="knitwear">软糯针织 / 静奢羊绒（微纤肌理与自然悬垂）</option>
             </select>
           </div>
 
           {/* 镜头运镜调性 & 光影美学 */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px', width: '100%' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>🎥 运镜调性</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}><AIIcon name="motion" size={15} />运镜调性</span>
               <select
                 value={cameraStyle}
                 onChange={(e) => {
@@ -288,15 +290,15 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                 className="text-input"
                 style={{ padding: '7px 8px', fontSize: '11px', width: '100%', background: 'var(--bg-surface-solid)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
               >
-                <option value="cinematic_dolly">🎬 电影慢推微移</option>
-                <option value="orbit_360">🔄 秀场360°环绕</option>
-                <option value="macro_rack">🔍 微距变焦特写</option>
-                <option value="low_angle">📐 低视角超模跟拍</option>
-                <option value="default">✨ 经典大片运镜</option>
+                <option value="cinematic_dolly">电影慢推微移</option>
+                <option value="orbit_360">秀场 360° 环绕</option>
+                <option value="macro_rack">微距变焦特写</option>
+                <option value="low_angle">低视角超模跟拍</option>
+                <option value="default">经典大片运镜</option>
               </select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>💡 光影美学</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}><AIIcon name="light" size={15} />光影美学</span>
               <select
                 value={lightingMood}
                 onChange={(e) => {
@@ -307,11 +309,11 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                 className="text-input"
                 style={{ padding: '7px 8px', fontSize: '11px', width: '100%', background: 'var(--bg-surface-solid)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px' }}
               >
-                <option value="editorial_soft">💡 大牌杂志柔光</option>
-                <option value="golden_hour">🌅 黄金时刻暖逆光</option>
-                <option value="wabi_sabi">🏛️ 侘寂几何硬影</option>
-                <option value="cyber_night">🌃 夜色街头霓虹</option>
-                <option value="default">✨ 自然通透光影</option>
+                <option value="editorial_soft">大牌杂志柔光</option>
+                <option value="golden_hour">黄金时刻暖逆光</option>
+                <option value="wabi_sabi">侘寂几何硬影</option>
+                <option value="cyber_night">夜色街头霓虹</option>
+                <option value="default">自然通透光影</option>
               </select>
             </div>
           </div>
@@ -353,16 +355,16 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
             }}
             title="在无限画布中自由拖拽比对、重新连线或调整分镜顺序"
           >
-            <span>🎨</span>
+            <AIIcon name="infinite" size={16} />
             <span>在无限画布中自由排版、比对与调序 (5镜拓扑)</span>
           </button>
         )}
 
        {/* Editable Storyboard Prompts */}
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div className="ai-prompt-workspace" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', marginBottom: '4px' }}>
             <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              🖊️ 编辑各分镜 Prompt 提示词 ({videoDuration === '15s' || videoDuration === '3s' ? '15s 模式 - 5段' : '4s 模式 - 3段'})
+              <AIIcon name="edit" size={16} /> 编辑各分镜提示词 <span className="ai-prompt-mode">{videoDuration === '15s' || videoDuration === '3s' ? '15 秒模式 · 5 段' : '4 秒模式 · 3 段'}</span>
             </span>
             {modelOutfitImgUrl && (
               <button
@@ -402,7 +404,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
           {(videoDuration === '15s' || videoDuration === '3s') ? (
             storyboardMode === 'composite_no_slice' ? (
               <div className="property-group" style={{ marginBottom: 0, width: '100%' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '4px' }}>15s 视频完整脚本提示词 (输入 @ 可引用模特与分镜)</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '4px' }}>15 秒视频完整脚本提示词（输入 @ 可引用模特与分镜）</span>
                 <MentionTextarea
                   value={i2vMasterPrompt15s}
                   onChange={setI2vMasterPrompt15s}
@@ -415,6 +417,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {/* 5-Shot Storyboard Suites Accordion */}
                 <div
+                  className="ai-suite-selector"
                   style={{
                     background: 'var(--bg-surface-solid)',
                     border: '1px solid var(--border-color)',
@@ -435,7 +438,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                     onClick={() => setShowSuiteSelector(prev => !prev)}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '13px' }}>🪄</span>
+                      <AIIcon name="wand" size={17} />
                       <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)' }}>
                         5幕电商成套爆款模版 (一键套用全量脚本)
                       </span>
@@ -463,7 +466,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                            <span style={{ fontSize: '18px' }}>{suite.icon}</span>
+                            <span className="storyboard-suite-icon"><AIIcon name="spark" size={17} /></span>
                             <div style={{ minWidth: 0 }}>
                               <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span>{suite.title}</span>
@@ -525,28 +528,29 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                   };
 
                   const FIVE_SHOTS = [
-                    { key: 'shot-1' as const, index: 1 as const, title: '分镜一：出场与超模气场', duration: '0-3s', icon: '🚶‍♀️', tip: '首帧画外边缘迈步，优雅走入中央站定' },
-                    { key: 'shot-2' as const, index: 2 as const, title: '分镜二：细节特写微距推镜', duration: '3-6s', icon: '🔍', tip: '极慢平推，聚焦领口做工与微观面料' },
-                    { key: 'shot-3' as const, index: 3 as const, title: '分镜三：张力与律动步态', duration: '6-9s', icon: '💃', tip: '平滑环绕，展示面料流线垂坠与舒展' },
-                    { key: 'shot-4' as const, index: 4 as const, title: '分镜四：微动与物理褶皱', duration: '9-12s', icon: '✨', tip: '平缓微移，模特微倾身姿，真实面料重力' },
-                    { key: 'shot-5' as const, index: 5 as const, title: '分镜五：黄金定格全身比例', duration: '12-15s', icon: '👑', tip: '缓缓拉远，纵深空间背景下高冷定格' }
+                    { key: 'shot-1' as const, index: 1 as const, title: '分镜一：出场与超模气场', duration: '0–3 秒', icon: 'motion' as const, tip: '首帧画外边缘迈步，优雅走入中央站定' },
+                    { key: 'shot-2' as const, index: 2 as const, title: '分镜二：细节特写微距推镜', duration: '3–6 秒', icon: 'camera' as const, tip: '极慢平推，聚焦领口做工与微观面料' },
+                    { key: 'shot-3' as const, index: 3 as const, title: '分镜三：张力与律动步态', duration: '6–9 秒', icon: 'motion' as const, tip: '平滑环绕，展示面料流线垂坠与舒展' },
+                    { key: 'shot-4' as const, index: 4 as const, title: '分镜四：微动与物理褶皱', duration: '9–12 秒', icon: 'clothes' as const, tip: '平缓微移，模特微倾身姿，真实面料重力' },
+                    { key: 'shot-5' as const, index: 5 as const, title: '分镜五：黄金定格全身比例', duration: '12–15 秒', icon: 'spark' as const, tip: '缓缓拉远，纵深空间背景下高冷定格' }
                   ];
 
                   const QUICK_INSPIRATIONS = [
-                    { label: '🎥 极慢平推', text: '摄像机极其缓慢向前平推 (Ultra-slow Dolly In)，' },
-                    { label: '🔄 360°环绕', text: '平滑轨道环绕镜头慢速运镜，全方位展示服装版型，' },
-                    { label: '🔍 面料微距', text: '微距镜头极其细腻拉近，聚焦衣物微观织物肌理与五金辅料，' },
-                    { label: '👗 裙摆飘垂', text: '微风轻拂裙摆产生优雅的波浪状流线垂坠感 (Fluid drape)，' },
-                    { label: '👔 挺阔肩线', text: '身形挺拔步伐沉稳从容，呈现立体挺阔的高级剪裁轮廓，' },
-                    { label: '🌅 逆光丁达尔', text: '自然柔和的侧逆光斜射，发丝泛起温暖光晕与立体空间层次，' },
-                    { label: '💃 优雅微侧身', text: '模特极从容徐缓地优雅微侧身45度并眼神微转，' }
+                    { label: '极慢平推', text: '摄像机极其缓慢向前平推，' },
+                    { label: '360° 环绕', text: '平滑轨道环绕镜头慢速运镜，全方位展示服装版型，' },
+                    { label: '面料微距', text: '微距镜头极其细腻拉近，聚焦衣物微观织物肌理与五金辅料，' },
+                    { label: '裙摆飘垂', text: '微风轻拂裙摆产生优雅的波浪状流线垂坠感，' },
+                    { label: '挺阔肩线', text: '身形挺拔步伐沉稳从容，呈现立体挺阔的高级剪裁轮廓，' },
+                    { label: '逆光丁达尔', text: '自然柔和的侧逆光斜射，发丝泛起温暖光晕与立体空间层次，' },
+                    { label: '优雅微侧身', text: '模特极从容徐缓地优雅微侧身45度并眼神微转，' }
                   ];
 
                   return (
                     <>
                       {FIVE_SHOTS.map((shot) => {
-                        const currentVal = parsed[shot.key] || '';
+                        const currentVal = normalizeStoryboardPromptLanguage(parsed[shot.key] || '');
                         const isPolishing = polishingShotIndex === shot.index;
+                        const hasOutfitReference = Boolean(modelOutfitImgUrl);
                         const showInspiration = inspirationShotIndex === shot.index;
                         const showLibrary = libraryShotIndex === shot.index;
 
@@ -563,6 +567,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
 
                         return (
                           <div
+                            className="ai-shot-card"
                             key={shot.key}
                             style={{
                               background: 'var(--bg-surface-solid)',
@@ -576,9 +581,9 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                             }}
                           >
                             {/* Card Header with Shot Title & Actions */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '13px' }}>{shot.icon}</span>
+                            <div className="ai-shot-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div className="ai-shot-heading" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span className="storyboard-shot-icon"><AIIcon name={shot.icon} size={16} /></span>
                                 <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-primary)' }}>
                                   {shot.title}
                                 </span>
@@ -597,10 +602,11 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                 </span>
                               </div>
 
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <div className="ai-shot-actions" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 {/* Quick Inspiration Toggle */}
                                 <button
                                   type="button"
+                                  className="ai-shot-toolbar-button"
                                   onClick={() => {
                                     setLibraryShotIndex(null);
                                     setInspirationShotIndex(prev => prev === shot.index ? null : shot.index);
@@ -619,13 +625,14 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                   }}
                                   title="展开灵感预设短语，点击即可一键插入"
                                 >
-                                  <span>💡</span>
+                                <AIIcon name="light" size={12} />
                                   <span>灵感</span>
                                 </button>
 
                                 {/* Prompt Library Drawer Toggle */}
                                 <button
                                   type="button"
+                                  className="ai-shot-toolbar-button"
                                   onClick={() => {
                                     setInspirationShotIndex(null);
                                     setLibraryShotIndex(prev => prev === shot.index ? null : shot.index);
@@ -644,7 +651,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                   }}
                                   title="从电商灵感词库中选择适合此镜头的运镜、面料或文案"
                                 >
-                                  <span>📚</span>
+                                  <AIIcon name="library" size={12} />
                                   <span>词库</span>
                                 </button>
 
@@ -652,8 +659,9 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                 {onPolishSingleShot && (
                                   <button
                                     type="button"
+                                    className="ai-shot-toolbar-button ai-shot-polish-button"
                                     onClick={() => onPolishSingleShot(shot.index)}
-                                    disabled={polishingShotIndex !== null || !modelOutfitImgUrl}
+                                    disabled={polishingShotIndex !== null || !hasOutfitReference}
                                     style={{
                                       fontSize: '9px',
                                       padding: '2px 7px',
@@ -661,12 +669,13 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                       background: isPolishing ? 'var(--accent-purple)' : 'linear-gradient(135deg, rgba(121, 40, 202, 0.15) 0%, rgba(0, 242, 254, 0.1) 100%)',
                                       border: '1px solid rgba(121, 40, 202, 0.4)',
                                       color: isPolishing ? '#fff' : '#c084fc',
-                                      cursor: polishingShotIndex !== null || !modelOutfitImgUrl ? 'not-allowed' : 'pointer',
+                                      cursor: polishingShotIndex !== null || !hasOutfitReference ? 'not-allowed' : 'pointer',
+                                      opacity: polishingShotIndex !== null || !hasOutfitReference ? 0.58 : 1,
                                       display: 'flex',
                                       alignItems: 'center',
                                       gap: '3px'
                                     }}
-                                    title="结合当前选定的服装品类力学与运镜风格，针对该分镜进行独立优化润色"
+                                    title={!hasOutfitReference ? '请先完成一键生成穿搭图，再使用智能优化' : polishingShotIndex !== null && !isPolishing ? '另一个分镜正在优化，请稍候' : '结合当前选定的服装品类、力学与运镜风格，针对该分镜进行独立优化润色'}
                                   >
                                     {isPolishing ? (
                                       <>
@@ -675,8 +684,8 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                       </>
                                     ) : (
                                       <>
-                                        <span>✨</span>
-                                        <span>AI润色</span>
+                                        <AIIcon name="spark" size={12} />
+                                        <span>智能优化</span>
                                       </>
                                     )}
                                   </button>
@@ -687,6 +696,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                             {/* Quick Inspiration Chip Tray */}
                             {showInspiration && (
                               <div
+                                className="ai-shot-inspiration-tray"
                                 style={{
                                   display: 'flex',
                                   flexWrap: 'wrap',
@@ -698,13 +708,14 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                   animation: 'fadeIn 0.2s ease'
                                 }}
                               >
-                                <span style={{ fontSize: '9px', color: 'var(--text-secondary)', width: '100%', marginBottom: '2px' }}>
+                                <span className="ai-shot-inspiration-title" style={{ fontSize: '9px', color: 'var(--text-secondary)', width: '100%', marginBottom: '2px' }}>
                                   点击下方灵感词直接追加至该分镜：
                                 </span>
                                 {QUICK_INSPIRATIONS.map((chip, idx) => (
                                   <button
                                     key={idx}
                                     type="button"
+                                    className="ai-shot-inspiration-chip"
                                     onClick={() => {
                                       const updated = currentVal ? `${currentVal.replace(/[，,、\s]+$/, '')}，${chip.text}` : chip.text;
                                       updateShotPrompt(shot.key, updated);
@@ -729,6 +740,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                             {/* Embedded Prompt Library Tray */}
                             {showLibrary && (
                               <div
+                                className="ai-shot-library-tray"
                                 style={{
                                   display: 'flex',
                                   flexDirection: 'column',
@@ -740,13 +752,14 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                   animation: 'fadeIn 0.2s ease'
                                 }}
                               >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div className="ai-shot-library-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <span style={{ fontSize: '10px', color: '#c084fc', fontWeight: 600 }}>
-                                    📚 推荐适应该分镜的电商词库灵感：
+                                    <AIIcon name="library" size={14} /> 推荐适应该分镜的电商词库灵感：
                                   </span>
                                   {onNavigateToPromptTab && (
                                     <button
                                       type="button"
+                                      className="ai-shot-library-open"
                                       onClick={onNavigateToPromptTab}
                                       style={{
                                         background: 'none',
@@ -762,12 +775,13 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                   )}
                                 </div>
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div className="ai-shot-library-list" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                   {shotLibraryItems.map(item => {
                                     const interpolated = interpolatePromptVariables(item.content, projectVariables);
                                     return (
                                       <div
                                         key={item.id}
+                                        className="ai-shot-library-item"
                                         style={{
                                           padding: '5px 8px',
                                           borderRadius: '4px',
@@ -779,8 +793,8 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                           gap: '6px'
                                         }}
                                       >
-                                        <div style={{ minWidth: 0, flex: 1 }}>
-                                          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                        <div className="ai-shot-library-copy" style={{ minWidth: 0, flex: 1 }}>
+                                          <div className="ai-shot-library-item-title" style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-primary)' }}>
                                             {item.title}
                                           </div>
                                           <div
@@ -792,11 +806,12 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                               textOverflow: 'ellipsis'
                                             }}
                                             title={interpolated}
+                                            className="ai-shot-library-item-text"
                                           >
                                             {interpolated}
                                           </div>
                                         </div>
-                                        <div style={{ display: 'flex', gap: '3px', flexShrink: 0 }}>
+                                        <div className="ai-shot-library-actions" style={{ display: 'flex', gap: '3px', flexShrink: 0 }}>
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -815,6 +830,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                               color: '#00f2fe',
                                               cursor: 'pointer'
                                             }}
+                                            className="ai-shot-library-action add"
                                             title="追加至当前分镜末尾"
                                           >
                                             追加
@@ -834,6 +850,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                                               color: '#c084fc',
                                               cursor: 'pointer'
                                             }}
+                                            className="ai-shot-library-action replace"
                                             title="完全替换当前分镜"
                                           >
                                             替换

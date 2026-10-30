@@ -1009,6 +1009,53 @@
   border-color: var(--border-color-hover);
 }
 
+/* Keep the empty state centered in the usable canvas area instead of relying
+   on a fixed pixel offset that can sit under the tool rail or inspector. */
+.canvas-empty-guide {
+  position: absolute;
+  top: 50%;
+  left: clamp(78px, 18vw, 270px);
+  right: clamp(290px, 27vw, 410px);
+  width: auto;
+  max-width: 620px;
+  padding: 34px 40px 36px;
+  pointer-events: auto;
+  transform: translateY(-44%);
+  background: linear-gradient(145deg, rgba(27, 32, 49, .94), rgba(14, 19, 31, .92));
+  border-color: rgba(129, 155, 205, .25);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, .42), 0 0 0 1px rgba(93, 230, 255, .04);
+}
+
+.empty-guide-icon {
+  display: grid;
+  width: 62px;
+  height: 62px;
+  margin-bottom: 4px;
+  place-items: center;
+  color: #08131b;
+  background: linear-gradient(135deg, #59e8ef, #a679ff);
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(90, 160, 238, .25);
+}
+
+.canvas-empty-guide h3 { font-size: 22px; letter-spacing: .01em; }
+.canvas-empty-guide p { max-width: 510px; font-size: 14px; line-height: 1.7; text-align: center; }
+.empty-guide-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+.empty-action-btn { min-height: 46px; padding: 10px 12px; font-size: 13px; line-height: 1.35; }
+.empty-action-btn.tertiary { color: #b6c7dc; background: rgba(255, 255, 255, .035); border: 1px solid rgba(148, 169, 200, .18); }
+.empty-action-btn.tertiary:hover { color: #f2f8ff; background: rgba(255, 255, 255, .08); border-color: rgba(148, 169, 200, .38); }
+
+@media (max-width: 900px) {
+  .canvas-empty-guide { left: 76px; right: 326px; padding: 27px 25px 29px; }
+  .empty-guide-actions { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .canvas-empty-guide { top: 52%; left: 66px; right: 16px; padding: 24px 18px 25px; }
+  .canvas-empty-guide h3 { font-size: 18px; }
+  .canvas-empty-guide p { font-size: 12px; }
+}
+
 /* Wire Release Spawn Node Menu */
 .canvas-spawn-menu {
   background: var(--bg-surface-solid, #141724);

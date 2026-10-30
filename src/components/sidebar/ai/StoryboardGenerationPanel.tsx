@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { StoryboardItem } from './StoryboardStep';
+import { AIIcon } from './AIIcon';
 
 export interface StoryboardPreview {
   src: string;
@@ -44,7 +45,7 @@ function StoryboardPanelThumbnail({ storyboard }: { storyboard: StoryboardItem }
   }
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}>
-      <span>🎞️</span>
+      <AIIcon name="camera" size={18} />
     </div>
   );
 }
@@ -54,10 +55,10 @@ export function StoryboardGenerationPanel(props: Props) {
     <div className="storyboard-generation-panel">
       <div className="storyboard-generation-actions">
         <button className={`btn-primary ${props.generating ? 'is-stopping' : ''}`} onClick={props.onGenerate}>
-          {props.generating ? '■ 停止生成 (点击中断)' : '🎬 一键生成模特场景分镜图'}
+          {props.generating ? <><AIIcon name="stop" size={16} />停止生成（点击中断）</> : <><AIIcon name="film" size={16} />一键生成模特场景分镜图</>}
         </button>
         <button className="btn-secondary" onClick={props.onFetchRecent} disabled={props.fetchingRecent} title="若上次生成网络中断或超时，点击直接从服务器拉取最新生成的图片">
-          ⇩ {props.fetchingRecent ? '拉取中...' : '补发/恢复结果'}
+          <AIIcon name="download" size={16} /> {props.fetchingRecent ? '拉取中...' : '补发 / 恢复结果'}
         </button>
       </div>
 
@@ -80,7 +81,7 @@ export function StoryboardGenerationPanel(props: Props) {
                   {busy ? (
                     <div className="storyboard-busy"><span className="storyboard-spinner" /><span>{props.regeneratingId === storyboard.id ? '重做中...' : '生成中...'}</span></div>
                   ) : (
-                    <button className="storyboard-preview-button" onClick={() => props.onPreview({ src: storyboard.imageSrc || storyboard.videoSrc || '', name: `${storyboard.name} (静态分镜)`, storyboardId: storyboard.id })} title="预览图片">👁️</button>
+                    <button className="storyboard-preview-button" onClick={() => props.onPreview({ src: storyboard.imageSrc || storyboard.videoSrc || '', name: `${storyboard.name} (静态分镜)`, storyboardId: storyboard.id })} title="预览图片"><AIIcon name="eye" size={16} /></button>
                   )}
                 </div>
                 <span className="storyboard-card-label" title={storyboard.name}>{shotLabels[storyboard.shotType || ''] || '分镜五 (12-15s)'}</span>

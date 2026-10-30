@@ -39,13 +39,15 @@ export function StudioInspector({ mode, layers, setLayers, selectedLayerId, setS
   const set = (patch: Partial<Layer>) => { if (active) setLayers(previous => previous.map(layer => layer.id === active.id ? { ...layer, ...patch } : layer)); };
   const properties = (patch: Partial<Layer['properties']>) => { if (active) set({ properties: { ...active.properties, ...patch } }); };
   const number = (label: string, value: number, update: (n: number) => void, min = 0, max = 100, step = 1, suffix = '') => <span className="studio-number"><input type="number" aria-label={label} value={Number(value.toFixed(3))} min={min} max={max} step={step} onChange={event => { if (event.target.value === '') return; const n = Number(event.target.value); if (Number.isFinite(n)) update(Math.min(max, Math.max(min, n))); }} /><span>{suffix}</span></span>;
-  if (isCollapsed) return <button type="button" className="studio-inspector-expand" title="展开属性调试面板" aria-label="展开属性调试面板" onClick={onToggleCollapse}><span>›</span><b>属性</b></button>;
+  if (isCollapsed) {
+    const drawerLabel = mode === 'timeline' ? '片段设置' : '属性';
+    return <button type="button" className="studio-inspector-expand" title={`展开${drawerLabel}面板`} aria-label={`展开${drawerLabel}面板`} aria-expanded={false} onClick={onToggleCollapse}><span>›</span><b>{drawerLabel}</b></button>;
+  }
   return <aside className={`studio-inspector ${mode === 'timeline' ? 'clip-inspector' : ''}`} aria-label={mode === 'timeline' ? '片段设置' : '画面属性'}>
     <header className="studio-inspector-header">
       <div><b>{mode === 'timeline' ? '片段设置' : '属性调试'}</b><small>{active ? `正在编辑：${active.name}` : '请选择一个图层'}</small></div>
       <div className="studio-inspector-header-actions">
-        {mode === 'timeline' && <button type="button" title="取消选中片段" aria-label="取消选中片段" onClick={() => setSelectedLayerId(null)}>×</button>}
-        {onToggleCollapse && <button type="button" className="studio-inspector-collapse" title="收起属性调试面板" aria-label="收起属性调试面板" onClick={onToggleCollapse}>收起 <span>›</span></button>}
+        {onToggleCollapse && <button type="button" className="studio-inspector-collapse" title={`收起${mode === 'timeline' ? '片段设置' : '属性调试'}面板`} aria-label={`收起${mode === 'timeline' ? '片段设置' : '属性调试'}面板`} aria-expanded={true} onClick={onToggleCollapse}>收起 <span>›</span></button>}
       </div>
     </header>
     {mode === 'editor' && <div className="studio-inspector-tabs" role="tablist" aria-label="属性调试页签">{['属性', '动画', '音频'].map(item => <button key={item} type="button" role="tab" aria-selected={tab === item} aria-controls={`inspector-panel-${item}`} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}<small>{item === '属性' ? '画面与时间' : item === '动画' ? '入场与过渡' : '音量与静音'}</small></button>)}</div>}

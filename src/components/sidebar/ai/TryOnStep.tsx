@@ -3,6 +3,7 @@ import { OutfitResultsGallery } from './OutfitResultsGallery';
 import type { OutfitPreview } from './OutfitResultsGallery';
 import { TryOnModelSceneSelector } from './TryOnModelSceneSelector';
 import type { AIProject } from '../../../types/aiProject';
+import { AIIcon } from './AIIcon';
 
 interface ModelItem {
   id: string;
@@ -114,16 +115,16 @@ export const TryOnStep: React.FC<TryOnStepProps> = ({
       />
 
      {/* Clothing Flatlay Upload Panel (Direct Input) */}
-      <div className="property-group" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="property-group ai-outfit-workspace" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '16px' }}>👕</span>
+          <span className="ai-section-icon outfit" aria-hidden="true">◇</span>
           <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '0.01em' }}>配置服装与穿搭图</span>
         </div>
 
         {/* Interrupted generation warning banner */}
         {outfitGenInterrupted && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.4)', borderRadius: '8px', padding: '10px 12px' }}>
-            <span style={{ fontSize: '14px', flexShrink: 0 }}>⚠️</span>
+            <AIIcon name="status" size={16} className="ai-warning-icon" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
               <span style={{ fontSize: '11px', fontWeight: '700', color: '#b45309' }}>上次穿搭图生成被中断</span>
               <span style={{ fontSize: '10px', color: '#78350f', lineHeight: '1.4' }}>
@@ -172,7 +173,7 @@ export const TryOnStep: React.FC<TryOnStepProps> = ({
                 onMouseOver={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-accent)'; }}
                 onMouseOut={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-color)'; }}
               >
-                <span style={{ fontSize: '20px' }}>📤</span>
+                <AIIcon name="upload" size={22} />
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textAlign: 'center' }}>上传上装</span>
               </div>
             )}
@@ -212,7 +213,7 @@ export const TryOnStep: React.FC<TryOnStepProps> = ({
                 onMouseOver={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-accent)'; }}
                 onMouseOut={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-color)'; }}
               >
-                <span style={{ fontSize: '20px' }}>📤</span>
+                <AIIcon name="upload" size={22} />
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', textAlign: 'center' }}>上传下装</span>
               </div>
             )}
@@ -291,7 +292,7 @@ export const TryOnStep: React.FC<TryOnStepProps> = ({
                   onMouseOver={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-accent)'; }}
                   onMouseOut={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--accent-purple)'; }}
                 >
-                  <span style={{ fontSize: '18px' }}>➕</span>
+                  <AIIcon name="plus" size={20} />
                   <span style={{ fontSize: '10px', color: 'var(--text-primary)', fontWeight: '700', textAlign: 'center', lineHeight: '1.3' }}>
                     {referenceOutfitUrls.length === 0 ? '上传\n参考图' : '添加\n参考图'}
                   </span>
@@ -315,7 +316,7 @@ export const TryOnStep: React.FC<TryOnStepProps> = ({
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                ✨ AI 穿搭与配饰推荐
+                <><AIIcon name="spark" size={16} /> AI 穿搭与配饰推荐</>
               </span>
               {isStylingLoading && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -412,7 +413,7 @@ export const TryOnStep: React.FC<TryOnStepProps> = ({
               }}
               title="将此套模特穿搭导入无限画布，自由扩展多视角提示词与镜头生成管线"
             >
-              <span>🎨</span>
+              <AIIcon name="infinite" size={16} />
               <span>在无限画布中衍生更多分镜与镜头</span>
             </button>
           )}

@@ -171,7 +171,7 @@ export const MediaTab: React.FC<MediaTabProps> = ({
           <div className="asset-model-photo"><img src={model.src} alt={model.name} loading="lazy" /><span className="asset-photo-badge">{model.src === swapModelUrl ? '当前使用' : 'AI 模特'}</span>{model.src === swapModelUrl && <span className="asset-selected-check">✓</span>}<div className="asset-card-tools"><button aria-label={`预览模特 ${model.name}`} onClick={event => { event.stopPropagation(); setPreviewModel(model); setEditingModelNameValue(model.name); setIsEditingModelName(false); }}>⤢</button><button aria-label={`删除模特 ${model.name}`} onClick={event => { event.stopPropagation(); deleteModel(model); }}>×</button></div></div>
           <div className="asset-model-meta"><b title={model.name}>{formatFileName(model.name)}</b><small>AI 模特 · {model.date || '最近添加'}</small></div>
         </article>)}
-        <div className="asset-add-model"><button className="asset-add-icon" aria-label="添加模特" onClick={() => modelInputRef.current?.click()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button><b>添加 AI 模特</b><small>上传正面照片，或使用右上角 AI 生成创建模特</small><div><button onClick={() => modelInputRef.current?.click()}>上传照片</button><button onClick={() => setIsGenModelModalOpen(true)}>AI 生成</button></div></div>
+        <div className="asset-add-model"><b>添加 AI 模特</b><small>上传正面照片，或使用右上角 AI 生成创建模特</small><div><button onClick={() => modelInputRef.current?.click()}>上传照片</button></div></div>
       </div>
     </section>}
     {section === 'scenes' && <section className="asset-section scene-section">
@@ -181,7 +181,7 @@ export const MediaTab: React.FC<MediaTabProps> = ({
           <span className="asset-photo-badge">{modelScene === scene.id ? '当前使用' : customScenes.some(item => item.id === scene.id) ? '自定义' : scene.id === 'studio' ? '棚拍' : '自然'}</span><b>{sceneLabel(scene)}</b>
           <div className="asset-card-tools"><button aria-label={`预览场景 ${scene.name}`} onClick={event => { event.stopPropagation(); setPreviewScene(scene); setEditingSceneNameValue(scene.name); setIsEditingSceneName(false); }}>⤢</button>{customScenes.some(item => item.id === scene.id) && <button aria-label={`删除场景 ${scene.name}`} onClick={event => { event.stopPropagation(); deleteCustomScene(scene.id, event); }}>×</button>}</div>
         </article>)}
-        <div className="asset-add-scene"><button className="asset-add-icon" aria-label="添加场景" onClick={() => sceneInputRef.current?.click()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button><b>添加背景场景</b><small>上传图片，或使用右上角 AI 生成</small><div><button onClick={() => sceneInputRef.current?.click()}>上传场景</button><button onClick={() => setShowAiSceneModal(true)}>AI 生成</button></div></div>
+        <div className="asset-add-scene"><b>添加背景场景</b><small>上传图片，或使用右上角 AI 生成</small><div><button onClick={() => sceneInputRef.current?.click()}>上传场景</button></div></div>
       </div>
     </section>}
     {section === 'videos' && <section className="asset-section">

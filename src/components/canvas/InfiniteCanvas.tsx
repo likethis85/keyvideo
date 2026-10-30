@@ -791,6 +791,8 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   // Keyboard navigation & shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTextEditing = Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'));
       // Avoid triggering when focused in an input/textarea
       if (e.code === 'Space') {
         isSpacePressedRef.current = true;
@@ -832,7 +834,11 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
       } else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
         e.preventDefault();
         setViewport({ x: 120, y: 80, scale: 1 });
+      } else if (!isTextEditing && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'v') {
+        setActiveCanvasTool('select');
+        setConnectSourceNodeId(null);
       } else if (e.key === 'Escape') {
+        setActiveCanvasTool('select');
         setSelectedNodeIds([]);
         setSelectedConnectionId(null);
         setConnectingState(null);
@@ -878,7 +884,6 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
       </div>
 
       <nav className="canvas-tool-rail" aria-label="画布工具" onMouseDown={event => event.stopPropagation()}>
-        <button type="button" className={activeCanvasTool === 'select' ? 'active' : ''} onClick={() => { setActiveCanvasTool('select'); setConnectSourceNodeId(null); }} title="选择工具：点击选择并拖动节点" data-tooltip="选择工具" aria-label="选择工具"><CanvasIcon name="select" size={21} /></button>
         <button type="button" className={activeCanvasTool === 'pan' ? 'active' : ''} onClick={() => { setActiveCanvasTool('pan'); setConnectSourceNodeId(null); }} title="平移画布：拖动空白区域移动视图" data-tooltip="平移画布" aria-label="平移画布"><CanvasIcon name="pan" size={21} /></button>
         <button type="button" className={showGrid ? 'active' : ''} onClick={() => setShowGrid(value => !value)} title={`${showGrid ? '隐藏' : '显示'}画布网格`} data-tooltip={`${showGrid ? '隐藏' : '显示'}网格`} aria-label={`${showGrid ? '隐藏' : '显示'}画布网格`}><CanvasIcon name="grid" size={21} /></button>
         <button type="button" className={activeCanvasTool === 'connect' ? 'active' : ''} onClick={() => { setActiveCanvasTool('connect'); setConnectSourceNodeId(null); }} title="连接节点：依次点击起点和终点" data-tooltip="连接节点" aria-label="连接节点"><CanvasIcon name="connect" size={21} /></button>
@@ -934,16 +939,10 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         {nodes.length === 0 && (
           <div
             className="canvas-empty-guide"
-            style={{
-              position: 'absolute',
-              left: 400,
-              top: 260,
-              pointerEvents: 'auto'
-            }}
           >
-            <div className="empty-guide-icon">🎨</div>
+            <div className="empty-guide-icon"><CanvasIcon name="layout" size={36} /></div>
             <h3>AI 无限创作画布</h3>
-            <p>自由排布服装、模特、提示词与视频节点，通过连线组合多模态生成管线</p>
+            <p>把素材、提示词和生成节点组合成可复用的创作管线。选择一个起点，马上开始搭建。</p>
             <div className="empty-guide-actions">
               {activeProject && (
                 <button
@@ -964,7 +963,16 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
                   toast.success('已生成试衣示例流程！');
                 }}
               >
-                ✨ 快速创建试衣模版流程
+                <CanvasIcon name="layout" size={17} />快速创建试衣模板流程
+              </button>
+              <button
+                className="empty-action-btn tertiary"
+                onClick={() => {
+                  const node = addNode('workflow', { x: 320, y: 250 }, { title: '空白工作流' });
+                  if (node) toast.success('已添加空白工作流节点，可以继续连接素材与提示词');
+                }}
+              >
+                <CanvasIcon name="add" size={17} />从空白节点开始
               </button>
             </div>
           </div>
@@ -1126,10 +1134,11 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
           if (selected) updateNode(selected.id, patch);
         }}
         onClose={() => setSelectedNodeIds([])}
-        onRegenerate={() => {
+        onRegenerate={nodes.find(node => node.id === selectedNodeIds[0])?.type === 'workflow' ? () => {
           const selected = nodes.find(node => node.id === selectedNodeIds[0]);
-          if (selected?.type === 'workflow') void handleExecuteWorkflow(selected);
-        }}
+          if (selected) void handleExecuteWorkflow(selected);
+        } : undefined}
+        onAddToTimeline={handleAddToTimeline}
       />
 
       {/* Route A: Image Modification Modals */}
