@@ -4,6 +4,7 @@ import type { AudioAsset, ModelAsset, SceneAsset } from '../types/assets';
 import { supabase } from '../utils/supabaseClient';
 import { uploadAudioToOSS } from '../utils/ossClient';
 import { toast } from '../components/toastStore';
+import { createSsoAsset, isSsoCloudSession } from '../services/keyvideoCloudService';
 
 type PreviewScene = { id?: string; src: string; name: string } | null;
 type PreviewModel = { id?: string; src: string; name: string; storyboardId?: string } | null;
@@ -100,6 +101,15 @@ export function useAssetPanelActions(options: AssetPanelActionsOptions) {
       const { data: { session } } = await supabase.auth.getSession();
       const src = await uploadAudioToOSS(file);
       const name = file.name.replace(/\.[^/.]+$/, '');
+      if (isSsoCloudSession()) {
+        const desc = `${(file.size / 1024 / 1024).toFixed(2)}MB • 云端存储`;
+        const inserted = await createSsoAsset('audio', { name, src, desc });
+        if (!inserted) throw new Error('云端音乐保存失败');
+        const item = { id: inserted.id, name: inserted.name, src: inserted.src, desc: inserted.desc || desc };
+        options.setBgmLibrary(previous => options.saveBgmLibrarySafely([...previous, item]));
+        toast.success(`音频「${name}」已成功上传并保存至音乐库！`);
+        return;
+      }
       const userId = session?.user?.id;
 
       // SSO users have no Supabase session. Keep the uploaded track in the local

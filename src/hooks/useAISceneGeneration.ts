@@ -4,6 +4,7 @@ import type { SceneAsset } from '../types/assets';
 import { generateBackgroundImage, getCanvasSafeImageUrl } from '../utils/aiGateway';
 import { uploadFileToOSS } from '../utils/ossClient';
 import { supabase } from '../utils/supabaseClient';
+import { isSsoCloudSession, updateSsoAsset } from '../services/keyvideoCloudService';
 
 const MULTI_VIEW_PREFIX = `A premium 16:9 architectural storyboard showing 3 different empty views of a luxury space, arranged side-by-side as a single horizontal comic strip with 3 equal panels. The panels are clearly separated by clean thin margins and showcase the empty backgrounds from different angles:`;
 
@@ -91,11 +92,15 @@ export function useAISceneGeneration({
       const name = editPrompt.trim().substring(0, 10) || scene.name;
       const updated = { ...scene, src: finalUrl, name };
 
-      const { error } = await supabase.from('model_assets').update({
-        src: finalUrl,
-        name: `[BG] ${name}`
-      }).eq('id', scene.id);
-      if (error) console.warn('Failed to update scene in Supabase:', error);
+      if (isSsoCloudSession()) {
+        await updateSsoAsset('model', scene.id, { src: finalUrl, name: `[BG] ${name}` });
+      } else {
+        const { error } = await supabase.from('model_assets').update({
+          src: finalUrl,
+          name: `[BG] ${name}`
+        }).eq('id', scene.id);
+        if (error) console.warn('Failed to update scene in Supabase:', error);
+      }
 
       setCustomScenes(previous => saveCustomScenes(
         previous.map(item => item.id === scene.id ? updated : item)

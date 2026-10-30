@@ -12,6 +12,7 @@ import { fetchWithTimeout, assertSafeRemoteUrl, safeFetchRemote, readBodyWithTim
 import { createIdempotencyMiddleware, IDEMPOTENT_GENERATION_PATHS } from './idempotency.js';
 import { createImageProxyHandler } from './imageProxy.js';
 import { createUploadRouter } from './uploads.js';
+import { createKeyvideoCloudRouter } from './keyvideoCloud.js';
 import { submitSandbaseTask } from './sandbaseSubmit.js';
 import { compactTaskStore as compactTaskHistory } from './taskHistory.js';
 import {
@@ -128,7 +129,7 @@ app.use(cors({
     if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Origin is not allowed by CORS'));
   },
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Idempotency-Key'],
   exposedHeaders: ['X-Idempotency-Replayed']
 }));
@@ -656,6 +657,9 @@ app.get('/api/ai/tasks/recent', (req, res) => {
 // configureServer proxy). Objects are namespaced per user and deletes are
 // owner-checked inside the router.
 app.use('/api', createUploadRouter());
+// SSO cloud persistence. The router is authenticated above and uses the
+// server-only Supabase service-role key; it never exposes that key to clients.
+app.use('/api/cloud', createKeyvideoCloudRouter());
 
 // AI Mannequin Model Swap
 app.post('/api/ai/mannequin', async (req, res) => {

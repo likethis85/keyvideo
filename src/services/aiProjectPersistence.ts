@@ -2,6 +2,8 @@ import type { AIProject } from '../types/aiProject';
 import { localDB } from '../utils/db';
 import { supabase } from '../utils/supabaseClient';
 import { mapProjectRow } from '../utils/aiProjectFactory';
+import { isSsoCloudSession, loadSsoProjects } from './keyvideoCloudService';
+import { migrateLocalDataToSsoCloud } from './ssoDataMigration';
 
 export interface PersistedProjectState {
   projects: AIProject[];
@@ -30,10 +32,19 @@ function restoreStoryboardVideoUrls(project: AIProject): AIProject {
 
 export async function loadPersistedProjectState(): Promise<PersistedProjectState> {
   let projects: AIProject[] = [];
+  if (isSsoCloudSession()) {
+    try {
+      await migrateLocalDataToSsoCloud();
+      const projectRows = await loadSsoProjects();
+      if (projectRows?.length) projects = projectRows.map(row => mapProjectRow(row));
+    } catch (error) {
+      console.warn('Failed to load SSO cloud projects; keeping local projects:', error);
+    }
+  }
   const { data: userSession } = await supabase.auth.getSession();
   const userId = userSession?.session?.user?.id;
 
-  if (userId) {
+  if (userId && projects.length === 0) {
     const { data: projectRows, error } = await supabase
       .from('ai_video_projects')
       .select('*')

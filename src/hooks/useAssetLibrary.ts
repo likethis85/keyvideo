@@ -4,6 +4,7 @@ import type { Layer } from '../components/VideoCanvas';
 import type { AudioAsset, LocalVideoAsset, ModelAsset, SceneAsset } from '../types/assets';
 import { localDB } from '../utils/db';
 import { supabase } from '../utils/supabaseClient';
+import { isSsoCloudSession, loadSsoAssets } from '../services/keyvideoCloudService';
 
 const bundledAudioSources = new Set(['fashion_beat.mp3', 'jazz.mp3', 'tech_ambient.mp3']);
 
@@ -100,6 +101,7 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
       const deletedSceneIds = asStringArray(await localDB.get('deleted_scene_ids'));
       const { data: sessionData } = await supabase.auth.getSession();
       const hasSupabaseUser = Boolean(sessionData.session?.user?.id);
+      const hasSsoUser = isSsoCloudSession();
 
       const loadLocalAssets = async () => {
         const [modelRows, sceneRows] = await Promise.all([
@@ -112,7 +114,31 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
         }
       };
 
-      if (hasSupabaseUser) {
+      if (hasSsoUser) {
+        try {
+          const [cloudRows, localAssets, localSceneRows] = await Promise.all([
+            loadSsoAssets('model'),
+            loadLocalModelAssets(),
+            localDB.get('ai_custom_scenes')
+          ]);
+          const models = mergeBySource(
+            mapModels(cloudRows || [], deletedModelIds),
+            mapModels(localAssets, deletedModelIds)
+          );
+          const scenes = mergeBySource(
+            mapScenes(cloudRows || [], deletedSceneIds, true),
+            mapScenes(Array.isArray(localSceneRows) ? localSceneRows : [], deletedSceneIds)
+          );
+          if (!cancelled) {
+            setModelLibrary(models);
+            setCustomScenes(scenes);
+          }
+          await Promise.all([localDB.set('ai_model_library', models), localDB.set('ai_custom_scenes', scenes)]);
+        } catch (error) {
+          console.error('Failed to load models from SSO cloud:', error);
+          await loadLocalAssets();
+        }
+      } else if (hasSupabaseUser) {
         try {
           const localAssets = await loadLocalModelAssets();
           const localSceneRows: unknown = await localDB.get('ai_custom_scenes');
@@ -146,7 +172,26 @@ export function useAssetLibrary(setLayers: Dispatch<SetStateAction<Layer[]>>) {
         await loadLocalAssets();
       }
 
-      if (hasSupabaseUser) {
+      if (hasSsoUser) {
+        try {
+          const [cloudRows, localAudioRows] = await Promise.all([
+            loadSsoAssets('audio'),
+            localDB.get('ai_bgm_library')
+          ]);
+          const audio = mergeBySource(
+            mapAudio(cloudRows || []),
+            mapAudio(Array.isArray(localAudioRows) ? localAudioRows : [])
+          );
+          if (!cancelled) setBgmLibrary(audio);
+          applyDefaultAudio(audio);
+        } catch (error) {
+          console.error('Failed to load bgms from SSO cloud:', error);
+          const rows: unknown = await localDB.get('ai_bgm_library');
+          const audio = mapAudio(Array.isArray(rows) ? rows : []);
+          if (!cancelled) setBgmLibrary(audio);
+          applyDefaultAudio(audio);
+        }
+      } else if (hasSupabaseUser) {
         try {
           const localAudioRows: unknown = await localDB.get('ai_bgm_library');
           const { data, error } = await supabase

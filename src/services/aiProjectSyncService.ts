@@ -1,6 +1,7 @@
 import type { AIProject } from '../types/aiProject';
 import { uploadFileToOSS } from '../utils/ossClient';
 import { supabase } from '../utils/supabaseClient';
+import { isSsoCloudSession, syncProjectToSsoCloud } from './keyvideoCloudService';
 
 function dataUrlToBlob(dataUrl: string): Blob {
   const [metadata, encoded = ''] = dataUrl.split(';base64,');
@@ -13,21 +14,33 @@ function dataUrlToBlob(dataUrl: string): Blob {
 
 async function ensurePublicAssetUrl(sourceUrl: string, prefix: string): Promise<string> {
   if (!sourceUrl) return '';
-  const isExpiringUrl = sourceUrl.includes('Expires=')
-    || sourceUrl.includes('OSSAccessKeyId=')
-    || sourceUrl.includes('dashscope-result')
-    || sourceUrl.includes('x-oss-expires');
-  const requiresUpload = sourceUrl.startsWith('data:')
-    || sourceUrl.startsWith('blob:')
-    || sourceUrl.startsWith('http://localhost')
-    || sourceUrl.startsWith('https://localhost')
+  const trimmedSource = sourceUrl.trim();
+  if (!trimmedSource) return '';
+  // Relative paths, file:// URLs and app-internal asset:// URLs are only valid
+  // on the current machine and must never be persisted as cloud media URLs.
+  if (!/^https?:\/\//i.test(trimmedSource) && !trimmedSource.startsWith('data:') && !trimmedSource.startsWith('blob:')) {
+    return '';
+  }
+  try {
+    const parsed = new URL(trimmedSource);
+    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && ['localhost', '127.0.0.1', '0.0.0.0', '[::1]'].includes(parsed.hostname)) return '';
+  } catch {
+    return '';
+  }
+  const isExpiringUrl = trimmedSource.includes('Expires=')
+    || trimmedSource.includes('OSSAccessKeyId=')
+    || trimmedSource.includes('dashscope-result')
+    || trimmedSource.includes('x-oss-expires');
+  const requiresUpload = trimmedSource.startsWith('data:')
+    || trimmedSource.startsWith('blob:')
     || isExpiringUrl;
-  if (!requiresUpload) return sourceUrl;
+  if (!requiresUpload) return trimmedSource;
 
   try {
-    const blob = sourceUrl.startsWith('data:')
-      ? dataUrlToBlob(sourceUrl)
-      : await fetch(sourceUrl).then(response => response.blob());
+    const blob = trimmedSource.startsWith('data:')
+      ? dataUrlToBlob(trimmedSource)
+      : await fetch(trimmedSource).then(response => response.blob());
     const extension = blob.type.split('/')[1] || 'png';
     const file = new File([blob], `${prefix}_${Date.now()}.${extension}`, {
       type: blob.type || 'image/png'
@@ -35,7 +48,9 @@ async function ensurePublicAssetUrl(sourceUrl: string, prefix: string): Promise<
     return await uploadFileToOSS(file);
   } catch (error) {
     console.warn('Failed to upload project asset to OSS:', error);
-    return sourceUrl;
+    // A data/blob/expiring URL cannot be replayed by another browser after a
+    // failed upload, so leave that field empty rather than writing dead data.
+    return '';
   }
 }
 
@@ -48,12 +63,11 @@ function getProjectStatus(project: AIProject): string {
   return 'idle';
 }
 
-export async function syncProjectToSupabase(project: AIProject): Promise<void> {
+export async function syncProjectToSupabase(
+  project: AIProject,
+  options: { throwOnError?: boolean } = {}
+): Promise<void> {
   try {
-    const { data: userSession } = await supabase.auth.getSession();
-    const userId = userSession?.session?.user?.id;
-    if (!userId) return;
-
     const [topUrl, bottomUrl, referenceUrls, outfitUrls, storyboards] = await Promise.all([
       ensurePublicAssetUrl(project.topClothingUrl, 'top_clothing'),
       ensurePublicAssetUrl(project.bottomClothingUrl, 'bottom_clothing'),
@@ -75,6 +89,15 @@ export async function syncProjectToSupabase(project: AIProject): Promise<void> {
       })))
     ]);
 
+    if (isSsoCloudSession()) {
+      await syncProjectToSsoCloud(project, { topUrl, bottomUrl, referenceUrls, outfitUrls, storyboards });
+      return;
+    }
+
+    const { data: userSession } = await supabase.auth.getSession();
+    const userId = userSession?.session?.user?.id;
+    if (!userId) return;
+
     const { error } = await supabase.from('ai_video_projects').upsert({
       id: project.id,
       name: project.name,
@@ -93,8 +116,13 @@ export async function syncProjectToSupabase(project: AIProject): Promise<void> {
       status: getProjectStatus(project),
       video_duration: project.videoDuration || '15s'
     });
-    if (error) console.error('Failed to sync project to Supabase:', error);
+    if (error) {
+      if (options.throwOnError) throw error;
+      console.error('Failed to sync project to Supabase:', error);
+      return;
+    }
   } catch (error) {
+    if (options.throwOnError) throw error;
     console.error('Error during Supabase project sync:', error);
   }
 }

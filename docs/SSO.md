@@ -67,7 +67,16 @@ Authorization: Bearer <KeyVideo 会话 JWT>
 ```
 
 前端会自动从 SSO 会话或 Supabase 会话取 token 并附带。SSO 用户不需要配置
-Supabase；如果要保留旧的 Supabase 邮箱密码登录，后端还需要配置：
+Supabase 的浏览器登录，但项目和素材的 SSO 云端同步需要在后端配置开发库地址
+与服务端密钥：
+
+```dotenv
+SUPABASE_URL=http://203.205.89.231:8010
+SUPABASE_SERVICE_ROLE_KEY=开发库的 service-role key
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` 只能放在 `backend/.env`，不能写入 `VITE_` 变量，
+不能提交 Git，也不能交给浏览器。如果要保留旧的 Supabase 邮箱密码登录，另外配置：
 
 ```dotenv
 SUPABASE_URL=https://your-supabase-instance.example.com
@@ -75,6 +84,19 @@ SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```
 
 本地临时调试可设置 `API_AUTH_DISABLED=true`，但 `NODE_ENV=production` 时该开关会被忽略。
+
+## 2.2 SSO 云端数据
+
+Supabase 开发库需要按顺序执行 `supabase/migrations/` 中的四份 KeyVideo
+迁移，最后执行 `20261030_01_sso_cloud_storage.sql`。它只在
+`ai_video_projects`、`model_assets`、`audio_assets` 增加 `sso_user_id` 和索引，
+不会改动 `media_assets` 或其他表。
+
+用户首次以钉钉 SSO 登录时，应用会把当前本地项目、模特、场景和音乐迁移到该
+SSO 用户的云端空间；每个账号各自隔离。迁移只处理可被其他设备访问的地址，
+`data:`/`blob:` 图片会先上传 OSS，`file://`、`asset://`、本机路径和无效地址跳过。
+SSO 令牌、界面设置和本地视频不会上传。迁移成功会记录一次性标记，失败会在下次
+登录重试。
 
 
 ## 3. 登录流程
@@ -114,6 +136,9 @@ KeyVideo 会话 JWT（存在浏览器 localStorage）
 | POST | `/api/auth/sso/exchange` | 用 ticket 换 KeyVideo 会话 JWT |
 | GET | `/api/auth/sso/session` | 校验会话 JWT，返回用户 |
 | POST | `/api/auth/sso/logout` | 前端退出时通知后端（本地会话由前端清除） |
+
+SSO 云端读写接口位于 `/api/cloud/*`，只接受已验证的 KeyVideo SSO 会话，服务端
+始终按 `sso_user_id` 过滤项目和素材。
 
 ## 5. 自测
 

@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { AIProject } from '../types/aiProject';
 import { createAIProject } from '../utils/aiProjectFactory';
 import { supabase } from '../utils/supabaseClient';
+import { deleteSsoProject, isSsoCloudSession } from '../services/keyvideoCloudService';
 
 type Confirm = (title: string, message: string, onConfirm: () => void) => void;
 type ApplyProject = (project: AIProject, options?: { restoreGenerationState?: boolean; resetWizard?: boolean }) => void;
@@ -77,10 +78,13 @@ export function useProjectActions({
       const remaining = projects.filter(project => project.id !== projectId);
       setProjects(remaining);
       applyProjectToEditor(remaining[0]);
-      void supabase.auth.getSession().then(({ data }) => {
-        if (data.session?.user?.id) return supabase.from('ai_video_projects').delete().eq('id', projectId);
-        return undefined;
-      }).catch(error => console.warn('Failed to delete project from Supabase:', error));
+      void (isSsoCloudSession()
+        ? deleteSsoProject(projectId)
+        : supabase.auth.getSession().then(({ data }) => {
+            if (data.session?.user?.id) return supabase.from('ai_video_projects').delete().eq('id', projectId);
+            return undefined;
+          }))
+        .catch(error => console.warn('Failed to delete project from cloud storage:', error));
     });
   }, [applyProjectToEditor, projects, setProjects, showConfirm]);
 

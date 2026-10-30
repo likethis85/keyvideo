@@ -4,6 +4,7 @@ import { toast } from '../toastStore';
 import { localDB } from '../../utils/db';
 import { formatFileName } from '../../utils/formatUtils';
 import { SCENE_BACKGROUNDS } from '../../config/sceneBackgrounds';
+import { deleteSsoAsset, isSsoCloudSession } from '../../services/keyvideoCloudService';
 
 export interface ModelItem {
   id: string;
@@ -101,13 +102,16 @@ export const MediaTab: React.FC<MediaTabProps> = ({
         if (model.src && !deletedIds.includes(model.src)) deletedIds.push(model.src);
         await localDB.set('deleted_model_ids', deletedIds);
 
-        const { error: deleteError } = await supabase
-          .from('model_assets')
-          .delete()
-          .eq('id', model.id);
-
-        if (deleteError) {
-          console.warn('Supabase delete error (handled via local tombstone):', deleteError);
+        if (isSsoCloudSession()) {
+          await deleteSsoAsset('model', model.id);
+        } else {
+          const { error: deleteError } = await supabase
+            .from('model_assets')
+            .delete()
+            .eq('id', model.id);
+          if (deleteError) {
+            console.warn('Supabase delete error (handled via local tombstone):', deleteError);
+          }
         }
       } catch (err: unknown) {
         console.warn('Failed to delete model from Supabase:', err);

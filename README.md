@@ -37,7 +37,8 @@ Copy-Item backend/.env.example backend/.env
 
 - `OSS_REGION` / `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` / `OSS_BUCKET`
 - `SANDBASE_API_KEY`（图像/视频生成）或 `TEXT_LLM_API_KEY`
-- 如需账号登录：`SSO_*` 或 `SSO_SESSION_SECRET`；旧版 Supabase 登录还需 `SUPABASE_URL` / `SUPABASE_ANON_KEY`
+- 钉钉 SSO：配置 `SSO_BASE_URL`、`SSO_CLIENT_ID`、`SSO_CLIENT_SECRET`、`SSO_REDIRECT_URI`；SSO 云端项目/素材同步还需要服务端 `SUPABASE_URL` 与 `SUPABASE_SERVICE_ROLE_KEY`
+- 只有继续支持旧版 Supabase 邮箱登录时，才需要 `SUPABASE_ANON_KEY`
 
 启动两个进程：
 
@@ -61,8 +62,11 @@ npm run dev
 1. 在开发库的 Supabase SQL Editor 中按文件名顺序执行 [`supabase/migrations/`](./supabase/migrations/) 内的迁移。首先执行 [`20261030_00_create_keyvideo_tables.sql`](./supabase/migrations/20261030_00_create_keyvideo_tables.sql)，再执行：
    - [`supabase/migrations/20261030_asset_privacy.sql`](./supabase/migrations/20261030_asset_privacy.sql)
    - [`supabase/migrations/20261030_model_assets_update.sql`](./supabase/migrations/20261030_model_assets_update.sql)
+   - [`supabase/migrations/20261030_01_sso_cloud_storage.sql`](./supabase/migrations/20261030_01_sso_cloud_storage.sql)
 
-   这三份迁移只创建或配置 KeyVideo 使用的 `ai_video_projects`、`model_assets`、`audio_assets`，不会修改 `media_assets` 或其他表。旧版 [`src/utils/create_table.sql`](./src/utils/create_table.sql) 保留用于参考，不建议直接执行到包含其他业务对象的数据库。
+   这些迁移只创建或配置 KeyVideo 使用的 `ai_video_projects`、`model_assets`、`audio_assets`，不会修改 `media_assets` 或其他表。最后一份迁移为钉钉 SSO 用户增加独立的 `sso_user_id` 归属列，服务端使用 service-role key 按账号过滤。旧版 [`src/utils/create_table.sql`](./src/utils/create_table.sql) 保留用于参考，不建议直接执行到包含其他业务对象的数据库。
+
+   SSO 用户首次打开应用时，会把当前浏览器/桌面端本地项目、模特、场景和音乐迁移到自己的云端空间：`data:`/`blob:` 图片会先上传 OSS，`file://`、`asset://`、本机路径和无效地址会跳过；迁移不会读取或上传 SSO 令牌、界面设置或本地视频，也不会自动公开素材。迁移成功后会写入当前账号范围内的一次性标记，网络失败会在下次登录重试。
 
 素材默认私有：只有 `is_public = true` 或 `auth.uid() = user_id` 的行可读。需要共享的品牌素材请显式标记：
 
@@ -118,6 +122,7 @@ CI（`.github/workflows/ci.yml`）在 push/PR 上分别运行前后端测试。
 ## 常见问题
 
 - **请求 401**：检查 `Authorization: Bearer <session>` 是否存在且未过期；SSO 登出后 token 会立即撤销。
+- **SSO 云端同步不可用**：确认后端 `SUPABASE_URL` 指向开发库，并在 `backend/.env` 配置开发库的 `SUPABASE_SERVICE_ROLE_KEY`。该密钥只能在后端使用，不能放进 `VITE_` 变量或提交 Git。
 - **请求 503 `auth_not_configured`**：后端未配置 SSO 或 Supabase 鉴权。
 - **生成 429 `DAILY_QUOTA_EXCEEDED` / `CONCURRENCY_LIMIT`**：调整 `AI_DAILY_TASK_LIMIT` / `AI_MAX_CONCURRENT_TASKS`，或等待并发任务结束。
 - **素材上传成功但列表不显示**：确认已执行素材隐私迁移；非公开素材只有所有者可见。

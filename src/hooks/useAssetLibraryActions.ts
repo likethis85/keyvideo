@@ -5,6 +5,12 @@ import { localDB } from '../utils/db';
 import { uploadFileToOSS } from '../utils/ossClient';
 import { supabase } from '../utils/supabaseClient';
 import { getCanvasSafeImageUrl } from '../utils/aiGateway';
+import {
+  createSsoAsset,
+  deleteSsoAsset,
+  isSsoCloudSession,
+  updateSsoAsset
+} from '../services/keyvideoCloudService';
 
 function dataUrlToBlob(dataUrl: string): Blob {
   const [metadata, encoded = ''] = dataUrl.split(';base64,');
@@ -76,6 +82,18 @@ export function useAssetLibraryActions({
     let finalUrl = srcUrl;
     try {
       finalUrl = await uploadImageSource(srcUrl, 'ai_model');
+      if (isSsoCloudSession()) {
+        const inserted = await createSsoAsset('model', { name, src: finalUrl });
+        if (!inserted) throw new Error('SSO cloud did not return the inserted model');
+        const localItem: ModelAsset = {
+          id: inserted.id,
+          src: inserted.src,
+          date: inserted.created_at ? new Date(inserted.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+          name: inserted.name
+        };
+        setModelLibrary(previous => saveModelLibrarySafely([localItem, ...previous]));
+        return localItem;
+      }
       const { data: userSession } = await supabase.auth.getSession();
       const userId = userSession?.session?.user?.id || null;
 
@@ -126,6 +144,11 @@ export function useAssetLibraryActions({
   const addSceneToLibrary = useCallback(async (name: string, srcUrl: string): Promise<SceneAsset | null> => {
     try {
       const finalUrl = await uploadImageSource(srcUrl, 'custom_scene');
+      if (isSsoCloudSession()) {
+        const inserted = await createSsoAsset('model', { name, src: finalUrl, is_scene: true });
+        if (!inserted) throw new Error('SSO cloud did not return the inserted scene');
+        return { id: inserted.id, name: inserted.name.replace(/^\[BG\]\s*/, ''), src: inserted.src };
+      }
       const { data: userSession } = await supabase.auth.getSession();
       const userId = userSession?.session?.user?.id || null;
 
@@ -161,8 +184,11 @@ export function useAssetLibraryActions({
       if (!deletedIds.includes(scene.id)) deletedIds.push(scene.id);
       if (scene.src && !deletedIds.includes(scene.src)) deletedIds.push(scene.src);
       await localDB.set('deleted_scene_ids', deletedIds);
-      const { error } = await supabase.from('model_assets').delete().eq('id', scene.id);
-      if (error) throw error;
+      if (isSsoCloudSession()) await deleteSsoAsset('model', scene.id);
+      else {
+        const { error } = await supabase.from('model_assets').delete().eq('id', scene.id);
+        if (error) throw error;
+      }
     } catch (error) {
       console.warn('Failed to delete scene from Supabase:', error);
     }
@@ -171,8 +197,11 @@ export function useAssetLibraryActions({
 
   const renameScene = useCallback(async (id: string, name: string) => {
     try {
-      const { error } = await supabase.from('model_assets').update({ name: `[BG] ${name}` }).eq('id', id);
-      if (error) throw error;
+      if (isSsoCloudSession()) await updateSsoAsset('model', id, { name: `[BG] ${name}` });
+      else {
+        const { error } = await supabase.from('model_assets').update({ name: `[BG] ${name}` }).eq('id', id);
+        if (error) throw error;
+      }
     } catch (error) {
       console.warn('Failed to update scene name in Supabase:', error);
     }
@@ -184,8 +213,11 @@ export function useAssetLibraryActions({
   const renameModel = useCallback(async (id: string, name: string): Promise<boolean> => {
     let cloudUpdated = true;
     try {
-      const { error } = await supabase.from('model_assets').update({ name }).eq('id', id);
-      if (error) throw error;
+      if (isSsoCloudSession()) await updateSsoAsset('model', id, { name });
+      else {
+        const { error } = await supabase.from('model_assets').update({ name }).eq('id', id);
+        if (error) throw error;
+      }
     } catch (error) {
       cloudUpdated = false;
       console.error('Failed to rename model in Supabase:', error);
@@ -199,8 +231,11 @@ export function useAssetLibraryActions({
   const deleteBgm = useCallback(async (id: string): Promise<boolean> => {
     let cloudDeleted = true;
     try {
-      const { error } = await supabase.from('audio_assets').delete().eq('id', id);
-      if (error) throw error;
+      if (isSsoCloudSession()) await deleteSsoAsset('audio', id);
+      else {
+        const { error } = await supabase.from('audio_assets').delete().eq('id', id);
+        if (error) throw error;
+      }
     } catch (error) {
       cloudDeleted = false;
       console.error('BGM delete failed:', error);
